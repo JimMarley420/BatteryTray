@@ -32,6 +32,7 @@ namespace BatteryTray.Providers
                 new RongyuanDongleProvider(state),
                 new XentaReceiverProvider(state),
                 new SteelSeriesProvider(),
+                new OemMouseProvider(),
                 new RazerPeripheralProvider(),
                 new HeadsetProvider(),
                 new LogitechProvider(),

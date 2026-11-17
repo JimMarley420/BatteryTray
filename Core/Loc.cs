@@ -212,6 +212,7 @@ namespace BatteryTray.Core
             ["via.receiver"] = ("USB-приёмник", "USB receiver", "USB 接收器"),
             ["name.mouse"] = ("Мышь", "Mouse", "鼠标"),
             ["name.keyboard"] = ("Клавиатура", "Keyboard", "键盘"),
+            ["name.aresonMouse"] = ("Мышь на приёмнике Areson", "Mouse on an Areson receiver", "Areson 接收器上的鼠标"),
             ["name.xbox"] = ("Геймпад Xbox", "Xbox controller", "Xbox 手柄"),
             ["d.needsAdmin"] = ("нужны права администратора", "needs administrator rights", "需要管理员权限"),
             ["d.error"] = ("ошибка: {0}", "error: {0}", "错误：{0}"),
