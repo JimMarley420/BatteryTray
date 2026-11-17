@@ -11,10 +11,12 @@ namespace BatteryTray.Providers
     /// <summary>
     /// Wireless gaming headsets that answer a battery request on a vendor HID collection: HyperX, Logitech G,
     /// SteelSeries Arctis, Corsair, Sony INZONE and a few more. The request/response bytes are the protocol facts
-    /// collected by HeadsetControl (github.com/Sapd/HeadsetControl, lib/devices/*) and, for the HyperX Cloud III
-    /// Wireless, by HyperHeadset (github.com/LennardKittner/HyperHeadset, src/devices/*); this is an independent
-    /// implementation. Byte positions below are as hidapi returns them: for devices without report IDs Windows puts
-    /// a 0x00 in front of every input report, which <see cref="Io.Data"/> strips the same way hidapi does.
+    /// collected by HeadsetControl (github.com/Sapd/HeadsetControl, lib/devices/*), for the HyperX Cloud III
+    /// Wireless by HyperHeadset (github.com/LennardKittner/HyperHeadset, src/devices/*) and for the Corsair HS80 RGB
+    /// Wireless by OpenLinkHub (github.com/jurkovic-nikola/OpenLinkHub, src/devices/headsetdongle, hs80rgbW*); this
+    /// is an independent implementation. Byte positions below are as hidapi returns them: for devices without report
+    /// IDs Windows puts a 0x00 in front of every input report, which <see cref="Io.Data"/> strips the same way
+    /// hidapi does.
     /// Read-only status queries; not yet verified on hardware by this project, which is why the first exchange with
     /// each headset goes to the log (<see cref="LogOnce"/>).
     /// </summary>
@@ -24,7 +26,7 @@ namespace BatteryTray.Providers
 
         /// <param name="Detail">A text key (see <see cref="Loc"/>) or a ready text.</param>
         /// <param name="Full">The headset itself says it is full, with the charger still connected.</param>
-        readonly record struct State(bool Online, int? Level, bool Charging, string? Detail = null, bool Full = false);
+        internal readonly record struct State(bool Online, int? Level, bool Charging, string? Detail = null, bool Full = false);
 
         static readonly State Off = new(false, null, false, "d.offOrAway");
 
@@ -201,11 +203,12 @@ namespace BatteryTray.Providers
                 }
                 return Off;
             }),
-            new("corsair-virtuoso-xt", "Corsair Virtuoso XT / SE", 0x1B1C, new ushort[] { 0x0A64, 0x0A62, 0x0A3E, 0x0A3D }, 0xFF42, 0x0001, 3, io =>
-            {
-                var r = io.Ask(new byte[] { 0x02, 0x00 }, d => d.Length > 2 && d[0] == 0x01, reads: 8);
-                return r != null && r[1] != 0x00 && r[2] <= 100 ? On(r[2], false) : Off;
-            }),
+            // Receiver and cable IDs share a key: a Virtuoso XT on its cable leaves the receiver and shows up under the
+            // cable ID, and the reading that reaches the headset wins (see Poll)
+            new("corsair-virtuoso-xt", "Corsair Virtuoso XT / SE", 0x1B1C, new ushort[] { 0x0A64, 0x0A62, 0x0A3E, 0x0A3D }, 0xFF42, 0x0001, 3,
+                io => Bragi(io, wired: io.ProductId is 0x0A62 or 0x0A3D)),
+            new("corsair-hs80-rgb-wireless", "Corsair HS80 RGB Wireless", 0x1B1C, new ushort[] { 0x0A6B, 0x0A73, 0x0A69 }, 0xFF42, 0x0001, 3,
+                io => Bragi(io, wired: io.ProductId == 0x0A69)),
 
             // ---- Others ----
             new("sony-inzone-h5", "Sony INZONE H5", 0x054C, new ushort[] { 0x0EBF }, 0xFF04, 0x0002, -1, io =>
@@ -326,6 +329,51 @@ namespace BatteryTray.Providers
 
         /// <summary>Status reports (B0) can also arrive unasked on this interface; other replies start with 20.</summary>
         static byte[]? NovaStatus(Io io) => io.Ask(new byte[] { 0x00, 0xB0 }, d => d.Length > 4 && d[0] == 0xB0);
+
+        // Corsair Bragi: who a request goes to, and the properties read here
+        const byte BragiSelf = 0x08, BragiHeadset = 0x09;
+        const byte BragiLevel = 0x0F, BragiPower = 0x10;
+
+        /// <summary>
+        /// Corsair's Bragi property protocol on report 02 of the FF42 collection, as the Virtuoso XT / SE and the HS80
+        /// RGB Wireless speak it. <c>02 TT 02 PP</c> reads property PP of target TT; the reply comes on report 01 as
+        /// <c>01 FF 02 SS VV VV VV VV</c>: FF who answered (01 the headset behind a receiver, 00 the device itself),
+        /// 02 the echo, SS the status (00 ok, 05 no such property), then the value, little-endian. A receiver relays
+        /// to its headset on target 09; a headset on its cable answers on 08, except the Virtuoso SE, which takes 09
+        /// there too and refuses 08. Read-only: properties are only read, the headset stays in hardware mode.
+        /// </summary>
+        static State Bragi(Io io, bool wired)
+        {
+            foreach (byte target in wired ? new[] { BragiSelf, BragiHeadset } : new[] { BragiHeadset })
+            {
+                // A receiver without its headset is silent or answers "no such property" for itself
+                if (BragiGet(io, target, BragiLevel) is not uint level) continue;
+                return BragiState(level, BragiGet(io, target, BragiPower));
+            }
+            return Off;
+        }
+
+        static uint? BragiGet(Io io, byte target, byte property) =>
+            io.Ask(Pad(64, 0x02, target, 0x02, property), d => IsBragiReply(d, target), reads: 8) is byte[] r ? BragiValue(r) : null;
+
+        /// <summary>A reply to a read sent to <paramref name="target"/>; volume events on report 0E and what a
+        /// receiver answers for itself don't count.</summary>
+        internal static bool IsBragiReply(byte[] d, byte target) =>
+            d.Length >= 8 && d[0] == 0x01 && d[1] == (target == BragiHeadset ? 0x01 : 0x00) && d[2] == 0x02;
+
+        /// <summary>The value of a reply, or null when the status isn't ok.</summary>
+        internal static uint? BragiValue(byte[] d) => d[3] == 0x00 ? (uint)(d[4] | d[5] << 8 | d[6] << 16 | d[7] << 24) : null;
+
+        /// <param name="level">Tenths of a percent, 0-1000.</param>
+        /// <param name="power">Charge state, if the firmware has it: 1 charging, 2 on battery, 3 charged
+        /// (ckb-next's BatteryStatus).</param>
+        internal static State BragiState(uint level, uint? power)
+        {
+            bool charging = power == 1, full = power == 3;
+            return level <= 1000
+                ? new State(true, (int)level / 10, charging, Full: full)
+                : new State(true, null, charging, "d.levelUnknown", full);
+        }
 
         static State LogitechVoltage(Io io, byte featureIndex, byte function, (int Mv, int Percent)[] table)
         {
