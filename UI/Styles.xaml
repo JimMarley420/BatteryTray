@@ -136,6 +136,71 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Radio option: same ring, accent and dot as the toggle switch below -->
+    <Style x:Key="Option" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <!-- Top, not centred: a label that wraps keeps its dot on the first line -->
+                        <Grid Width="20" Height="20" VerticalAlignment="Top">
+                            <Ellipse x:Name="Ring" Fill="Transparent" Stroke="#FF9A9A9A" StrokeThickness="1"/>
+                            <Ellipse x:Name="Dot" Width="12" Height="12" Fill="#FF1A1A1A" Visibility="Hidden"/>
+                        </Grid>
+                        <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ring" Property="Fill" Value="{StaticResource ControlHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Ring" Property="Fill" Value="{StaticResource ControlPressedBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Ring" Property="Fill" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Dot" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsChecked" Value="True"/>
+                                <Condition Property="IsMouseOver" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Dot" Property="Width" Value="14"/>
+                            <Setter TargetName="Dot" Property="Height" Value="14"/>
+                        </MultiTrigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsChecked" Value="True"/>
+                                <Condition Property="IsPressed" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Dot" Property="Width" Value="10"/>
+                            <Setter TargetName="Dot" Property="Height" Value="10"/>
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Toggle switch -->
     <Style x:Key="Toggle" TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
