@@ -148,7 +148,12 @@ fn run(shared: Arc<Shared>) {
         let after = match request {
             Request::Stop => return,
             Request::Install => install(&shared),
-            _ => check(&shared, &mut announced_tag),
+            _ => {
+                // The start's clean-up misses the old exe while the version that installed this one is still exiting
+                // (always, after an update from the C# app); by the first check it is long gone
+                crate::updater::clean_up();
+                check(&shared, &mut announced_tag)
+            }
         };
         // After an install the app restarts; until it has, nothing more to do
         next = Instant::now() + after.unwrap_or(PERIOD);
