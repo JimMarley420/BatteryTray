@@ -7,16 +7,6 @@
         FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True">
 
     <Window.Resources>
-        <Style x:Key="OverlayOption" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            <Setter Property="ContentTemplate">
-                <Setter.Value>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
-                    </DataTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
         <!-- Device that is on the air right now -->
         <DataTemplate x:Key="DeviceCard">
             <Border Style="{StaticResource Card}" Margin="0,0,0,8">
@@ -228,20 +218,20 @@
                                    AutomationProperties.LiveSetting="Polite"/>
                         <TextBlock Text="{l:T overlay.mode}" Margin="0,14,0,6"/>
                         <StackPanel>
-                            <RadioButton x:Name="OverlayTimed" Style="{StaticResource OverlayOption}" GroupName="OverlayMode" Content="{l:T overlay.timed}"
+                            <RadioButton x:Name="OverlayTimed" Style="{StaticResource Option}" GroupName="OverlayMode" Content="{l:T overlay.timed}"
                                          Checked="OverlaySetting_Changed" Margin="0,0,0,6"/>
-                            <RadioButton x:Name="OverlayToggleMode" Style="{StaticResource OverlayOption}" GroupName="OverlayMode" Content="{l:T overlay.toggle}"
+                            <RadioButton x:Name="OverlayToggleMode" Style="{StaticResource Option}" GroupName="OverlayMode" Content="{l:T overlay.toggle}"
                                          Checked="OverlaySetting_Changed"/>
                         </StackPanel>
                         <TextBlock Text="{l:T overlay.corner}" Margin="0,14,0,6"/>
                         <WrapPanel>
-                            <RadioButton x:Name="OverlayTopLeft" Style="{StaticResource OverlayOption}" GroupName="OverlayCorner" Tag="TopLeft"
+                            <RadioButton x:Name="OverlayTopLeft" Style="{StaticResource Option}" GroupName="OverlayCorner" Tag="TopLeft"
                                          Content="{l:T overlay.top.left}" Margin="0,0,12,6" Checked="OverlaySetting_Changed"/>
-                            <RadioButton x:Name="OverlayTopRight" Style="{StaticResource OverlayOption}" GroupName="OverlayCorner" Tag="TopRight"
+                            <RadioButton x:Name="OverlayTopRight" Style="{StaticResource Option}" GroupName="OverlayCorner" Tag="TopRight"
                                          Content="{l:T overlay.top.right}" Margin="0,0,12,6" Checked="OverlaySetting_Changed"/>
-                            <RadioButton x:Name="OverlayBottomLeft" Style="{StaticResource OverlayOption}" GroupName="OverlayCorner" Tag="BottomLeft"
+                            <RadioButton x:Name="OverlayBottomLeft" Style="{StaticResource Option}" GroupName="OverlayCorner" Tag="BottomLeft"
                                          Content="{l:T overlay.bottom.left}" Margin="0,0,12,6" Checked="OverlaySetting_Changed"/>
-                            <RadioButton x:Name="OverlayBottomRight" Style="{StaticResource OverlayOption}" GroupName="OverlayCorner" Tag="BottomRight"
+                            <RadioButton x:Name="OverlayBottomRight" Style="{StaticResource Option}" GroupName="OverlayCorner" Tag="BottomRight"
                                          Content="{l:T overlay.bottom.right}" Margin="0,0,0,6" Checked="OverlaySetting_Changed"/>
                         </WrapPanel>
                         <CheckBox x:Name="OverlayNames" Style="{StaticResource Toggle}" Margin="0,8,0,0"
