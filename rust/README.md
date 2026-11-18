@@ -18,7 +18,9 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 The version in `Cargo.toml` is the release version: the updater (this one and the C# one) only installs an exe whose
-FileVersion equals the release's, and `build.rs` writes it into the exe.
+FileVersion equals the release's, and `build.rs` writes it into the exe. `build-release.ps1` in the parent folder builds
+the release exe and zip; it checks that version and writes the crates' licenses with
+[cargo-about](https://github.com/EmbarkStudios/cargo-about) (`about.toml`, `about.hbs`).
 
 ## Layout
 
@@ -56,7 +58,8 @@ doesn't know are kept). On its first start it removes what the C# app left behin
 
 ## Licenses
 
-MIT, as the rest of the project. The UI is built with [Slint](https://slint.dev) under its Royalty-free license 2.0,
+MIT, as the rest of the project. The licenses of the crates in the exe go into `THIRD_PARTY_LICENSES.md` in the release
+zip (see above). The UI is built with [Slint](https://slint.dev) under its Royalty-free license 2.0,
 which asks for an attribution: the Slint badge on a public page the app is downloaded from - the main README, which the
 releases link to. Without it the app may not be distributed.
 
