@@ -69,7 +69,10 @@ embed-resource = "3"
 slint-build = "1"
 
 [profile.release]
-opt-level = 3
+# For size: a tray app that draws a few small windows now and then gains nothing from faster code (13.9 MB at 3,
+# 10.4 MB at "z"). Most of what remains is Slint's own: the winit backend always brings SVG and image decoders, and
+# its text layout the line-breaking data for complex scripts.
+opt-level = "z"
 lto = true
 codegen-units = 1
 strip = true
