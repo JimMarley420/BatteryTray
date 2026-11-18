@@ -1,0 +1,35 @@
+name: Rust
+
+on:
+  push:
+    paths: ["rust/**", "app.ico", "app.manifest", ".github/workflows/rust.yml"]
+  pull_request:
+    paths: ["rust/**", "app.ico", "app.manifest", ".github/workflows/rust.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The app is Windows-only; the runner has the MSVC tools and the Windows SDK (rc.exe) build.rs needs
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: rust-${{ hashFiles('rust/Cargo.lock') }}
+      - name: Formatting
+        run: cargo fmt --check
+      - name: Lints
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --locked

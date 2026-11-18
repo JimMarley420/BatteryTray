@@ -1,0 +1,72 @@
+// The battery overlay (UI/OverlayWindow.xaml): a small click-through panel over the active app, one entry per
+// device on the air. gui.rs makes it non-activating, click-through and slightly translucent.
+
+import { Palette, T, Glyph } from "theme.slint";
+
+export struct OverlayEntry {
+    glyph: string,
+    name: string,
+    show-name: bool,
+    level: string,
+    color: color,
+    power: bool,
+}
+
+export component OverlayWindow inherits Window {
+    title: T.t("overlay.header");
+    no-frame: true;
+    always-on-top: true;
+    background: Palette.window;
+    // Chinese in its own font: the fallback Windows picks for Han on a non-Chinese system is Japanese, which lacks
+    // the simplified characters. Microsoft YaHei UI has Latin and Cyrillic too.
+    default-font-family: T.lang == "zh" ? "Microsoft YaHei UI" : "Segoe UI";
+    default-font-size: 13px;
+
+    in property <[OverlayEntry]> entries;
+    // Its size before it is shown, so it opens right where it belongs
+    out property <length> content-width: content.preferred-width;
+    out property <length> content-height: content.preferred-height;
+
+    content := HorizontalLayout {
+        padding: 6px;
+        if root.entries.length == 0: Text {
+            text: T.t("none.online");
+            color: Palette.text;
+            vertical-alignment: center;
+        }
+        for entry in root.entries: HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            spacing: 7px;
+            Glyph {
+                text: entry.glyph;
+                font-size: 19px;
+                color: entry.color;
+            }
+            if entry.show-name: Text {
+                text: entry.name;
+                max-width: 140px;
+                color: Palette.text;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                Text {
+                    text: entry.level;
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: entry.color;
+                    vertical-alignment: center;
+                }
+                if entry.power: Glyph {
+                    text: "\u{E945}";
+                    font-size: 18px;
+                    color: entry.color;
+                }
+            }
+        }
+    }
+}

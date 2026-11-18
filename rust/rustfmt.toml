@@ -1,0 +1,4 @@
+# The code is written for a 120-column editor
+max_width = 120
+use_small_heuristics = "Max"
+
