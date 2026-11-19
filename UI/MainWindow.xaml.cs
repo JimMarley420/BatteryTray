@@ -73,11 +73,13 @@ namespace BatteryTray.UI
             DateTime? newest = rows.Select(r => r.Current?.Time).Max();
             UpdatedText.Text = newest is DateTime t ? Loc.T("updated.at", t) : Loc.T("polling");
 
-            // Rebuilt only when the set of devices changes, so a name being typed keeps its focus
-            if (!rows.Select(r => r.Id).SequenceEqual(deviceSettings.Select(d => d.Id)))
+            // Rebuilt only when the set of devices changes, so a name being typed keeps its focus. Its order doesn't
+            // go by that name, or every keystroke that changed it would be such a change
+            List<DeviceRow> settingsRows = DeviceRow.SettingsOrder(rows);
+            if (!settingsRows.Select(r => r.Id).SequenceEqual(deviceSettings.Select(d => d.Id)))
             {
                 deviceSettings.Clear();
-                foreach (var row in rows) deviceSettings.Add(new DeviceSettingsVM(row, s, app.SettingsChanged));
+                foreach (var row in settingsRows) deviceSettings.Add(new DeviceSettingsVM(row, s, app.SettingsChanged));
             }
         }
 
