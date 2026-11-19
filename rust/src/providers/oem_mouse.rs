@@ -16,7 +16,7 @@
 //! 07 (issue #18). Own implementation. Not yet verified on hardware by this project, which is why the first exchange
 //! goes to the log.
 
-use super::{group_by, hex_trimmed as hex, one_per_id, remaining_ms, secs, Provider};
+use super::{group_by, hex_trimmed as hex, no_link_reason, one_per_id, remaining_ms, secs, Provider};
 use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::log;
@@ -117,7 +117,6 @@ impl Provider for OemMouseProvider {
             let mut battery = None;
             let mut error = None;
             match (send, listen) {
-                (Some(s), Some(l)) if s.access_denied || l.access_denied => error = Some(t("d.needsAdmin")),
                 (Some(s), Some(l)) => match query(model, s, l, &mut trace) {
                     Ok(b) => battery = b,
                     Err(e) => {
@@ -125,7 +124,7 @@ impl Provider for OemMouseProvider {
                         error = Some(tf("d.error", &[&e]));
                     }
                 },
-                _ => error = Some(t("d.noLink")),
+                _ => error = Some(t(no_link_reason(&collections))),
             }
             self.log_once((vid, pid), &collections, send, listen, &trace, battery.is_some());
 
@@ -192,23 +191,21 @@ impl OemMouseProvider {
     }
 }
 
-/// The collection the request goes to and the one the reply comes back on.
+/// The collection the request goes to and the one the reply comes back on. A collection that Windows won't open has
+/// no usage page to go by, so it is never one of them.
 fn channels(transport: Transport, collections: &[HidInfo]) -> (Option<&HidInfo>, Option<&HidInfo>) {
     if transport == Transport::Output {
         let vendor = collections.iter().find(|i| {
-            i.usage_page == COMMAND_PAGE
-                && (i.access_denied || (i.output_length >= FRAME_LENGTH && i.input_length >= FRAME_LENGTH))
+            i.usage_page == COMMAND_PAGE && i.output_length >= FRAME_LENGTH && i.input_length >= FRAME_LENGTH
         });
         return (vendor, vendor);
     }
-    let send = collections
-        .iter()
-        .find(|i| i.usage_page == COMMAND_PAGE && (i.access_denied || i.feature_length >= FRAME_LENGTH));
+    let send = collections.iter().find(|i| i.usage_page == COMMAND_PAGE && i.feature_length >= FRAME_LENGTH);
     let listen = send.and_then(|s| {
         collections.iter().find(|i| {
             i.usage_page == ARESON_REPLY_PAGE
                 && i.interface_number() == s.interface_number()
-                && (i.access_denied || i.input_length >= FRAME_LENGTH)
+                && i.input_length >= FRAME_LENGTH
         })
     });
     (send, listen)
@@ -390,6 +387,70 @@ mod tests {
     fn level_in_percent_is_no_reading_in_tens() {
         assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x0B, 0x00]), 10), None);
         assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x46, 0x00]), 10), None);
+    }
+
+    /// A collection as the enumeration returns it; `page` 0 with `denied` is one that Windows won't open.
+    fn collection(mi: u8, page: u16, input: usize, output: usize, feature: usize, denied: bool) -> HidInfo {
+        HidInfo {
+            path: format!(r"\\?\hid#vid_25a7&pid_fa7c&mi_{mi:02x}&col{page:04x}#8&1&0&0000#{{4d1e55b2}}"),
+            vendor_id: 0x25A7,
+            product_id: 0xFA7C,
+            usage_page: page,
+            input_length: input,
+            output_length: output,
+            feature_length: feature,
+            access_denied: denied,
+            ..HidInfo::default()
+        }
+    }
+
+    fn paths<'a>(pair: (Option<&'a HidInfo>, Option<&'a HidInfo>)) -> (Option<&'a str>, Option<&'a str>) {
+        (pair.0.map(|i| i.path.as_str()), pair.1.map(|i| i.path.as_str()))
+    }
+
+    #[test]
+    fn vxe_asks_and_listens_on_one_collection() {
+        let all = [collection(0, 0x0001, 8, 0, 0, false), collection(1, 0xFF02, 17, 17, 0, false)];
+        let vendor = Some(all[1].path.as_str());
+        assert_eq!(paths(channels(Transport::Output, &all)), (vendor, vendor));
+    }
+
+    #[test]
+    fn areson_asks_on_one_collection_and_listens_on_another() {
+        let all = [
+            collection(0, 0x0001, 8, 0, 0, false),
+            collection(1, 0xFF01, 17, 0, 0, false),
+            collection(1, 0xFF02, 0, 0, 17, false),
+        ];
+        assert_eq!(paths(channels(Transport::Feature, &all)), (Some(all[2].path.as_str()), Some(all[1].path.as_str())));
+    }
+
+    #[test]
+    fn a_locked_collection_is_never_picked() {
+        let all = [collection(0, 0x0001, 8, 0, 0, false), collection(1, 0, 0, 0, 0, true)];
+        assert_eq!(paths(channels(Transport::Output, &all)), (None, None));
+        assert_eq!(paths(channels(Transport::Feature, &all)), (None, None));
+        assert_eq!(no_link_reason(&all), "d.needsAdmin");
+    }
+
+    #[test]
+    fn areson_with_its_reply_collection_locked() {
+        let all = [collection(1, 0xFF02, 0, 0, 17, false), collection(1, 0, 0, 0, 0, true)];
+        assert_eq!(paths(channels(Transport::Feature, &all)), (Some(all[0].path.as_str()), None));
+        assert_eq!(no_link_reason(&all), "d.needsAdmin");
+    }
+
+    #[test]
+    fn areson_reply_collection_of_another_interface_is_not_the_one() {
+        let all = [collection(1, 0xFF02, 0, 0, 17, false), collection(2, 0xFF01, 17, 0, 0, false)];
+        assert_eq!(paths(channels(Transport::Feature, &all)), (Some(all[0].path.as_str()), None));
+        assert_eq!(no_link_reason(&all), "d.noLink");
+    }
+
+    #[test]
+    fn nothing_locked_is_no_link() {
+        assert_eq!(no_link_reason(&[collection(0, 0x0001, 8, 0, 0, false)]), "d.noLink");
+        assert_eq!(no_link_reason(&[]), "d.noLink");
     }
 
     #[test]

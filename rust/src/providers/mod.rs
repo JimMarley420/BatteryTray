@@ -76,6 +76,17 @@ pub(crate) fn key(vid: u16, pid: u16) -> u32 {
     ((vid as u32) << 16) | pid as u32
 }
 
+/// The text key for a device whose collection wasn't found among `collections`. A collection that Windows won't open
+/// comes with no usage and no report lengths, so it never matches what a provider looks for. When there is one, it is
+/// most likely the one that's missing, and administrator rights open it.
+pub(crate) fn no_link_reason(collections: &[HidInfo]) -> &'static str {
+    if collections.iter().any(|i| i.access_denied) {
+        "d.needsAdmin"
+    } else {
+        "d.noLink"
+    }
+}
+
 /// Milliseconds left until `deadline`, at least 1.
 pub(crate) fn remaining_ms(deadline: Instant) -> u32 {
     (deadline.saturating_duration_since(Instant::now()).as_millis() as u32).max(1)

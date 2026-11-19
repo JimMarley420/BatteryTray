@@ -11,7 +11,7 @@
 //! 3554:FA09") and Wireless-Device-Battery-Monitor (src/drivers/aula.cpp); own implementation. Not yet verified on
 //! hardware by this project, which is why the first exchange goes to the log.
 
-use super::{hex_trimmed as hex, remaining_ms, secs, Provider};
+use super::{hex_trimmed as hex, no_link_reason, remaining_ms, secs, Provider};
 use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::log;
@@ -77,17 +77,12 @@ impl Provider for AulaMchoseProvider {
             return Vec::new();
         }
 
-        let vendor = collections.iter().find(|i| {
-            i.usage_page == VENDOR_PAGE
-                && i.usage == VENDOR_USAGE
-                && (i.access_denied || (i.output_length >= FRAME_LENGTH && i.input_length >= FRAME_LENGTH))
-        });
+        let vendor = vendor_collection(&collections);
         let mut trace = Vec::new();
         let mut battery = None;
         let mut error = None;
         match vendor {
-            None => error = Some(t("d.noLink")),
-            Some(v) if v.access_denied => error = Some(t("d.needsAdmin")),
+            None => error = Some(t(no_link_reason(&collections))),
             Some(v) => {
                 let asked = (|| -> win::Result<()> {
                     let dev = HidDevice::open(v)?;
@@ -151,6 +146,17 @@ impl AulaMchoseProvider {
         }
         log::write(&format!("  {}", if trace.is_empty() { "nothing sent".into() } else { trace.join("  ") }));
     }
+}
+
+/// The collection that takes the requests. A collection that Windows won't open has no usage page to go by, so it is
+/// never the one.
+fn vendor_collection(collections: &[HidInfo]) -> Option<&HidInfo> {
+    collections.iter().find(|i| {
+        i.usage_page == VENDOR_PAGE
+            && i.usage == VENDOR_USAGE
+            && i.output_length >= FRAME_LENGTH
+            && i.input_length >= FRAME_LENGTH
+    })
 }
 
 /// Sends one request and waits for its reply; None when the keyboard didn't answer.
@@ -226,6 +232,36 @@ mod tests {
     //! Keyboards on the CompX receiver 3554:FA09: 20-byte reports 13. The requests are M HUB's, and the two real
     //! replies are the ones a G75 Pro owner captured (myfinder-device-battery issue 476).
     use super::*;
+
+    fn collection(usage_page: u16, usage: u16, length: usize, access_denied: bool) -> HidInfo {
+        HidInfo {
+            path: format!(r"\\?\hid#vid_3554&pid_fa09&mi_01&col{usage_page:04x}{length:02}"),
+            vendor_id: VID,
+            product_id: PID,
+            usage_page,
+            usage,
+            input_length: length,
+            output_length: length,
+            access_denied,
+            ..HidInfo::default()
+        }
+    }
+
+    #[test]
+    fn vendor_collection_is_the_one_long_enough() {
+        let all =
+            [collection(0x0001, 0x0006, 9, false), collection(0xFF02, 2, 8, false), collection(0xFF02, 2, 20, false)];
+        assert_eq!(vendor_collection(&all).map(|i| i.path.as_str()), Some(all[2].path.as_str()));
+        assert!(vendor_collection(&all[..2]).is_none());
+        assert_eq!(no_link_reason(&all[..2]), "d.noLink");
+    }
+
+    #[test]
+    fn a_locked_collection_is_never_the_vendor_one() {
+        let all = [collection(0x0001, 0x0006, 9, false), collection(0, 0, 0, true)];
+        assert!(vendor_collection(&all).is_none());
+        assert_eq!(no_link_reason(&all), "d.needsAdmin");
+    }
 
     fn h(text: &str) -> Vec<u8> {
         text.split(' ').map(|b| u8::from_str_radix(b, 16).unwrap()).collect()

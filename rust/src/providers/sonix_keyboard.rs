@@ -12,7 +12,7 @@
 //! sonix-keyboard-studio and Wireless-Device-Battery-Monitor (src/drivers/sonix.cpp). Own implementation. Not yet
 //! verified on hardware by this project, which is why the first exchange goes to the log.
 
-use super::{receiver_name, remaining_ms, secs, Provider};
+use super::{no_link_reason, receiver_name, remaining_ms, secs, Provider};
 use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::log;
@@ -59,9 +59,7 @@ impl Provider for SonixKeyboardProvider {
         let mut level = None;
         let mut error = None;
         match vendor {
-            // A collection that Windows won't open shows no usages, so it can't be told from the others
-            None if collections.iter().any(|i| i.access_denied) => error = Some(t("d.needsAdmin")),
-            None => error = Some(t("d.noLink")),
+            None => error = Some(t(no_link_reason(&collections))),
             Some(v) => match query(v, &mut trace) {
                 Ok(l) => level = l,
                 Err(e) => {
