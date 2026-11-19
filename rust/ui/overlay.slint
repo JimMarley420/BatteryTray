@@ -26,6 +26,10 @@ export component OverlayWindow inherits Window {
     // Its size before it is shown, so it opens right where it belongs
     out property <length> content-width: content.preferred-width;
     out property <length> content-height: content.preferred-height;
+    // As wide as its contents, both ways. Left to itself the window only grows to the least its contents can do
+    // with, which for a name is the "…" it is cut down to, and never gets narrower again.
+    min-width: content.preferred-width;
+    max-width: content.preferred-width;
 
     content := HorizontalLayout {
         padding: 6px;
