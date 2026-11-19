@@ -13,7 +13,8 @@ namespace BatteryTray.Providers
     ///   [0] report ID  [1] command  [2] status, 0 = ok  [3..4] address  [5] data length  [6..15] data  [16] checksum,
     /// the checksum making all 17 bytes add up to 0x55. The battery is command 04 (GetPower), and it is all this sends:
     ///   request  08 04 00 .. 00 49
-    ///   reply    RR 04 00 00 00 LL PP CC ..   PP level in percent, CC charging (VXE also sends the voltage after it)
+    ///   reply    RR 04 00 00 00 LL PP CC ..   PP level, CC charging (VXE also sends the voltage after it)
+    /// The level comes in percent, or on some Areson receivers in tens of percent.
     /// A mouse that is asleep or off doesn't answer through its receiver. The frame travels two ways:
     ///   VXE: output report 08 on the vendor collection FF02:0002, the reply as input report 08 on the same collection.
     ///   Areson: feature report 08 on the FF02 collection, the reply as input report 09 on the FF01 collection of the
@@ -23,8 +24,10 @@ namespace BatteryTray.Providers
     /// vxe-battery-tray (github.com/ivancacic/vxe-battery-tray, PROTOCOL.md; the R1 SE+ on Windows), redragon-mouse-linux
     /// (github.com/rajchauhan28/redragon-mouse-linux, PROTOCOL.md; the M693 on 25A7:FA7C) and Wireless-Device-Battery-Monitor
     /// (github.com/krisgfx9/Wireless-Device-Battery-Monitor: docs/areson.md, src/drivers/fantech.cpp; the Fantech Helios
-    /// Go XD5 on the same receiver, which also answers in whole percent); own implementation. Not yet verified on
-    /// hardware by this project, which is why the first exchange goes to the log.
+    /// Go XD5 on the same receiver, which also answers in whole percent; the level in tens of the FA07 / FA08
+    /// receivers). The Ardor Renegade on 25A7:FA4A answers in tens too: its owner captured the exchange while Ardor's
+    /// software showed 70% for a level byte of 07 (issue #18). Own implementation. Not yet verified on hardware by
+    /// this project, which is why the first exchange goes to the log.
     /// </summary>
     public sealed class OemMouseProvider : IBatteryProvider
     {
@@ -38,7 +41,8 @@ namespace BatteryTray.Providers
         internal sealed record Battery(int Level, bool Charging);
 
         /// <param name="Name">A text key (see <see cref="Loc"/>) or a ready name.</param>
-        sealed record Model(string Key, string Name, Transport Transport, bool Wireless);
+        /// <param name="Step">What one unit of the level byte is worth, in percent: 10 when the level comes in tens.</param>
+        sealed record Model(string Key, string Name, Transport Transport, bool Wireless, int Step = 1);
 
         static readonly Dictionary<(ushort Vid, ushort Pid), Model> Models = new()
         {
@@ -48,10 +52,12 @@ namespace BatteryTray.Providers
             [(0x373B, 0x1085)] = new("vxe:r1se", "VXE R1 SE / SE+", Transport.Output, true),
             [(0x3554, 0xF58E)] = new("vxe:r1se", "VXE R1 SE / SE+", Transport.Output, true),
             [(0x3554, 0xF58F)] = new("vxe:r1se", "VXE R1 SE / SE+", Transport.Output, false),
-            // Sold under many names (Redragon M693, Fantech Helios Go XD5, ...), so none is shown. The older FA07 / FA08
-            // receivers send the level in tens and aren't claimed.
+            // Sold under many names (Redragon M693, Fantech Helios Go XD5, ...), so none is shown
             [(0x25A7, 0xFA7C)] = new("areson:fa7c", "name.aresonMouse", Transport.Feature, true),
             [(0x25A7, 0xFA7B)] = new("areson:fa7c", "name.aresonMouse", Transport.Feature, false),
+            // The Ardor Renegade's receiver, which sends the level in tens. So do the older FA07 / FA08 receivers, which
+            // aren't claimed.
+            [(0x25A7, 0xFA4A)] = new("areson:fa4a", "name.aresonMouse", Transport.Feature, true, Step: 10),
         };
 
         readonly HashSet<string> logged = new();
@@ -78,7 +84,7 @@ namespace BatteryTray.Providers
                 {
                     try
                     {
-                        battery = Query(model.Transport, send, listen, trace);
+                        battery = Query(model, send, listen, trace);
                     }
                     catch (Exception e)
                     {
@@ -123,10 +129,10 @@ namespace BatteryTray.Providers
         }
 
         /// <summary>Asks for the battery; null when the mouse didn't answer or the reply says nothing about it.</summary>
-        static Battery? Query(Transport transport, HidInfo send, HidInfo listen, List<string> trace)
+        static Battery? Query(Model model, HidInfo send, HidInfo listen, List<string> trace)
         {
             byte[] request = Frame(RequestId, PowerCommand);
-            if (transport == Transport.Output)
+            if (model.Transport == Transport.Output)
             {
                 using var dev = new HidDevice(send);
                 dev.Flush();
@@ -136,7 +142,7 @@ namespace BatteryTray.Providers
                     trace.Add("(not sent)");
                     return null;
                 }
-                return Receive(dev, trace);
+                return Receive(dev, model.Step, trace);
             }
 
             using var reader = new HidDevice(listen, readOnly: true);
@@ -150,7 +156,7 @@ namespace BatteryTray.Providers
                 trace.Add("(not taken)");
                 return null;
             }
-            return Receive(reader, trace);
+            return Receive(reader, model.Step, trace);
         }
 
         static HidDevice OpenForFeatures(HidInfo info)
@@ -166,7 +172,7 @@ namespace BatteryTray.Providers
         }
 
         /// <summary>Waits for the reply to GetPower; other reports (DPI and profile button events) are skipped.</summary>
-        static Battery? Receive(HidDevice dev, List<string> trace)
+        static Battery? Receive(HidDevice dev, int step, List<string> trace)
         {
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(TimeoutMs);
             while (DateTime.UtcNow < deadline)
@@ -178,7 +184,7 @@ namespace BatteryTray.Providers
                     return null;
                 }
                 trace.Add("< " + Hex(r));
-                if (IsPowerReply(r)) return Parse(r);
+                if (IsPowerReply(r)) return Parse(r, step);
             }
             return null;
         }
@@ -205,13 +211,14 @@ namespace BatteryTray.Providers
             r.Length >= FrameLength && r[1] == PowerCommand && r[FrameLength - 1] == Checksum(r);
 
         /// <summary>
-        /// What a GetPower reply says, report ID first; null when the receiver refused or has no level. 0% on battery
-        /// is no reading either: a mouse that empty has switched itself off, so it's the receiver answering for it.
+        /// What a GetPower reply says, report ID first; null when the receiver refused or has no level.
+        /// <paramref name="step"/> is what one unit of the level byte is worth, in percent. 0% on battery is no reading
+        /// either: a mouse that empty has switched itself off, so it's the receiver answering for it.
         /// </summary>
-        internal static Battery? Parse(byte[] r)
+        internal static Battery? Parse(byte[] r, int step = 1)
         {
             if (!IsPowerReply(r) || r[2] != 0x00 || r[5] < 1) return null;
-            int level = r[6];
+            int level = r[6] * step;
             bool charging = r[5] >= 2 && r[7] != 0;
             if (level > 100 || (level == 0 && !charging)) return null;
             return new Battery(level, charging);
