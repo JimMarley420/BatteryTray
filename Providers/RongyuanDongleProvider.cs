@@ -56,7 +56,12 @@ namespace BatteryTray.Providers
             0x391D103A, 0x391D1015, 0x391D1028, 0x391D102F, 0x38A90019, 0x38A90021, 0x379A3357, 0x38EE0038,
         };
 
-        /// <summary>Receivers known to belong to a mouse: their mouse slot is listed even while it's offline.</summary>
+        /// <summary>
+        /// Receivers known to belong to a mouse: their mouse slot is listed even while it's offline. The name is used
+        /// when the receiver's product string names nobody: several brands share 3151:402D, and the status reply
+        /// doesn't say which mouse it is. The R3's receiver calls itself "2.4G Wireless Mouse", the AJAZZ AJ179 Pro's
+        /// "AJAZZ 2.4G 8K" (issue #22).
+        /// </summary>
         static readonly Dictionary<uint, string> KnownMice = new()
         {
             [0x3151402D] = "Attack Shark R3",
@@ -108,7 +113,7 @@ namespace BatteryTray.Providers
                 }
 
                 bool knownMouse = KnownMice.TryGetValue(key, out string? mouseName);
-                if (AddSlot(result, baseId + ":mouse", mouseName ?? info.Product ?? Loc.T("name.mouse"), DeviceKind.Mouse,
+                if (AddSlot(result, baseId + ":mouse", ReceiverName.Mouse(info.Product, mouseName), DeviceKind.Mouse,
                         status, levelAt: 3, offlineAt: 5, error, alwaysList: knownMouse))
                     receiverMice.Add(result.Count - 1);
                 AddSlot(result, baseId + ":keyboard", Loc.T("name.keyboard"), DeviceKind.Keyboard,
