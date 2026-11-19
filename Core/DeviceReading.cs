@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace BatteryTray.Core
 {
@@ -33,5 +35,16 @@ namespace BatteryTray.Core
         public DeviceReading Any => (Current ?? Last)!;
         public DeviceKind Kind => Any.Kind;
         public bool Online => Current?.Online == true;
+
+        /// <summary>
+        /// The rows in the order of the settings tab: by kind, then by the name the device gives itself, not the one
+        /// the user gave it. The device list goes by the user's name, and there a row may move; here the name is
+        /// being typed, and a row that moved at a keystroke took the box out from under the cursor.
+        /// </summary>
+        public static List<DeviceRow> SettingsOrder(IEnumerable<DeviceRow> rows) =>
+            rows.OrderBy(r => r.Kind)
+                .ThenBy(r => r.Any.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(r => r.Id, StringComparer.Ordinal)
+                .ToList();
     }
 }
