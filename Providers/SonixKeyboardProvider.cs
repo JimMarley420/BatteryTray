@@ -49,8 +49,7 @@ namespace BatteryTray.Providers
             int? level = null;
             string? error = null;
             if (vendor == null)
-                // A collection that Windows won't open shows no usages, so it can't be told from the others
-                error = Loc.T(collections.Any(i => i.AccessDenied) ? "d.needsAdmin" : "d.noLink");
+                error = Loc.T(HidCollections.NoLinkReason(collections));
             else
             {
                 try
