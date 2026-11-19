@@ -17,6 +17,10 @@ cargo fmt --check            # formatting (rustfmt.toml)
 cargo clippy --all-targets -- -D warnings
 ```
 
+The C runtime is linked into the exe (`.cargo/config.toml` in the parent folder), so it starts on a Windows without
+the Visual C++ redistributable. CI runs the release exe on such a Windows, Server Core in a container
+(`.github/scripts/clean-windows.ps1`), and `build-release.ps1` refuses an exe that names the runtime's DLLs.
+
 The version in `Cargo.toml` is the release version: the updater (this one and the C# one) only installs an exe whose
 FileVersion equals the release's, and `build.rs` writes it into the exe. `build-release.ps1` in the parent folder builds
 the release exe and zip; it checks that version and writes the crates' licenses with

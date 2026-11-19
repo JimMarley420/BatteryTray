@@ -13,6 +13,12 @@ $built = Join-Path $rust 'target\release\BatteryTray.exe'
 # The updaters (this one and the C# one before it) only install an exe that carries the release's version
 $fileVersion = (Get-Item $built).VersionInfo.FileVersion
 if ($fileVersion -ne "$version.0") { throw "BatteryTray.exe says $fileVersion, Cargo.toml $version" }
+# It must start on a Windows without the Visual C++ redistributable (see .cargo\config.toml). The DLLs an exe needs
+# are named in it as plain text.
+$text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($built))
+if ($text -match '(?i)(VCRUNTIME|MSVCP)\d+[A-Z_0-9]*\.dll') {
+    throw "BatteryTray.exe needs $($Matches[0]): the C runtime isn't linked into it"
+}
 
 $publish = Join-Path $root 'publish'
 New-Item -ItemType Directory -Force -Path $publish | Out-Null
