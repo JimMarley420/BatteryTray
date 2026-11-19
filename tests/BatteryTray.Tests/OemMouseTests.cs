@@ -88,5 +88,30 @@ namespace BatteryTray.Tests
         {
             Assert.Null(Parse(Reply(0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x65, 0x00)));
         }
+
+        [Fact]
+        public void ArdorRenegadeAnswersInTens()
+        {
+            // Captured by the mouse's owner on the 25A7:FA4A receiver while Ardor's software showed 70% (issue #18)
+            byte[] r = Hex("09 04 00 00 00 02 07 00 00 00 00 00 00 00 00 00 3F");
+            Assert.Equal(new Battery(70, false), Parse(r, 10));
+            Assert.Equal(new Battery(7, false), Parse(r));
+        }
+
+        [Fact]
+        public void TensRunFromZeroToTen()
+        {
+            Assert.Equal(new Battery(100, false), Parse(Reply(0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x0A, 0x00), 10));
+            Assert.Equal(new Battery(10, true), Parse(Reply(0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x01, 0x01), 10));
+            Assert.Equal(new Battery(0, true), Parse(Reply(0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01), 10));
+            Assert.Null(Parse(Reply(0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00), 10));
+        }
+
+        [Fact]
+        public void LevelInPercentIsNoReadingInTens()
+        {
+            Assert.Null(Parse(Reply(0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x0B, 0x00), 10));
+            Assert.Null(Parse(Reply(0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x46, 0x00), 10));
+        }
     }
 }
