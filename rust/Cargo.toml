@@ -2,7 +2,7 @@
 name = "batterytray"
 # The release version: the C# updater only installs an exe whose FileVersion equals the release's. 1.99 while the
 # Rust app is not released yet (it never downgrades a 1.8.x install); 2.0.0 for the release.
-version = "1.99.0"
+version = "1.99.1"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
