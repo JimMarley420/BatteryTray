@@ -4,14 +4,17 @@
 //!   [0] report ID  [1] command  [2] status, 0 = ok  [3..4] address  [5] data length  [6..15] data  [16] checksum,
 //! the checksum making all 17 bytes add up to 0x55. The battery is command 04 (GetPower), and it is all this sends:
 //!   request  08 04 00 .. 00 49
-//!   reply    RR 04 00 00 00 LL PP CC ..   PP level in percent, CC charging (VXE also sends the voltage after it)
+//!   reply    RR 04 00 00 00 LL PP CC ..   PP level, CC charging (VXE also sends the voltage after it)
+//! The level comes in percent, or on some Areson receivers in tens of percent.
 //! A mouse that is asleep or off doesn't answer through its receiver. The frame travels two ways:
 //!   VXE: output report 08 on the vendor collection FF02:0002, the reply as input report 08 on the same collection.
 //!   Areson: feature report 08 on the FF02 collection, the reply as input report 09 on the FF01 collection of the
 //!   same interface (the configuration tool writes and reads on two handles).
 //! Protocol facts from OpenMouse (mouse-protocol: src/drivers/atk/hid.ts), vxe-battery-tray (PROTOCOL.md),
-//! redragon-mouse-linux (PROTOCOL.md) and Wireless-Device-Battery-Monitor (docs/areson.md); own implementation.
-//! Not yet verified on hardware by this project, which is why the first exchange goes to the log.
+//! redragon-mouse-linux (PROTOCOL.md) and Wireless-Device-Battery-Monitor (docs/areson.md). The Ardor Renegade on
+//! 25A7:FA4A answers in tens: its owner captured the exchange while Ardor's software showed 70% for a level byte of
+//! 07 (issue #18). Own implementation. Not yet verified on hardware by this project, which is why the first exchange
+//! goes to the log.
 
 use super::{group_by, hex_trimmed as hex, one_per_id, remaining_ms, secs, Provider};
 use crate::hid::{self, HidDevice, HidInfo};
@@ -41,45 +44,52 @@ pub struct Battery {
     pub charging: bool,
 }
 
-/// `name`: a text key or a ready name.
+/// `name`: a text key or a ready name. `step`: what one unit of the level byte is worth, in percent: 10 when the
+/// level comes in tens.
 struct Model {
     key: &'static str,
     name: &'static str,
     transport: Transport,
     wireless: bool,
+    step: i32,
 }
 
 static MODELS: &[((u16, u16), Model)] = &[
     // 3554 is CompX's vendor ID, which Pulsar, VGN, Lamzu and others use too: only these products are claimed
     (
         (0x3554, 0xF58A),
-        Model { key: "vxe:r1promax", name: "VXE R1 PRO MAX", transport: Transport::Output, wireless: true },
+        Model { key: "vxe:r1promax", name: "VXE R1 PRO MAX", transport: Transport::Output, wireless: true, step: 1 },
     ),
     (
         (0x3554, 0xF58C),
-        Model { key: "vxe:r1promax", name: "VXE R1 PRO MAX", transport: Transport::Output, wireless: false },
+        Model { key: "vxe:r1promax", name: "VXE R1 PRO MAX", transport: Transport::Output, wireless: false, step: 1 },
     ),
     (
         (0x373B, 0x1085),
-        Model { key: "vxe:r1se", name: "VXE R1 SE / SE+", transport: Transport::Output, wireless: true },
+        Model { key: "vxe:r1se", name: "VXE R1 SE / SE+", transport: Transport::Output, wireless: true, step: 1 },
     ),
     (
         (0x3554, 0xF58E),
-        Model { key: "vxe:r1se", name: "VXE R1 SE / SE+", transport: Transport::Output, wireless: true },
+        Model { key: "vxe:r1se", name: "VXE R1 SE / SE+", transport: Transport::Output, wireless: true, step: 1 },
     ),
     (
         (0x3554, 0xF58F),
-        Model { key: "vxe:r1se", name: "VXE R1 SE / SE+", transport: Transport::Output, wireless: false },
+        Model { key: "vxe:r1se", name: "VXE R1 SE / SE+", transport: Transport::Output, wireless: false, step: 1 },
     ),
-    // Sold under many names (Redragon M693, Fantech Helios Go XD5, ...), so none is shown. The older FA07 / FA08
-    // receivers send the level in tens and aren't claimed.
+    // Sold under many names (Redragon M693, Fantech Helios Go XD5, ...), so none is shown
     (
         (0x25A7, 0xFA7C),
-        Model { key: "areson:fa7c", name: "name.aresonMouse", transport: Transport::Feature, wireless: true },
+        Model { key: "areson:fa7c", name: "name.aresonMouse", transport: Transport::Feature, wireless: true, step: 1 },
     ),
     (
         (0x25A7, 0xFA7B),
-        Model { key: "areson:fa7c", name: "name.aresonMouse", transport: Transport::Feature, wireless: false },
+        Model { key: "areson:fa7c", name: "name.aresonMouse", transport: Transport::Feature, wireless: false, step: 1 },
+    ),
+    // The Ardor Renegade's receiver, which sends the level in tens. So do the older FA07 / FA08 receivers, which
+    // aren't claimed.
+    (
+        (0x25A7, 0xFA4A),
+        Model { key: "areson:fa4a", name: "name.aresonMouse", transport: Transport::Feature, wireless: true, step: 10 },
     ),
 ];
 
@@ -108,7 +118,7 @@ impl Provider for OemMouseProvider {
             let mut error = None;
             match (send, listen) {
                 (Some(s), Some(l)) if s.access_denied || l.access_denied => error = Some(t("d.needsAdmin")),
-                (Some(s), Some(l)) => match query(model.transport, s, l, &mut trace) {
+                (Some(s), Some(l)) => match query(model, s, l, &mut trace) {
                     Ok(b) => battery = b,
                     Err(e) => {
                         trace.push(format!("error: {e}"));
@@ -205,14 +215,9 @@ fn channels(transport: Transport, collections: &[HidInfo]) -> (Option<&HidInfo>,
 }
 
 /// Asks for the battery; None when the mouse didn't answer or the reply says nothing about it.
-fn query(
-    transport: Transport,
-    send: &HidInfo,
-    listen: &HidInfo,
-    trace: &mut Vec<String>,
-) -> win::Result<Option<Battery>> {
+fn query(model: &Model, send: &HidInfo, listen: &HidInfo, trace: &mut Vec<String>) -> win::Result<Option<Battery>> {
     let request = frame(REQUEST_ID, POWER_COMMAND);
-    if transport == Transport::Output {
+    if model.transport == Transport::Output {
         let dev = HidDevice::open(send)?;
         dev.flush();
         trace.push(format!("> {}", hex(&request)));
@@ -220,7 +225,7 @@ fn query(
             trace.push("(not sent)".into());
             return Ok(None);
         }
-        return receive(&dev, trace);
+        return receive(&dev, model.step, trace);
     }
 
     let reader = HidDevice::open_read_only(listen)?;
@@ -233,11 +238,11 @@ fn query(
         trace.push("(not taken)".into());
         return Ok(None);
     }
-    receive(&reader, trace)
+    receive(&reader, model.step, trace)
 }
 
 /// Waits for the reply to GetPower; other reports (DPI and profile button events) are skipped.
-fn receive(dev: &HidDevice, trace: &mut Vec<String>) -> win::Result<Option<Battery>> {
+fn receive(dev: &HidDevice, step: i32, trace: &mut Vec<String>) -> win::Result<Option<Battery>> {
     let deadline = Instant::now() + Duration::from_millis(TIMEOUT_MS);
     while Instant::now() < deadline {
         let Some(r) = dev.read(remaining_ms(deadline))? else {
@@ -246,7 +251,7 @@ fn receive(dev: &HidDevice, trace: &mut Vec<String>) -> win::Result<Option<Batte
         };
         trace.push(format!("< {}", hex(&r)));
         if is_power_reply(&r) {
-            return Ok(parse(&r));
+            return Ok(parse(&r, step));
         }
     }
     Ok(None)
@@ -271,13 +276,14 @@ pub fn is_power_reply(r: &[u8]) -> bool {
     r.len() >= FRAME_LENGTH && r[1] == POWER_COMMAND && r[FRAME_LENGTH - 1] == checksum(r)
 }
 
-/// What a GetPower reply says, report ID first; None when the receiver refused or has no level. 0% on battery is
-/// no reading either: a mouse that empty has switched itself off, so it's the receiver answering for it.
-pub fn parse(r: &[u8]) -> Option<Battery> {
+/// What a GetPower reply says, report ID first; None when the receiver refused or has no level. `step` is what one
+/// unit of the level byte is worth, in percent. 0% on battery is no reading either: a mouse that empty has switched
+/// itself off, so it's the receiver answering for it.
+pub fn parse(r: &[u8], step: i32) -> Option<Battery> {
     if !is_power_reply(r) || r[2] != 0x00 || r[5] < 1 {
         return None;
     }
-    let level = r[6] as i32;
+    let level = r[6] as i32 * step;
     let charging = r[5] >= 2 && r[7] != 0;
     if level > 100 || (level == 0 && !charging) {
         return None;
@@ -316,29 +322,29 @@ mod tests {
     #[test]
     fn vxe_r1_se_plus_on_battery() {
         // 95%, not charging, 4096 mV
-        assert_eq!(parse(&h("08 04 00 00 00 02 5F 00 10 00 00 00 00 00 00 00 D8")), b(95, false));
+        assert_eq!(parse(&h("08 04 00 00 00 02 5F 00 10 00 00 00 00 00 00 00 D8"), 1), b(95, false));
     }
 
     #[test]
     fn atk_mouse_through_its_dongle() {
-        assert_eq!(parse(&h("08 04 00 00 00 02 64 00 10 8E 00 00 00 00 00 00 45")), b(100, false));
+        assert_eq!(parse(&h("08 04 00 00 00 02 64 00 10 8E 00 00 00 00 00 00 45"), 1), b(100, false));
     }
 
     #[test]
     fn areson_reply_comes_as_report_09() {
-        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x4B, 0x01])), b(75, true));
+        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x4B, 0x01]), 1), b(75, true));
     }
 
     #[test]
     fn level_without_charging_byte() {
-        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x01, 0x2A, 0x01])), b(42, false));
+        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x01, 0x2A, 0x01]), 1), b(42, false));
     }
 
     #[test]
     fn wrong_checksum_is_not_the_reply() {
         let r = h("08 04 00 00 00 02 5F 00 10 00 00 00 00 00 00 00 D9");
         assert!(!is_power_reply(&r));
-        assert_eq!(parse(&r), None);
+        assert_eq!(parse(&r, 1), None);
     }
 
     #[test]
@@ -348,19 +354,47 @@ mod tests {
 
     #[test]
     fn refused_or_empty_is_no_reading() {
-        assert_eq!(parse(&reply(&[0x08, 0x04, 0x01])), None);
-        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x00])), None);
-        assert_eq!(parse(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x5F]), None);
+        assert_eq!(parse(&reply(&[0x08, 0x04, 0x01]), 1), None);
+        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x00]), 1), None);
+        assert_eq!(parse(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x5F], 1), None);
     }
 
     #[test]
     fn empty_on_battery_is_the_receiver_answering_for_an_off_mouse() {
-        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00])), None);
-        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01])), b(0, true));
+        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]), 1), None);
+        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01]), 1), b(0, true));
     }
 
     #[test]
     fn level_over_a_hundred_is_no_reading() {
-        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x65, 0x00])), None);
+        assert_eq!(parse(&reply(&[0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0x65, 0x00]), 1), None);
+    }
+
+    #[test]
+    fn ardor_renegade_answers_in_tens() {
+        // Captured by the mouse's owner on the 25A7:FA4A receiver while Ardor's software showed 70% (issue #18)
+        let r = h("09 04 00 00 00 02 07 00 00 00 00 00 00 00 00 00 3F");
+        assert_eq!(parse(&r, 10), b(70, false));
+        assert_eq!(parse(&r, 1), b(7, false));
+    }
+
+    #[test]
+    fn tens_run_from_zero_to_ten() {
+        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x0A, 0x00]), 10), b(100, false));
+        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x01, 0x01]), 10), b(10, true));
+        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01]), 10), b(0, true));
+        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00]), 10), None);
+    }
+
+    #[test]
+    fn level_in_percent_is_no_reading_in_tens() {
+        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x0B, 0x00]), 10), None);
+        assert_eq!(parse(&reply(&[0x09, 0x04, 0x00, 0x00, 0x00, 0x02, 0x46, 0x00]), 10), None);
+    }
+
+    #[test]
+    fn fa4a_reads_in_tens_fa7c_in_percent() {
+        assert_eq!(model(0x25A7, 0xFA4A).map(|m| m.step), Some(10));
+        assert_eq!(model(0x25A7, 0xFA7C).map(|m| m.step), Some(1));
     }
 }
