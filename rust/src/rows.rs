@@ -58,6 +58,15 @@ pub fn rows(
     rows
 }
 
+/// The rows in the order of the settings tab: by kind, then by the name the device gives itself, not the one the user
+/// gave it. The device list goes by the user's name, and there a row may move; here the name is being typed, and a
+/// row that moved at a keystroke took the box out from under the cursor.
+pub fn settings_order(rows: &[DeviceRow]) -> Vec<&DeviceRow> {
+    let mut ordered: Vec<&DeviceRow> = rows.iter().collect();
+    ordered.sort_by_key(|r| (r.kind() as u8, r.any().name.to_lowercase(), r.id.clone()));
+    ordered
+}
+
 /// Spots the moment a charge finishes: a device that was charging reports itself full with the charger still in.
 /// Only devices that say so count - many report nothing new until the cable comes out. One announcement per charge:
 /// chargers top a full battery up now and then, which must not repeat it.
@@ -174,6 +183,56 @@ mod tests {
             ..DeviceReading::new("m", "Mouse", DeviceKind::Mouse, "2.4 GHz")
         };
         DeviceRow { id: "m".into(), current: Some(r), last: None, name: "Mouse".into() }
+    }
+
+    /// `own`: the name the device gives itself; `shown`: the one the user gave it, if any.
+    fn named(id: &str, kind: DeviceKind, own: &str, shown: Option<&str>) -> DeviceRow {
+        let r = DeviceReading::new(id, own, kind, "test");
+        DeviceRow { id: id.into(), current: Some(r), last: None, name: shown.unwrap_or(own).into() }
+    }
+
+    fn ids(rows: &[DeviceRow]) -> Vec<&str> {
+        settings_order(rows).into_iter().map(|r| r.id.as_str()).collect()
+    }
+
+    #[test]
+    fn settings_go_by_kind_then_by_the_device_own_name() {
+        let rows = [
+            named("mouse-b", DeviceKind::Mouse, "R3 Mouse", None),
+            named("headset", DeviceKind::Headset, "Razer Barracuda X", None),
+            named("mouse-a", DeviceKind::Mouse, "attack shark r3", None),
+        ];
+        assert_eq!(ids(&rows), ["headset", "mouse-a", "mouse-b"]);
+    }
+
+    #[test]
+    fn a_name_being_typed_does_not_move_the_settings_row() {
+        // Typing "1" as the name of "Razer Barracuda X (BT)" put it above "Razer Barracuda X": the list was rebuilt
+        // and the name box lost its focus
+        let dongle = named("razer:barracuda-x", DeviceKind::Headset, "Razer Barracuda X", None);
+        for typed in [None, Some("1"), Some("1 "), Some("A"), Some("zzz"), Some("razer")] {
+            let rows = [dongle.clone(), named("bt:445ECD546C71", DeviceKind::Headset, "Razer Barracuda X (BT)", typed)];
+            assert_eq!(ids(&rows), ["razer:barracuda-x", "bt:445ECD546C71"]);
+        }
+    }
+
+    #[test]
+    fn settings_rows_with_the_same_own_name_go_by_id() {
+        let rows = [
+            named("ry:b", DeviceKind::Mouse, "Mouse", Some("First")),
+            named("ry:a", DeviceKind::Mouse, "Mouse", Some("Second")),
+        ];
+        assert_eq!(ids(&rows), ["ry:a", "ry:b"]);
+    }
+
+    #[test]
+    fn a_remembered_device_goes_by_its_last_reading_in_the_settings() {
+        let last = DeviceReading::new("old", "Aerox 3", DeviceKind::Mouse, "test");
+        let rows = [
+            named("new", DeviceKind::Mouse, "R3 Mouse", None),
+            DeviceRow { id: "old".into(), current: None, last: Some(last), name: "Zzz".into() },
+        ];
+        assert_eq!(ids(&rows), ["old", "new"]);
     }
 
     #[test]

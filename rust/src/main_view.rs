@@ -148,8 +148,10 @@ impl MainView {
             .into(),
         );
 
-        // Rebuilt only when the set of devices changes, so a name being typed keeps its focus
-        let fresh: Vec<DeviceSettingsRow> = rows.iter().map(|r| settings_row(r, s)).collect();
+        // Rebuilt only when the set of devices changes, so a name being typed keeps its focus. Its order doesn't go
+        // by that name, or every keystroke that changed it would be such a change
+        let fresh: Vec<DeviceSettingsRow> =
+            crate::rows::settings_order(rows).into_iter().map(|r| settings_row(r, s)).collect();
         let ids_now: Vec<SharedString> = self.device_settings.iter().map(|r| r.id).collect();
         if ids_now != fresh.iter().map(|r| r.id.clone()).collect::<Vec<_>>() {
             self.device_settings.set_vec(fresh);
