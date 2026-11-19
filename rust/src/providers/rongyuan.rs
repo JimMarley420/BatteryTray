@@ -10,7 +10,7 @@
 //! A keyboard in 2.4 GHz mode stays on the receiver while its cable charges it; the X82 PRO HE then reports a level
 //! 20-30% too high and nothing marks the cable (issue #5), so the level is shown as it comes.
 
-use super::{key, secs, sleep_ms, Provider};
+use super::{key, receiver_name, secs, sleep_ms, Provider};
 use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::log;
@@ -44,7 +44,10 @@ const WIRED_MICE: &[u32] = &[
     0x391D102F, 0x38A90019, 0x38A90021, 0x379A3357, 0x38EE0038,
 ];
 
-/// Receivers known to belong to a mouse: their mouse slot is listed even while it's offline.
+/// Receivers known to belong to a mouse: their mouse slot is listed even while it's offline. The name is used when
+/// the receiver's product string names nobody: several brands share 3151:402D, and the status reply doesn't say which
+/// mouse it is. The R3's receiver calls itself "2.4G Wireless Mouse", the AJAZZ AJ179 Pro's "AJAZZ 2.4G 8K" (issue
+/// #22).
 const KNOWN_MICE: &[(u32, &str)] = &[(0x3151402D, "Attack Shark R3")];
 
 /// How many different status replies a receiver logs per session, in case some byte changes all the time.
@@ -202,8 +205,7 @@ impl Provider for RongyuanDongleProvider {
             }
 
             let mouse_name = KNOWN_MICE.iter().find(|m| m.0 == k).map(|m| m.1);
-            let name =
-                mouse_name.map(str::to_string).or_else(|| info.product.clone()).unwrap_or_else(|| t("name.mouse"));
+            let name = receiver_name::mouse(info.product.as_deref(), mouse_name);
             if self.add_slot(
                 &mut result,
                 format!("{base_id}:mouse"),

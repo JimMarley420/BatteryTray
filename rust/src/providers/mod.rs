@@ -1,5 +1,6 @@
 //! The battery protocols, one provider per family of devices (Providers/*.cs).
 
+pub mod ajazz_mouse;
 pub mod aula_mchose;
 pub mod barracuda;
 pub mod bluetooth;
@@ -8,7 +9,9 @@ pub mod logitech;
 pub mod oem_mouse;
 pub mod playstation;
 pub mod razer_peripheral;
+pub mod receiver_name;
 pub mod rongyuan;
+pub mod sonix_keyboard;
 pub mod standard_hid;
 pub mod steelseries;
 pub mod xenta;
@@ -43,7 +46,9 @@ pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
         Box::new(xenta::XentaReceiverProvider::new(state.clone())),
         Box::new(steelseries::SteelSeriesProvider::default()),
         Box::new(oem_mouse::OemMouseProvider::default()),
+        Box::new(ajazz_mouse::AjazzMouseProvider::default()),
         Box::new(aula_mchose::AulaMchoseProvider::default()),
+        Box::new(sonix_keyboard::SonixKeyboardProvider::default()),
         Box::new(razer_peripheral::RazerPeripheralProvider),
         Box::new(headset::HeadsetProvider::default()),
         Box::new(logitech::LogitechProvider::default()),

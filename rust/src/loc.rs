@@ -218,6 +218,8 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
     ("via.receiver", "USB-приёмник", "USB receiver", "USB 接收器"),
     ("name.mouse", "Мышь", "Mouse", "鼠标"),
     ("name.keyboard", "Клавиатура", "Keyboard", "键盘"),
+    ("name.brandMouse", "Мышь {0}", "{0} mouse", "{0} 鼠标"),
+    ("name.brandKeyboard", "Клавиатура {0}", "{0} keyboard", "{0} 键盘"),
     ("name.aresonMouse", "Мышь на приёмнике Areson", "Mouse on an Areson receiver", "Areson 接收器上的鼠标"),
     ("name.fa09Keyboard", "Клавиатура на приёмнике 2.4G", "Keyboard on a 2.4G receiver", "2.4G 接收器上的键盘"),
     ("name.xbox", "Геймпад Xbox", "Xbox controller", "Xbox 手柄"),
