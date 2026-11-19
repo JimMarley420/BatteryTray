@@ -77,9 +77,7 @@ namespace BatteryTray.Providers
                 Battery? battery = null;
                 string? error = null;
                 if (send == null || listen == null)
-                    error = Loc.T("d.noLink");
-                else if (send.AccessDenied || listen.AccessDenied)
-                    error = Loc.T("d.needsAdmin");
+                    error = Loc.T(HidCollections.NoLinkReason(collections));
                 else
                 {
                     try
@@ -112,19 +110,20 @@ namespace BatteryTray.Providers
             return last.Any(r => r.Online) ? TimeSpan.FromSeconds(60) : TimeSpan.FromSeconds(30);
         }
 
-        /// <summary>The collection the request goes to and the one the reply comes back on.</summary>
-        static (HidInfo? Send, HidInfo? Listen) Channels(Transport transport, List<HidInfo> collections)
+        /// <summary>The collection the request goes to and the one the reply comes back on. A collection that
+        /// Windows won't open has no usage page to go by, so it is never one of them.</summary>
+        internal static (HidInfo? Send, HidInfo? Listen) Channels(Transport transport, List<HidInfo> collections)
         {
             if (transport == Transport.Output)
             {
                 HidInfo? vendor = collections.FirstOrDefault(i => i.UsagePage == CommandPage
-                    && (i.AccessDenied || (i.OutputLength >= FrameLength && i.InputLength >= FrameLength)));
+                    && i.OutputLength >= FrameLength && i.InputLength >= FrameLength);
                 return (vendor, vendor);
             }
             HidInfo? send = collections.FirstOrDefault(i => i.UsagePage == CommandPage
-                && (i.AccessDenied || i.FeatureLength >= FrameLength));
+                && i.FeatureLength >= FrameLength);
             HidInfo? listen = send == null ? null : collections.FirstOrDefault(i => i.UsagePage == AresonReplyPage
-                && i.InterfaceNumber == send.InterfaceNumber && (i.AccessDenied || i.InputLength >= FrameLength));
+                && i.InterfaceNumber == send.InterfaceNumber && i.InputLength >= FrameLength);
             return (send, listen);
         }
 

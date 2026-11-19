@@ -69,15 +69,12 @@ namespace BatteryTray.Providers
             List<HidInfo> collections = HidBus.Enumerate((v, p) => v == Vid && p == Pid);
             if (collections.Count == 0) return result;
 
-            HidInfo? vendor = collections.FirstOrDefault(i => i.UsagePage == VendorPage && i.Usage == VendorUsage
-                && (i.AccessDenied || (i.OutputLength >= FrameLength && i.InputLength >= FrameLength)));
+            HidInfo? vendor = VendorCollection(collections);
             var trace = new List<string>();
             Battery? battery = null;
             string? error = null;
             if (vendor == null)
-                error = Loc.T("d.noLink");
-            else if (vendor.AccessDenied)
-                error = Loc.T("d.needsAdmin");
+                error = Loc.T(HidCollections.NoLinkReason(collections));
             else
             {
                 try
@@ -106,6 +103,12 @@ namespace BatteryTray.Providers
         }
 
         public TimeSpan Delay(IReadOnlyList<DeviceReading> last) => TimeSpan.FromMinutes(5);
+
+        /// <summary>The collection that takes the requests. A collection that Windows won't open has no usage page to
+        /// go by, so it is never the one.</summary>
+        internal static HidInfo? VendorCollection(List<HidInfo> collections) =>
+            collections.FirstOrDefault(i => i.UsagePage == VendorPage && i.Usage == VendorUsage
+                && i.OutputLength >= FrameLength && i.InputLength >= FrameLength);
 
         /// <summary>Sends one request and waits for its reply; null when the keyboard didn't answer.</summary>
         static byte[]? Ask(HidDevice dev, byte command, List<string> trace)
