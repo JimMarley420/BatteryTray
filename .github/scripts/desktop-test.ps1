@@ -38,6 +38,35 @@ $shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Ba
 $appId = '{5d0f1a3e-6c1b-4a57-9c3e-2f6b8a7d9e10}'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+# The app's windows a user can see are the ones with a title bar. The process always has a "visible" window besides:
+# winit's event target, 14 px of a layered window that is never drawn, which is what Process.MainWindowHandle finds.
+Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class AppWindows {
+    delegate bool EnumProc(IntPtr hwnd, IntPtr lparam);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr lparam);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    public static List<string> Titles(uint pid) {
+        var titles = new List<string>();
+        EnumWindows((h, l) => {
+            uint p; GetWindowThreadProcessId(h, out p);
+            const long caption = 0x00C00000;
+            if (p == pid && IsWindowVisible(h) && (GetWindowLongPtr(h, -16).ToInt64() & caption) == caption) {
+                var t = new StringBuilder(256); GetWindowText(h, t, 256);
+                titles.Add(t.ToString());
+            }
+            return true;
+        }, IntPtr.Zero);
+        return titles;
+    }
+}
+'@
 
 function Write-Step([string]$Text) { Write-Host ''; Write-Host "=== $Text" }
 
@@ -74,6 +103,9 @@ function Test-AppLog([int]$Mark, [string]$Text) {
 }
 
 function Get-App { @(Get-Process BatteryTray -ErrorAction SilentlyContinue) }
+
+# The titles of the app's windows that are on the screen
+function Get-AppWindow { @(Get-App | ForEach-Object { [AppWindows]::Titles([uint32]$_.Id) }) }
 
 function Save-Screen([string]$Name) {
     try {
@@ -265,14 +297,14 @@ while ($true) {
     Wait-For { Test-AppLog $mark "started v$thisVersion, elevated=True" } 30 'the logon task started the app'
     Assert-That (Test-Task $installed 'Highest') 'the logon task starts the installed exe in the background, with admin rights'
     Assert-That (Test-Path $shortcut) 'the Start menu shortcut is there'
-    Assert-That (@(Get-App | Where-Object { $_.MainWindowHandle -ne 0 }).Count -eq 0) 'started in the tray, no window'
+    Assert-That ((Get-AppWindow).Count -eq 0) 'started in the tray, no window'
 
     # What the Start menu shortcut does: a second launch asks the running copy for its window and exits
     Assert-That ((Invoke-Exe $installed '') -eq 0) 'a second launch exits with 0'
-    Wait-For { @(Get-App | Where-Object { $_.MainWindowHandle -ne 0 }).Count -eq 1 } 20 'the running copy opened its window'
+    Wait-For { (Get-AppWindow).Count -eq 1 } 20 'the running copy opened its window'
     Assert-That ((Get-App).Count -eq 1) 'still one copy of the app'
     Start-Sleep -Seconds 3
-    Write-Host "  window title: $((Get-App | Where-Object { $_.MainWindowHandle -ne 0 }).MainWindowTitle)"
+    Write-Host "  window title: $(Get-AppWindow)"
     Save-Screen '3-window'
     $dump = Join-Path $Out 'dump.txt'
     Assert-That ((Invoke-Exe $installed "--dump `"$dump`"" 120) -eq 0 -and (Test-Path $dump)) '--dump wrote the readings'
