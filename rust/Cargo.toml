@@ -1,0 +1,78 @@
+[package]
+name = "batterytray"
+# The release version: the updater (this one and the C# one before it) only installs an exe whose FileVersion
+# equals the release's. The C# app ended at 1.8.8; 1.99.x were this app's betas.
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+description = "Battery levels of wireless headsets, mice, keyboards and gamepads in the Windows tray"
+repository = "https://github.com/qu1ncky/BatteryTray"
+build = "build.rs"
+autobins = false
+
+[lib]
+path = "src/lib.rs"
+
+# The app: tray, updater, autostart. Same name, switches and data as the C# exe it replaces.
+[[bin]]
+name = "BatteryTray"
+path = "src/main.rs"
+
+# Console tool to compare readings with the C# app: dump, watch, list
+[[bin]]
+name = "batterytray-core"
+path = "src/bin/batterytray-core.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+windows = { version = "0.61", features = [
+    "Devices_Bluetooth",
+    "Foundation",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_System_TaskScheduler",
+    "Win32_System_Variant",
+    "Win32_System_Threading",
+    "Win32_System_WinRT",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+raw-window-handle = "0.6"
+
+slint = { version = "1", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "accessibility",
+    "backend-winit",
+    "renderer-software",
+    "software-renderer-systemfonts",
+    "raw-window-handle-06",
+    "unstable-winit-030",
+] }
+
+[dev-dependencies]
+png = "0.17"
+
+[build-dependencies]
+embed-resource = "3"
+slint-build = "1"
+
+[profile.release]
+# For size: a tray app that draws a few small windows now and then gains nothing from faster code (13.9 MB at 3,
+# 10.4 MB at "z"). Most of what remains is Slint's own: the winit backend always brings SVG and image decoders, and
+# its text layout the line-breaking data for complex scripts.
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

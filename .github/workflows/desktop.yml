@@ -1,0 +1,76 @@
+name: Desktop
+
+# The release exe on a Windows with a desktop, through what happens on a user's PC: the last C# release updates itself
+# to it, it updates itself, install, the window, uninstall (.github/scripts/desktop-test.ps1). On Windows Server 2022,
+# which has Windows 10's shell and fonts, and on Server 2025, which has Windows 11's.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "rust/**"
+      - ".cargo/**"
+      - "app.ico"
+      - "app.manifest"
+      - "install.ps1"
+      - "uninstall.ps1"
+      - ".github/workflows/desktop.yml"
+      - ".github/scripts/desktop-test.ps1"
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: rust-desktop-${{ matrix.os }}-${{ hashFiles('rust/Cargo.lock', '.cargo/config.toml') }}
+      - name: Build
+        run: |
+          cargo build --release --locked --manifest-path rust/Cargo.toml --bins --examples
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\bt\this", "$env:RUNNER_TEMP\bt\newer" | Out-Null
+          Copy-Item rust/target/release/BatteryTray.exe "$env:RUNNER_TEMP\bt\this"
+      - name: Build the same with a higher version
+        # What the next release is to this one: only the version differs
+        run: |
+          $toml = [IO.File]::ReadAllText("$PWD\rust\Cargo.toml")
+          $lock = [IO.File]::ReadAllText("$PWD\rust\Cargo.lock")
+          $m = [regex]::Match($toml, '(?m)^version = "(\d+)\.(\d+)\.(\d+)"')
+          $old = "$($m.Groups[1].Value).$($m.Groups[2].Value).$($m.Groups[3].Value)"
+          $new = "$($m.Groups[1].Value).$($m.Groups[2].Value).$([int]$m.Groups[3].Value + 100)"
+          $toml = ([regex]('(?m)^version = "' + [regex]::Escape($old) + '"')).Replace($toml, "version = `"$new`"", 1)
+          $lock = ([regex]('(name = "batterytray"\r?\nversion = ")' + [regex]::Escape($old) + '"')).Replace($lock, "`${1}$new`"", 1)
+          [IO.File]::WriteAllText("$PWD\rust\Cargo.toml", $toml)
+          [IO.File]::WriteAllText("$PWD\rust\Cargo.lock", $lock)
+          cargo build --release --locked --manifest-path rust/Cargo.toml --bin BatteryTray
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Copy-Item rust/target/release/BatteryTray.exe "$env:RUNNER_TEMP\bt\newer"
+          git checkout -- rust/Cargo.toml rust/Cargo.lock
+          "$old and $new"
+      - name: Install, update, uninstall
+        # Windows PowerShell, as install.ps1 runs in on a user's PC
+        run: >
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .github/scripts/desktop-test.ps1
+          -Exe "$env:RUNNER_TEMP\bt\this\BatteryTray.exe"
+          -Newer "$env:RUNNER_TEMP\bt\newer\BatteryTray.exe"
+          -Examples rust/target/release/examples
+          -Out "$env:RUNNER_TEMP\bt\out"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-${{ matrix.os }}
+          path: ${{ runner.temp }}/bt/out

@@ -1,0 +1,7 @@
+// No console window: a tray app
+#![windows_subsystem = "windows"]
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    std::process::exit(batterytray::app::run(&args));
+}

@@ -16,6 +16,7 @@
 - **充电完成通知**：支持报告充电完成的设备在充满时发出 Windows 通知。
 - **不显示虚构的电量**：设备充电时无法报告电量时，显示充电状态而不是过时的数字；估算值以“≈”标记。
 - **中文、英文、俄文界面**：跟随 Windows 语言，也可以在“设置”中随时切换，无需重启。
+- **轻量**：单个约 10 MB 的 exe，在托盘中约占 8 MB 内存，无需安装其他组件。
 - **自动更新**：从 GitHub 发布页下载并校验 SHA-256，在窗口关闭时静默安装。
 
 ## 支持的设备
@@ -30,12 +31,16 @@ Razer Barracuda X（2.4 GHz 接收器，已测试）、Attack Shark R3 及其他
 2. 运行 `install.cmd`，确认管理员权限提示。
 3. 图标会出现在时钟旁边。Windows 11 会把新图标收进 **^** 箭头里，可以把它拖到任务栏上常驻显示。
 
-程序安装到 `C:\Program Files\BatteryTray`，通过名为“BatteryTray”的计划任务在登录时启动，无需安装 .NET。卸载请运行压缩包中的 `uninstall.cmd`。程序未进行代码签名，Windows 可能会提示未知应用：点击“更多信息”→“仍要运行”。
+程序安装到 `C:\Program Files\BatteryTray`，通过名为“BatteryTray”的计划任务在登录时启动。卸载请运行压缩包中的 `uninstall.cmd`。程序未进行代码签名，Windows 可能会提示未知应用：点击“更多信息”→“仍要运行”。
 
 ## 从源码构建
 
-构建步骤见[英文说明](README.md#build-from-source)。运行测试可使用 `dotnet test tests/BatteryTray.Tests/BatteryTray.Tests.csproj`。
+构建步骤见[英文说明](README.md#build-from-source)。运行测试：在 `rust` 目录中执行 `cargo test`。
 
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。本项目与 Razer、Logitech、SteelSeries、HyperX、Corsair、Sony、Microsoft 及 ATTACK SHARK 无关；产品名称为其各自所有者的商标。
+MIT，见 [LICENSE](LICENSE)。窗口界面使用 [Slint](https://slint.dev)，遵循其免版税许可（Royalty-free）：
+
+[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
+
+本项目与 Razer、Logitech、SteelSeries、HyperX、Corsair、Sony、Microsoft 及 ATTACK SHARK 无关；产品名称为其各自所有者的商标。

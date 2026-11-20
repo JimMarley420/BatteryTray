@@ -1,7 +1,7 @@
 # Installs or updates BatteryTray: copies BatteryTray.exe to Program Files, registers the logon task (starts it
 # with admin rights and no UAC prompt) and adds a Start menu shortcut. Run install.cmd, which calls this script.
 #   From a release zip: BatteryTray.exe sits next to this script and is installed as is.
-#   From the source code: the exe is built first (needs the .NET 8 SDK).
+#   From the source code: the exe is built first (needs Rust and the MSVC build tools, see rust\README.md).
 # The install step asks for admin rights once (UAC). Program Files matters: the app runs elevated, so its exe
 # must live where only administrators can replace it.
 param([switch]$Elevated, [string]$Source)
@@ -14,12 +14,12 @@ $result = Join-Path ([IO.Path]::GetTempPath()) 'BatteryTray-install.txt'
 if (-not $Elevated) {
     $Source = Join-Path $root 'BatteryTray.exe'
     if (-not (Test-Path $Source)) {
-        $project = Join-Path $root 'BatteryTray.csproj'
+        $project = Join-Path $root 'rust\Cargo.toml'
         if (-not (Test-Path $project)) { throw 'BatteryTray.exe not found next to install.ps1' }
         Write-Host 'Building BatteryTray...'
-        dotnet publish $project -p:PublishProfile=release --nologo -v q
+        cargo build --release --locked --manifest-path $project
         if ($LASTEXITCODE -ne 0) { throw 'build failed' }
-        $Source = Join-Path $root 'publish\BatteryTray.exe'
+        $Source = Join-Path $root 'rust\target\release\BatteryTray.exe'
     }
     Remove-Item $result -ErrorAction SilentlyContinue
     Write-Host 'Installing - confirm the administrator prompt...'

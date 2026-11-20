@@ -17,6 +17,7 @@
 - **Русский, английский и китайский** — язык как в Windows, переключается в настройках в любой момент, без перезапуска.
 - **Настройки** — порог напоминания, критический уровень, интервал повтора, звук; для каждого устройства — своё название, скрыть, отключить напоминания или задать свой порог напоминания и критический уровень (например, о наушниках напоминать при 40%, а о мыши — при 15%).
 - **Обновляется сама** с GitHub: новая версия ставится тихо, пока окна программы закрыты, а потом всплывает «BatteryTray обновлён».
+- **Лёгкая** — один exe примерно на 10 МБ, в трее занимает около 8 МБ памяти; больше ничего ставить не нужно.
 - Запускается при входе в Windows, есть ярлык в «Пуске». Ничего не меняет в устройствах: только читает статус.
 
 ## Какие устройства поддерживаются
@@ -70,7 +71,7 @@ Razer Barracuda X сама присылает через донгл свой п�
 2. Запустите `install.cmd` и подтвердите запрос администратора.
 3. Значок появится у часов. Windows 11 прячет новые значки под стрелку **^** — перетащите его на панель задач, чтобы цифра была видна всегда.
 
-Программа ставится в `C:\Program Files\BatteryTray` и запускается при входе в Windows задачей Планировщика «BatteryTray». .NET устанавливать не нужно.
+Программа ставится в `C:\Program Files\BatteryTray` и запускается при входе в Windows задачей Планировщика «BatteryTray».
 
 Обновлять вручную не нужно — см. [Обновления](#обновления). Версию 1.0.0 обновлений ещё не умела: с неё один раз поставьте новый релиз через `install.cmd`. Удаление — `uninstall.cmd` из архива.
 
@@ -103,45 +104,46 @@ Get-PnpDevice -PresentOnly | ? InstanceId -match '^USB\\VID_\w{4}&PID_\w{4}\\' |
 
 Пригодится и диагностика: `"C:\Program Files\BatteryTray\BatteryTray.exe" --dump "%USERPROFILE%\Desktop\battery.txt"` — один опрос всех источников в файл, и лог `%LOCALAPPDATA%\BatteryTray\log.txt`.
 
-Новое устройство добавляется отдельным классом в `Providers/` (интерфейс `IBatteryProvider`: опросить устройство и сказать, когда опрашивать снова).
+Новое устройство добавляется отдельным модулем в [`rust/src/providers/`](rust/src/providers) (трейт `Provider`: опросить устройство и сказать, когда опрашивать снова). Подробнее о коде — в [rust/README.md](rust/README.md).
 
 ## Как это работает
 
 | Источник | Протокол |
 |---|---|
-| `RazerBarracudaProvider` | Команды Airoha RACE через донгл: перевести донгл в remote-режим, запросить напряжение (`GET_BATTERY`), вернуть local-режим (порт из [razer-barracuda-x-battery](https://github.com/mehdibouchami/razer-barracuda-x-battery)). Плюс уведомления, которые наушники шлют сами (кадры RACE типа `0x08`, полезная нагрузка `[id 02 01 значение]`): `0x20` — наушники включились / выключились, `0x21` — их собственный процент заряда, `0x2A` — кабель подключён / отключён; найдены прослушиванием донгла. Пока уведомлений ещё не было — процент по кривой Li-ion из напряжения, зарядка по напряжению. Конец зарядки: после удержания 4,20 В напряжение падает ниже 4,18 В при подключённом кабеле. |
-| `RongyuanDongleProvider` | Feature-отчёт `[00 F7 …]` на интерфейсе 2 (vendor page `FFFF`), ответ `[00 canRead kbBattery mouseBattery kbOffline mouseOffline …]`. Найден в официальном веб-драйвере ATTACK SHARK, который шлёт эту команду каждые 5 секунд. Мышь на кабеле (32 USB ID из того же драйвера) занимает слот приёмника, который в этот момент её потерял. Некоторые ID приёмников общие у нескольких брендов, а в ответе нет названия мыши, поэтому оно берётся из строки продукта приёмника. |
-| `XentaReceiverProvider` | Ничего не отправляет: слушает на коллекции приёмника с usage page `000A` (интерфейс 2) 5-байтовый входной отчёт `03 MM 40 ST LL`, который мышь шлёт каждые 2 секунды: `MM` — код модели, `ST` — `01` от батареи или `02` / `03` от внешнего питания, `LL` — заряд (у кода `0x10` — десятками). Читаются только известные коды моделей, а уровень засчитывается, когда два кадра подряд совпали: каждое подключение начинается с ложных 100%. Мышь на кабеле (`1D57:FA55`) занимает слот приёмника. По [attackshark-battery-windows](https://github.com/daeoxide/attackshark-battery-windows), [Attack-Shark-Battery-KDE](https://gitlab.com/gabriel17166/Attack-Shark-Battery-KDE) и [форку HaloBattery](https://github.com/ahmedkhursheed23/HaloBattery). |
-| `SteelSeriesProvider` | Output-отчёт `0x92` / `0xD2` (Aerox, Prime) или `AA 01` (Rival) на служебном интерфейсе, по [rivalcfg](https://github.com/flozz/rivalcfg). Aerox 3 Wireless Gen 2 отвечает `92/D2 статус заряд 00` (статус `00` — от батареи, `01` — заряжается, `02` — заряжена; заряд `FF` — пока неизвестен), а спящая — `40 FF 00 00`, по [rivalcfg#276](https://github.com/flozz/rivalcfg/issues/276). |
-| `OemMouseProvider` | 17-байтный кадр программ настройки VXE (ATK HUB) и Areson (OemDrv), сумма байтов — `0x55`. Отправляет только `GetPower` (`08 04 … 49`): у VXE — output-отчётом на коллекцию `FF02`, у Areson — feature-отчётом, а ответ приходит на её коллекцию `FF01`. В ответе заряд (в процентах, а у приёмника `25A7:FA4A` — в десятках процентов) и признак зарядки. По [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol), [vxe-battery-tray](https://github.com/ivancacic/vxe-battery-tray), [redragon-mouse-linux](https://github.com/rajchauhan28/redragon-mouse-linux) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен с мышью пишется в лог. |
-| `AulaMchoseProvider` | Output-отчёт `13 4A 01 …` на коллекцию `FF02:0002` приёмника `3554:FA09`; в ответе заряд в процентах и признак зарядки. Модель MCHOSE читается один раз запросом `13 05 01 …` и ищется в таблице кодов моделей M HUB. Клавиатура опрашивается только раз в 5 минут: запрос может её разбудить. По [myfinder-device-battery](https://github.com/wushuai0802/myfinder-device-battery) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен пишется в лог. |
-| `AjazzMouseProvider` | Output-отчёт `55 30 A5 2E 2E …` на коллекцию `FF01:0010` приёмника `A8A5:2255` или кабеля `A8A4:2255`; в ответе `AA 30 …` заряд в процентах и байт, который не равен 0 при питании от USB. Веб-панель производителя пишет запрос как `55 30 A5 0B 2E 01 01`, эта форма пробуется, если на первую нет ответа. По [ajazz-aj139-macos](https://github.com/werquess/ajazz-aj139-macos), [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен пишется в лог. |
-| `SonixKeyboardProvider` | Output-отчёт `20 01 … 21` на 33-байтную коллекцию `FF60:0061` донгла `0C45:FEFE`; в ответе `20 01 00 LL` заряд в процентах, признака зарядки нет. Клавиатура опрашивается раз в 5 минут, а пока не отвечает — раз в минуту. По [vigil-watt](https://github.com/evren-oct/vigil-watt), [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен пишется в лог. |
-| `RazerPeripheralProvider` | 90-байтный feature-отчёт OpenRazer: команда `07 80` (заряд 0–255), `07 84` (зарядка), CRC — XOR байтов 2–87; transaction id и пауза между запросом и ответом — свои у каждой модели, по таблице OpenRazer. |
-| `LogitechProvider` | HID++: пинг слотов 1–6 приёмника (или индекса `0xFF` у устройства на кабеле), поиск фичи заряда `0x1004` / `0x1000` / `0x1001` / `0x1F20` и имени `0x0005`; для старых устройств HID++ 1.0 — регистры `0x0D` / `0x07`. Короткие запросы пишутся в короткую коллекцию, ответы читаются из обеих — Windows делит интерфейс на две. По [Solaar](https://github.com/pwr-Solaar/Solaar). |
-| `HeadsetProvider` | Запрос и ответ на служебном HID-канале гарнитуры, байты — по [HeadsetControl](https://github.com/Sapd/HeadsetControl), для HyperX Cloud III Wireless — по [HyperHeadset](https://github.com/LennardKittner/HyperHeadset), для Corsair HS80 RGB Wireless — по [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) (своя реализация). Corsair Virtuoso XT / SE и HS80 RGB Wireless читаются через свойства протокола Corsair Bragi: `0x0F` — заряд в десятых долях процента, `0x10` — состояние зарядки. Первый обмен с гарнитурой пишется в лог. У гарнитур Logitech G ответ — напряжение, процент считается по таблицам. |
-| `StandardHidBatteryProvider` | Ищет у всех USB HID-устройств поле Generic Device Controls / Battery Strength (`06:20`) в feature-отчёте и читает его. |
-| `PlayStationProvider` | Ничего не отправляет: читает один входной отчёт геймпада, байт статуса (DualSense — `data[53]` по USB / `data[54]` по Bluetooth, DualShock 4 — `data[30]` / `data[32]`), как драйвер Linux `hid-playstation`. |
-| `XInputProvider` | `XInputGetBatteryInformation`: 4 уровня → примерный процент. Геймпады по Bluetooth пропускает — у них точный процент даёт Windows. |
-| `BluetoothProvider` | Свойство устройства `DEVPKEY_Bluetooth_Battery` (то, что показывает «Параметры → Bluetooth»), только при `ConnectionStatus = Connected`. |
+| `providers/barracuda.rs` | Команды Airoha RACE через донгл: перевести донгл в remote-режим, запросить напряжение (`GET_BATTERY`), вернуть local-режим (порт из [razer-barracuda-x-battery](https://github.com/mehdibouchami/razer-barracuda-x-battery)). Плюс уведомления, которые наушники шлют сами (кадры RACE типа `0x08`, полезная нагрузка `[id 02 01 значение]`): `0x20` — наушники включились / выключились, `0x21` — их собственный процент заряда, `0x2A` — кабель подключён / отключён; найдены прослушиванием донгла. Пока уведомлений ещё не было — процент по кривой Li-ion из напряжения, зарядка по напряжению. Конец зарядки: после удержания 4,20 В напряжение падает ниже 4,18 В при подключённом кабеле. |
+| `providers/rongyuan.rs` | Feature-отчёт `[00 F7 …]` на интерфейсе 2 (vendor page `FFFF`), ответ `[00 canRead kbBattery mouseBattery kbOffline mouseOffline …]`. Найден в официальном веб-драйвере ATTACK SHARK, который шлёт эту команду каждые 5 секунд. Мышь на кабеле (32 USB ID из того же драйвера) занимает слот приёмника, который в этот момент её потерял. Некоторые ID приёмников общие у нескольких брендов, а в ответе нет названия мыши, поэтому оно берётся из строки продукта приёмника. |
+| `providers/xenta.rs` | Ничего не отправляет: слушает на коллекции приёмника с usage page `000A` (интерфейс 2) 5-байтовый входной отчёт `03 MM 40 ST LL`, который мышь шлёт каждые 2 секунды: `MM` — код модели, `ST` — `01` от батареи или `02` / `03` от внешнего питания, `LL` — заряд (у кода `0x10` — десятками). Читаются только известные коды моделей, а уровень засчитывается, когда два кадра подряд совпали: каждое подключение начинается с ложных 100%. Мышь на кабеле (`1D57:FA55`) занимает слот приёмника. По [attackshark-battery-windows](https://github.com/daeoxide/attackshark-battery-windows), [Attack-Shark-Battery-KDE](https://gitlab.com/gabriel17166/Attack-Shark-Battery-KDE) и [форку HaloBattery](https://github.com/ahmedkhursheed23/HaloBattery). |
+| `providers/steelseries.rs` | Output-отчёт `0x92` / `0xD2` (Aerox, Prime) или `AA 01` (Rival) на служебном интерфейсе, по [rivalcfg](https://github.com/flozz/rivalcfg). Aerox 3 Wireless Gen 2 отвечает `92/D2 статус заряд 00` (статус `00` — от батареи, `01` — заряжается, `02` — заряжена; заряд `FF` — пока неизвестен), а спящая — `40 FF 00 00`, по [rivalcfg#276](https://github.com/flozz/rivalcfg/issues/276). |
+| `providers/oem_mouse.rs` | 17-байтный кадр программ настройки VXE (ATK HUB) и Areson (OemDrv), сумма байтов — `0x55`. Отправляет только `GetPower` (`08 04 … 49`): у VXE — output-отчётом на коллекцию `FF02`, у Areson — feature-отчётом, а ответ приходит на её коллекцию `FF01`. В ответе заряд (в процентах, а у приёмника `25A7:FA4A` — в десятках процентов) и признак зарядки. По [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol), [vxe-battery-tray](https://github.com/ivancacic/vxe-battery-tray), [redragon-mouse-linux](https://github.com/rajchauhan28/redragon-mouse-linux) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен с мышью пишется в лог. |
+| `providers/aula_mchose.rs` | Output-отчёт `13 4A 01 …` на коллекцию `FF02:0002` приёмника `3554:FA09`; в ответе заряд в процентах и признак зарядки. Модель MCHOSE читается один раз запросом `13 05 01 …` и ищется в таблице кодов моделей M HUB. Клавиатура опрашивается только раз в 5 минут: запрос может её разбудить. По [myfinder-device-battery](https://github.com/wushuai0802/myfinder-device-battery) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен пишется в лог. |
+| `providers/ajazz_mouse.rs` | Output-отчёт `55 30 A5 2E 2E …` на коллекцию `FF01:0010` приёмника `A8A5:2255` или кабеля `A8A4:2255`; в ответе `AA 30 …` заряд в процентах и байт, который не равен 0 при питании от USB. Веб-панель производителя пишет запрос как `55 30 A5 0B 2E 01 01`, эта форма пробуется, если на первую нет ответа. По [ajazz-aj139-macos](https://github.com/werquess/ajazz-aj139-macos), [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен пишется в лог. |
+| `providers/sonix_keyboard.rs` | Output-отчёт `20 01 … 21` на 33-байтную коллекцию `FF60:0061` донгла `0C45:FEFE`; в ответе `20 01 00 LL` заряд в процентах, признака зарядки нет. Клавиатура опрашивается раз в 5 минут, а пока не отвечает — раз в минуту. По [vigil-watt](https://github.com/evren-oct/vigil-watt), [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio) и [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (своя реализация). Первый обмен пишется в лог. |
+| `providers/razer_peripheral.rs` | 90-байтный feature-отчёт OpenRazer: команда `07 80` (заряд 0–255), `07 84` (зарядка), CRC — XOR байтов 2–87; transaction id и пауза между запросом и ответом — свои у каждой модели, по таблице OpenRazer. |
+| `providers/logitech.rs` | HID++: пинг слотов 1–6 приёмника (или индекса `0xFF` у устройства на кабеле), поиск фичи заряда `0x1004` / `0x1000` / `0x1001` / `0x1F20` и имени `0x0005`; для старых устройств HID++ 1.0 — регистры `0x0D` / `0x07`. Короткие запросы пишутся в короткую коллекцию, ответы читаются из обеих — Windows делит интерфейс на две. По [Solaar](https://github.com/pwr-Solaar/Solaar). |
+| `providers/headset.rs` | Запрос и ответ на служебном HID-канале гарнитуры, байты — по [HeadsetControl](https://github.com/Sapd/HeadsetControl), для HyperX Cloud III Wireless — по [HyperHeadset](https://github.com/LennardKittner/HyperHeadset), для Corsair HS80 RGB Wireless — по [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) (своя реализация). Corsair Virtuoso XT / SE и HS80 RGB Wireless читаются через свойства протокола Corsair Bragi: `0x0F` — заряд в десятых долях процента, `0x10` — состояние зарядки. Первый обмен с гарнитурой пишется в лог. У гарнитур Logitech G ответ — напряжение, процент считается по таблицам. |
+| `providers/standard_hid.rs` | Ищет у всех USB HID-устройств поле Generic Device Controls / Battery Strength (`06:20`) в feature-отчёте и читает его. |
+| `providers/playstation.rs` | Ничего не отправляет: читает один входной отчёт геймпада, байт статуса (DualSense — `data[53]` по USB / `data[54]` по Bluetooth, DualShock 4 — `data[30]` / `data[32]`), как драйвер Linux `hid-playstation`. |
+| `providers/xinput.rs` | `XInputGetBatteryInformation`: 4 уровня → примерный процент. Геймпады по Bluetooth пропускает — у них точный процент даёт Windows. |
+| `providers/bluetooth.rs` | Свойство устройства `DEVPKEY_Bluetooth_Battery` (то, что показывает «Параметры → Bluetooth»), только при `ConnectionStatus = Connected`. |
 
 Файлы: `%LOCALAPPDATA%\BatteryTray` — `settings.json` (пороги, названия, скрытые устройства, язык), `state.json` (последний известный заряд), `log.txt` (подключения, изменения заряда, напоминания). Если после ручной правки в `settings.json` осталась ошибка, программа сохранит исходный файл как `settings.json.bak`: значение не того типа просто вернётся к значению по умолчанию, а если файл перестал быть правильным JSON (пропущена запятая, лишняя кавычка), все настройки будут по умолчанию.
 
 ## Сборка из исходников
 
-Нужен [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+Нужны [Rust](https://rustup.rs) и MSVC Build Tools с Windows SDK (нагрузка «Разработка классических приложений на C++» в Visual Studio Build Tools).
 
 ```
-dotnet build                      # отладочная сборка
-install.cmd                       # собрать и установить
+cd rust
+cargo build --release               # rust\target\release\BatteryTray.exe
+cargo test                          # тесты (без опроса устройств и без доступа к вашим настройкам)
+cd ..
+install.cmd                         # собрать и установить
 powershell -File build-release.ps1  # exe и zip для релиза в dist\
 ```
 
-Тесты: `dotnet test tests/BatteryTray.Tests/BatteryTray.Tests.csproj`.
-
 ### Как выпустить новую версию
 
-1. Поднимите `<Version>` в `BatteryTray.csproj` (например, `1.2.0`).
+1. Поднимите `version` в `rust/Cargo.toml` (например, `1.2.0`).
 2. `powershell -File build-release.ps1`.
 3. `gh release create v1.2.0 dist\BatteryTray-1.2.0-win-x64.zip dist\BatteryTray.exe --title "BatteryTray 1.2.0" --notes "что нового"`.
 
@@ -149,4 +151,8 @@ powershell -File build-release.ps1  # exe и zip для релиза в dist\
 
 ## Лицензия
 
-MIT — см. [LICENSE](LICENSE). Чужой код и источники протоколов — в [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Проект не связан с Razer, Logitech, SteelSeries, HyperX, Corsair, Sony, Microsoft и ATTACK SHARK; названия — товарные знаки их владельцев.
+MIT — см. [LICENSE](LICENSE). Чужой код и источники протоколов — в [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Окна сделаны на [Slint](https://slint.dev) по его бесплатной лицензии (Royalty-free):
+
+[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
+
+Проект не связан с Razer, Logitech, SteelSeries, HyperX, Corsair, Sony, Microsoft и ATTACK SHARK; названия — товарные знаки их владельцев.

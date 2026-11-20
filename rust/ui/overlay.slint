@@ -1,0 +1,87 @@
+// The battery overlay (UI/OverlayWindow.xaml): a small click-through panel over the active app, one entry per
+// device on the air. gui.rs makes it non-activating, click-through and slightly translucent.
+
+import { Palette, T, Glyph } from "theme.slint";
+
+export struct OverlayEntry {
+    glyph: string,
+    name: string,
+    show-name: bool,
+    level: string,
+    color: color,
+    power: bool,
+}
+
+// A long list goes on in the next row (overlay.rs decides where), as the C# panel's WrapPanel did
+export struct OverlayRow {
+    entries: [OverlayEntry],
+}
+
+export component OverlayWindow inherits Window {
+    title: T.t("overlay.header");
+    no-frame: true;
+    always-on-top: true;
+    background: Palette.window;
+    // Chinese in its own font: the fallback Windows picks for Han on a non-Chinese system is Japanese, which lacks
+    // the simplified characters. Microsoft YaHei UI has Latin and Cyrillic too.
+    default-font-family: T.lang == "zh" ? "Microsoft YaHei UI" : "Segoe UI";
+    default-font-size: 13px;
+
+    in property <[OverlayRow]> rows;
+    // Its size before it is shown, so it opens right where it belongs
+    out property <length> content-width: content.preferred-width;
+    out property <length> content-height: content.preferred-height;
+    // As wide and as tall as its contents, both ways. Left to itself the window only grows to the least its contents
+    // can do with, which for a name is the "…" it is cut down to, and never gets smaller again: not narrower, and
+    // not lower when a row of devices goes away.
+    min-width: content.preferred-width;
+    max-width: content.preferred-width;
+    min-height: content.preferred-height;
+    max-height: content.preferred-height;
+
+    content := VerticalLayout {
+        padding: 6px;
+        if root.rows.length == 0: Text {
+            text: T.t("none.online");
+            color: Palette.text;
+            vertical-alignment: center;
+        }
+        for row in root.rows: HorizontalLayout {
+            alignment: start;
+            for entry in row.entries: HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                padding-top: 5px;
+                padding-bottom: 5px;
+                spacing: 7px;
+                Glyph {
+                    text: entry.glyph;
+                    font-size: 19px;
+                    color: entry.color;
+                }
+                if entry.show-name: Text {
+                    text: entry.name;
+                    max-width: 140px;
+                    color: Palette.text;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                HorizontalLayout {
+                    spacing: 3px;
+                    Text {
+                        text: entry.level;
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: entry.color;
+                        vertical-alignment: center;
+                    }
+                    if entry.power: Glyph {
+                        text: "\u{E945}";
+                        font-size: 18px;
+                        color: entry.color;
+                    }
+                }
+            }
+        }
+    }
+}

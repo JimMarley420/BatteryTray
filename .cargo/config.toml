@@ -1,0 +1,7 @@
+# The C runtime goes into the exe. Linked the usual way, BatteryTray.exe needs VCRUNTIME140.dll, which is not part of
+# Windows: it comes with the Visual C++ redistributable that other programs happen to install. On a PC without it the
+# exe wouldn't start at all, and the updater with it, so such a release couldn't even be fixed by the next one.
+# Here rather than in rust/.cargo: cargo looks for this file from the folder it is run in, and build-release.ps1 runs
+# it from this one.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

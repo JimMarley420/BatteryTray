@@ -22,6 +22,7 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 - **No made-up percentages** — when a device can't report its level while charging, you see a charging sign instead of a stale number; estimates are marked with "≈".
 - **English, Russian and Chinese** — follows the Windows language, switch any time in Settings.
 - **Updates itself** from GitHub releases (SHA-256 checked), quietly, while its windows are closed.
+- **Light** — one ~10 MB exe that needs about 8 MB of memory in the tray; nothing else to install.
 - Starts with Windows, lives in the tray, never changes anything on your devices.
 
 ## Supported devices
@@ -75,7 +76,7 @@ Notes on specific devices:
 2. Run `install.cmd` and confirm the administrator prompt.
 3. The icon appears next to the clock. Windows 11 hides new icons behind the **^** arrow — drag it onto the taskbar to keep the number in sight.
 
-It installs to `C:\Program Files\BatteryTray` and starts at sign-in through a Task Scheduler task named "BatteryTray". No .NET installation needed. To remove it, run `uninstall.cmd` from the zip.
+It installs to `C:\Program Files\BatteryTray` and starts at sign-in through a Task Scheduler task named "BatteryTray". To remove it, run `uninstall.cmd` from the zip.
 
 **Windows may warn about an unknown app** because the exe isn't code-signed: click "More info" → "Run anyway".
 
@@ -109,7 +110,7 @@ A diagnostic poll helps too: `"C:\Program Files\BatteryTray\BatteryTray.exe" --d
 
 ## Languages
 
-English, Russian and Chinese. The app follows the Windows display language (Russian on a Russian Windows, Chinese on a Chinese one, English otherwise); pick another one any time in Settings → Language — it switches at once, no restart. Translations live in [`Core/Loc.cs`](Core/Loc.cs); corrections and new languages are welcome.
+English, Russian and Chinese. The app follows the Windows display language (Russian on a Russian Windows, Chinese on a Chinese one, English otherwise); pick another one any time in Settings → Language — it switches at once, no restart. Translations live in [`rust/src/loc.rs`](rust/src/loc.rs); corrections and new languages are welcome.
 
 ## Updates
 
@@ -124,45 +125,42 @@ Everything is in Settings → Updates: status, what's new, "Check now" and the a
 
 | Source | Protocol |
 |---|---|
-| `RazerBarracudaProvider` | Airoha RACE commands through the dongle: switch it to remote mode, ask for the voltage (`GET_BATTERY`), back to local mode (ported from [razer-barracuda-x-battery](https://github.com/mehdibouchami/razer-barracuda-x-battery)). Plus the notifications the headset sends by itself (RACE frames of type `0x08`, payload `[id 02 01 value]`): `0x20` headset on/off, `0x21` its own battery percentage, `0x2A` cable in/out — found by listening to the dongle. End of charge: after holding 4.20 V, the voltage drops below 4.18 V with the cable still in. |
-| `RongyuanDongleProvider` | Feature report `[00 F7 …]` on interface 2 (vendor page `FFFF`), reply `[00 canRead kbBattery mouseBattery kbOffline mouseOffline …]`, from the official ATTACK SHARK web driver. A mouse on its cable (32 USB IDs from the same driver) takes over the receiver slot that lost it. Several brands share some receiver IDs and the reply doesn't name the mouse, so its name comes from the receiver's product string. |
-| `XentaReceiverProvider` | Sends nothing: listens on the receiver's collection with usage page `000A` (interface 2) for the 5-byte input report `03 MM 40 ST LL` the mouse sends every 2 s: `MM` model code, `ST` `01` on battery or `02` / `03` on external power, `LL` level (in tens for code `0x10`). Only known model codes are read, and a level counts once two frames in a row agree, because every link-up starts with a false 100%. A mouse on its cable (`1D57:FA55`) takes over the receiver slot. After [attackshark-battery-windows](https://github.com/daeoxide/attackshark-battery-windows), [Attack-Shark-Battery-KDE](https://gitlab.com/gabriel17166/Attack-Shark-Battery-KDE) and the [HaloBattery community fork](https://github.com/ahmedkhursheed23/HaloBattery). |
-| `SteelSeriesProvider` | Output report `0x92` / `0xD2` (Aerox, Prime) or `AA 01` (Rival) on the service interface, after [rivalcfg](https://github.com/flozz/rivalcfg). The Aerox 3 Wireless Gen 2 answers `92/D2 status level 00` (status `00` on battery, `01` charging, `02` charged; level `FF` = not known yet) and `40 FF 00 00` when asleep, after [rivalcfg#276](https://github.com/flozz/rivalcfg/issues/276). |
-| `OemMouseProvider` | The 17-byte frame of the VXE (ATK HUB) and Areson (OemDrv) configuration tools, adding up to `0x55`. Sends only `GetPower` (`08 04 … 49`): as an output report on the `FF02` collection for VXE, as a feature report for Areson, which answers on its `FF01` collection. The reply carries the level, in percent or (on the `25A7:FA4A` receiver) in tens of percent, and a charging flag. After [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol), [vxe-battery-tray](https://github.com/ivancacic/vxe-battery-tray), [redragon-mouse-linux](https://github.com/rajchauhan28/redragon-mouse-linux) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange with a mouse goes to the log. |
-| `AulaMchoseProvider` | Output report `13 4A 01 …` on the `FF02:0002` collection of the `3554:FA09` receiver; the reply carries the level in percent and a charging flag. The MCHOSE model is read once with `13 05 01 …` and looked up in M HUB's table of model codes. The keyboard is asked every 5 minutes only, since a request may wake it. After [myfinder-device-battery](https://github.com/wushuai0802/myfinder-device-battery) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange goes to the log. |
-| `AjazzMouseProvider` | Output report `55 30 A5 2E 2E …` on the `FF01:0010` collection of the `A8A5:2255` receiver or the `A8A4:2255` cable; the reply `AA 30 …` carries the level in percent and a byte that isn't 0 on USB power. The vendor's web panel writes the request as `55 30 A5 0B 2E 01 01`, which is tried when the first form gets no answer. After [ajazz-aj139-macos](https://github.com/werquess/ajazz-aj139-macos), [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange goes to the log. |
-| `SonixKeyboardProvider` | Output report `20 01 … 21` on the 33-byte `FF60:0061` collection of the `0C45:FEFE` dongle; the reply `20 01 00 LL` carries the level in percent, and nothing says whether the keyboard is charging. The keyboard is asked every 5 minutes, or every minute while it doesn't answer. After [vigil-watt](https://github.com/evren-oct/vigil-watt), [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange goes to the log. |
-| `RazerPeripheralProvider` | OpenRazer's 90-byte feature report: command `07 80` (level 0–255), `07 84` (charging), CRC = XOR of bytes 2–87; transaction id and reply delay per model, from OpenRazer's tables. |
-| `LogitechProvider` | HID++: ping receiver slots 1–6 (or index `0xFF` for a device on its cable), find the battery feature `0x1004` / `0x1000` / `0x1001` / `0x1F20` and the name `0x0005`; HID++ 1.0 registers `0x0D` / `0x07` for older devices. After [Solaar](https://github.com/pwr-Solaar/Solaar). |
-| `HeadsetProvider` | Request and reply on the headset's vendor HID channel, bytes after [HeadsetControl](https://github.com/Sapd/HeadsetControl), for the HyperX Cloud III Wireless after [HyperHeadset](https://github.com/LennardKittner/HyperHeadset) and for the Corsair HS80 RGB Wireless after [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) (own implementation). The Corsair Virtuoso XT / SE and HS80 RGB Wireless are read through Corsair's Bragi properties: `0x0F` the level in tenths of a percent, `0x10` the charge state. The first exchange with a headset goes to the log. Logitech G headsets report a voltage, converted with per-model tables. |
-| `StandardHidBatteryProvider` | Reads the Generic Device Controls / Battery Strength field (`06:20`) from the feature reports of any USB HID device. |
-| `PlayStationProvider` | Sends nothing: reads one input report and its status byte (DualSense `data[53]` USB / `data[54]` Bluetooth, DualShock 4 `data[30]` / `data[32]`), like Linux's `hid-playstation`. |
-| `XInputProvider` | `XInputGetBatteryInformation`: 4 levels → approximate percentage. Skips Bluetooth controllers, whose exact level comes from Windows. |
-| `BluetoothProvider` | The `DEVPKEY_Bluetooth_Battery` device property (what Settings → Bluetooth shows), only while `ConnectionStatus = Connected`. |
+| `providers/barracuda.rs` | Airoha RACE commands through the dongle: switch it to remote mode, ask for the voltage (`GET_BATTERY`), back to local mode (ported from [razer-barracuda-x-battery](https://github.com/mehdibouchami/razer-barracuda-x-battery)). Plus the notifications the headset sends by itself (RACE frames of type `0x08`, payload `[id 02 01 value]`): `0x20` headset on/off, `0x21` its own battery percentage, `0x2A` cable in/out — found by listening to the dongle. End of charge: after holding 4.20 V, the voltage drops below 4.18 V with the cable still in. |
+| `providers/rongyuan.rs` | Feature report `[00 F7 …]` on interface 2 (vendor page `FFFF`), reply `[00 canRead kbBattery mouseBattery kbOffline mouseOffline …]`, from the official ATTACK SHARK web driver. A mouse on its cable (32 USB IDs from the same driver) takes over the receiver slot that lost it. Several brands share some receiver IDs and the reply doesn't name the mouse, so its name comes from the receiver's product string. |
+| `providers/xenta.rs` | Sends nothing: listens on the receiver's collection with usage page `000A` (interface 2) for the 5-byte input report `03 MM 40 ST LL` the mouse sends every 2 s: `MM` model code, `ST` `01` on battery or `02` / `03` on external power, `LL` level (in tens for code `0x10`). Only known model codes are read, and a level counts once two frames in a row agree, because every link-up starts with a false 100%. A mouse on its cable (`1D57:FA55`) takes over the receiver slot. After [attackshark-battery-windows](https://github.com/daeoxide/attackshark-battery-windows), [Attack-Shark-Battery-KDE](https://gitlab.com/gabriel17166/Attack-Shark-Battery-KDE) and the [HaloBattery community fork](https://github.com/ahmedkhursheed23/HaloBattery). |
+| `providers/steelseries.rs` | Output report `0x92` / `0xD2` (Aerox, Prime) or `AA 01` (Rival) on the service interface, after [rivalcfg](https://github.com/flozz/rivalcfg). The Aerox 3 Wireless Gen 2 answers `92/D2 status level 00` (status `00` on battery, `01` charging, `02` charged; level `FF` = not known yet) and `40 FF 00 00` when asleep, after [rivalcfg#276](https://github.com/flozz/rivalcfg/issues/276). |
+| `providers/oem_mouse.rs` | The 17-byte frame of the VXE (ATK HUB) and Areson (OemDrv) configuration tools, adding up to `0x55`. Sends only `GetPower` (`08 04 … 49`): as an output report on the `FF02` collection for VXE, as a feature report for Areson, which answers on its `FF01` collection. The reply carries the level, in percent or (on the `25A7:FA4A` receiver) in tens of percent, and a charging flag. After [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol), [vxe-battery-tray](https://github.com/ivancacic/vxe-battery-tray), [redragon-mouse-linux](https://github.com/rajchauhan28/redragon-mouse-linux) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange with a mouse goes to the log. |
+| `providers/aula_mchose.rs` | Output report `13 4A 01 …` on the `FF02:0002` collection of the `3554:FA09` receiver; the reply carries the level in percent and a charging flag. The MCHOSE model is read once with `13 05 01 …` and looked up in M HUB's table of model codes. The keyboard is asked every 5 minutes only, since a request may wake it. After [myfinder-device-battery](https://github.com/wushuai0802/myfinder-device-battery) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange goes to the log. |
+| `providers/ajazz_mouse.rs` | Output report `55 30 A5 2E 2E …` on the `FF01:0010` collection of the `A8A5:2255` receiver or the `A8A4:2255` cable; the reply `AA 30 …` carries the level in percent and a byte that isn't 0 on USB power. The vendor's web panel writes the request as `55 30 A5 0B 2E 01 01`, which is tried when the first form gets no answer. After [ajazz-aj139-macos](https://github.com/werquess/ajazz-aj139-macos), [OpenMouse](https://github.com/OpenMouse-Project/mouse-protocol) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange goes to the log. |
+| `providers/sonix_keyboard.rs` | Output report `20 01 … 21` on the 33-byte `FF60:0061` collection of the `0C45:FEFE` dongle; the reply `20 01 00 LL` carries the level in percent, and nothing says whether the keyboard is charging. The keyboard is asked every 5 minutes, or every minute while it doesn't answer. After [vigil-watt](https://github.com/evren-oct/vigil-watt), [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) (own implementation). The first exchange goes to the log. |
+| `providers/razer_peripheral.rs` | OpenRazer's 90-byte feature report: command `07 80` (level 0–255), `07 84` (charging), CRC = XOR of bytes 2–87; transaction id and reply delay per model, from OpenRazer's tables. |
+| `providers/logitech.rs` | HID++: ping receiver slots 1–6 (or index `0xFF` for a device on its cable), find the battery feature `0x1004` / `0x1000` / `0x1001` / `0x1F20` and the name `0x0005`; HID++ 1.0 registers `0x0D` / `0x07` for older devices. After [Solaar](https://github.com/pwr-Solaar/Solaar). |
+| `providers/headset.rs` | Request and reply on the headset's vendor HID channel, bytes after [HeadsetControl](https://github.com/Sapd/HeadsetControl), for the HyperX Cloud III Wireless after [HyperHeadset](https://github.com/LennardKittner/HyperHeadset) and for the Corsair HS80 RGB Wireless after [OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub) (own implementation). The Corsair Virtuoso XT / SE and HS80 RGB Wireless are read through Corsair's Bragi properties: `0x0F` the level in tenths of a percent, `0x10` the charge state. The first exchange with a headset goes to the log. Logitech G headsets report a voltage, converted with per-model tables. |
+| `providers/standard_hid.rs` | Reads the Generic Device Controls / Battery Strength field (`06:20`) from the feature reports of any USB HID device. |
+| `providers/playstation.rs` | Sends nothing: reads one input report and its status byte (DualSense `data[53]` USB / `data[54]` Bluetooth, DualShock 4 `data[30]` / `data[32]`), like Linux's `hid-playstation`. |
+| `providers/xinput.rs` | `XInputGetBatteryInformation`: 4 levels → approximate percentage. Skips Bluetooth controllers, whose exact level comes from Windows. |
+| `providers/bluetooth.rs` | The `DEVPKEY_Bluetooth_Battery` device property (what Settings → Bluetooth shows), only while `ConnectionStatus = Connected`. |
 
 Files in `%LOCALAPPDATA%\BatteryTray`: `settings.json` (reminder levels, names, hidden devices, language), `state.json` (last known levels), `log.txt` (connections, level changes, reminders). If a hand edit leaves a mistake in `settings.json`, the app keeps the file as it was in `settings.json.bak`: a value of the wrong type just goes back to its default, while a file that is no longer valid JSON (a missing comma, a stray quote) starts over from the defaults.
 
-A new device family is one class in `Providers/` implementing `IBatteryProvider`: poll the hardware, say when to poll again.
+A new device family is one module in [`rust/src/providers/`](rust/src/providers) implementing the `Provider` trait: poll the hardware, say when to poll again. More on the code in [rust/README.md](rust/README.md).
 
 ## Build from source
 
-Needs the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+Needs [Rust](https://rustup.rs) and the MSVC build tools with a Windows SDK (the "Desktop development with C++" workload of the Visual Studio Build Tools).
 
 ```
-dotnet build                        # debug build
+cd rust
+cargo build --release               # rust\target\release\BatteryTray.exe
+cargo test                          # tests (no hardware polling or access to your saved settings)
+cd ..
 install.cmd                         # build and install
 powershell -File build-release.ps1  # release exe and zip in dist\
 ```
 
-Overlay tests (no hardware polling or access to your saved settings):
-
-```
-dotnet test tests/BatteryTray.Tests/BatteryTray.Tests.csproj
-```
-
 ### Releasing a version
 
-1. Raise `<Version>` in `BatteryTray.csproj`.
+1. Raise `version` in `rust/Cargo.toml`.
 2. `powershell -File build-release.ps1`.
 3. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe --title "BatteryTray X.Y.Z" --notes "what's new"`.
 
@@ -170,4 +168,8 @@ The updater takes the asset named exactly `BatteryTray.exe` from the latest rele
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Third-party code and protocol sources: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Not affiliated with Razer, Logitech, SteelSeries, HyperX, Corsair, Sony, Microsoft or ATTACK SHARK; product names are trademarks of their owners.
+MIT — see [LICENSE](LICENSE). Third-party code and protocol sources: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The windows are built with [Slint](https://slint.dev) under its Royalty-free license:
+
+[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
+
+Not affiliated with Razer, Logitech, SteelSeries, HyperX, Corsair, Sony, Microsoft or ATTACK SHARK; product names are trademarks of their owners.
