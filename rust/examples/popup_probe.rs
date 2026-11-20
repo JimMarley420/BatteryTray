@@ -1,7 +1,8 @@
 //! Shows the reminder window and the overlay the way the app does - created, filled and shown from a callback the
-//! event loop runs for a polling thread - and prints where their windows really are every 5 ms, for 1.5 s, with their
+//! event loop runs for a polling thread - and prints where their windows really are every 5 ms, for 2.5 s, with their
 //! extended styles: `cargo run --example popup_probe`. For catching a popup that jumps when it opens, can be clicked
-//! or takes focus.
+//! or takes focus. The overlay opens with seven named devices, enough for a second row, and is left with one after
+//! 1.7 s: for catching a panel that doesn't follow its contents' size, either way.
 
 use batterytray::alert_view::AlertView;
 use batterytray::gui;
@@ -52,6 +53,29 @@ fn describe(window: &slint::Window) -> Option<String> {
     ))
 }
 
+/// The first `count` of seven devices on the air.
+fn devices(count: usize) -> Vec<batterytray::rows::DeviceRow> {
+    use batterytray::reading::DeviceReading;
+    let names =
+        ["Razer Barracuda X", "Attack Shark R3", "VXE R1 Pro Max", "AULA F75", "Xbox Controller", "MX Master 3S"];
+    (0..count)
+        .map(|i| {
+            let (id, name) = (format!("d{i}"), names[i % names.len()]);
+            let kind = if i % 2 == 0 { DeviceKind::Headset } else { DeviceKind::Mouse };
+            let reading = DeviceReading {
+                online: true,
+                level: Some(37 + 9 * i as i32),
+                ..DeviceReading::new(&id, name, kind, "2.4")
+            };
+            batterytray::rows::DeviceRow { id, current: Some(reading.clone()), last: Some(reading), name: name.into() }
+        })
+        .collect()
+}
+
+fn settings() -> batterytray::settings::AppSettings {
+    batterytray::settings::AppSettings { overlay_corner: 3, overlay_show_names: true, ..Default::default() }
+}
+
 fn main() {
     gui::init().unwrap();
     batterytray::loc::set("ru");
@@ -78,28 +102,16 @@ fn main() {
             VIEW.with(|v| *v.borrow_mut() = Some(view));
 
             // And the overlay's preview, the same way
-            use batterytray::reading::DeviceReading;
-            let reading = DeviceReading {
-                online: true,
-                level: Some(37),
-                ..DeviceReading::new("h", "Razer Barracuda X", DeviceKind::Headset, "2.4")
-            };
-            let rows = vec![batterytray::rows::DeviceRow {
-                id: "h".into(),
-                current: Some(reading.clone()),
-                last: Some(reading),
-                name: "Razer Barracuda X".into(),
-            }];
             let mut overlay = batterytray::overlay::Overlay::new(Default::default());
-            let settings = batterytray::settings::AppSettings { overlay_corner: 3, ..Default::default() };
-            overlay.apply_settings(&settings);
-            overlay.preview(&rows, &settings, None);
+            overlay.apply_settings(&settings());
+            overlay.preview(&devices(7), &settings(), None);
             OVERLAY.with(|o| *o.borrow_mut() = Some(overlay));
         });
     });
 
     let sampler = slint::Timer::default();
     let last = RefCell::new(String::new());
+    let shrunk = std::cell::Cell::new(false);
     sampler.start(slint::TimerMode::Repeated, Duration::from_millis(5), move || {
         let alert = VIEW.with(|v| v.borrow().as_ref().and_then(|v| describe(v.ui.window())));
         let overlay = OVERLAY.with(|o| o.borrow().as_ref().and_then(|o| o.window().and_then(describe)));
@@ -112,7 +124,15 @@ fn main() {
             println!("{:>5} ms  {line}", start.elapsed().as_millis());
             *last.borrow_mut() = line;
         }
-        if start.elapsed() > Duration::from_millis(1600) {
+        if start.elapsed() > Duration::from_millis(1700) && !shrunk.replace(true) {
+            println!("{:>5} ms  six of the seven devices go off the air", start.elapsed().as_millis());
+            OVERLAY.with(|o| {
+                if let Some(o) = o.borrow_mut().as_mut() {
+                    o.refresh(&devices(1), &settings(), None);
+                }
+            });
+        }
+        if start.elapsed() > Duration::from_millis(2600) {
             let _ = slint::quit_event_loop();
         }
     });

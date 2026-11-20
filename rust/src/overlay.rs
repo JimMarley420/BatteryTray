@@ -2,13 +2,13 @@
 //! over the active app, shown by the global shortcut for 5 seconds or until pressed again.
 
 use crate::app::level_color;
-use crate::gui::{self, Kind, OverlayEntry, OverlayWindow};
+use crate::gui::{self, Kind, OverlayEntry, OverlayRow, OverlayWindow};
 use crate::hotkey::{Binding, Gesture, WindowHotkeys};
 use crate::reading::DeviceKind;
 use crate::rows::DeviceRow;
 use crate::settings::AppSettings;
 use slint::winit_030::WinitWindowAccessor;
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::{ComponentHandle, ModelRc, VecModel};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{HWND, RECT};
@@ -144,7 +144,9 @@ pub struct Overlay {
     binding: Binding<WindowHotkeys>,
     session: Session,
     window: Option<OverlayWindow>,
-    entries: Rc<VecModel<OverlayEntry>>,
+    rows: Rc<VecModel<OverlayRow>>,
+    /// What `rows` was made of: the entries and the width they were wrapped to
+    shown: (Vec<OverlayEntry>, f32),
     expiry: slint::Timer,
     placement: slint::Timer,
     mode: i32,
@@ -193,7 +195,8 @@ impl Overlay {
             binding: Binding::new(WindowHotkeys(hwnd)),
             session: Session::default(),
             window: None,
-            entries: Rc::new(VecModel::default()),
+            rows: Rc::new(VecModel::default()),
+            shown: (Vec::new(), 0.0),
             expiry: slint::Timer::default(),
             placement: slint::Timer::default(),
             mode: 0,
@@ -269,7 +272,7 @@ impl Overlay {
             match gui::create(Kind::Overlay, OverlayWindow::new) {
                 Ok(w) => {
                     gui::setup_texts(&w.global::<gui::T>());
-                    w.set_entries(ModelRc::from(self.entries.clone()));
+                    w.set_rows(ModelRc::from(self.rows.clone()));
                     // Whenever its size changes (it gets its real one, a device comes or goes, another scale): back
                     // into its corner; while still unseen, shown once its size has stayed the same for a moment. The
                     // reminder it stays clear of is looked up afterwards, outside this event.
@@ -376,10 +379,29 @@ impl Overlay {
                 }
             })
             .collect();
-        if self.entries.iter().collect::<Vec<_>>() != entries {
-            self.entries.set_vec(entries);
+        let limit = self.row_limit();
+        if self.shown != (entries.clone(), limit) {
+            self.rows.set_vec(into_rows(entries.clone(), limit));
+            self.shown = (entries, limit);
         }
         self.place(obstruction);
+    }
+
+    /// How wide a row may get on the monitor the panel is on, or is about to open on.
+    fn row_limit(&self) -> f32 {
+        let shown = self.window.as_ref().filter(|w| w.window().is_visible()).and_then(|w| gui::window_rect(w.window()));
+        let (area, scale) = match shown {
+            Some((r, scale)) => (monitor_area_at(r.left, r.top), scale),
+            None => gui::active_monitor(),
+        };
+        row_limit((area.right - area.left) as f32 / scale.max(0.1))
+    }
+
+    /// The language changed: the panel's own text ("no devices") and its font follow.
+    pub fn set_language(&self) {
+        if let Some(w) = &self.window {
+            w.global::<gui::T>().set_lang(crate::loc::current().into());
+        }
     }
 
     /// Puts the panel in its corner of the work area of the monitor it is on, off the reminder: by the window's real
@@ -400,6 +422,53 @@ impl Overlay {
             let _ = w.hide();
         }
     }
+}
+
+/// The widest a row of entries gets on a work area `work_width` wide: half of it, as the C# panel (never under 240,
+/// never past the screen), less the panel's padding. All in the panel's own pixels.
+pub fn row_limit(work_width: f32) -> f32 {
+    (work_width - 24.0).min((work_width * 0.5).max(240.0)) - 12.0
+}
+
+/// About how wide the panel draws an entry (overlay.slint): good enough to decide where the next row starts, and a
+/// little on the wide side, so a row comes out under the limit rather than over it.
+fn entry_width(e: &OverlayEntry) -> f32 {
+    let name: f32 = e.name.chars().map(|c| if (c as u32) < 0x2E80 { 6.8 } else { 13.5 }).sum();
+    let name = if e.show_name { 7.0 + name.min(140.0) } else { 0.0 };
+    let level = e.level.chars().count() as f32 * 11.0 + if e.level.is_empty() { 0.0 } else { 4.0 };
+    let power = if e.power { 21.0 } else { 0.0 };
+    16.0 + 19.0 + name + 7.0 + level + power
+}
+
+/// How many entries go in each row: as many as fit in `limit`, at least one.
+fn wrap(widths: &[f32], limit: f32) -> Vec<usize> {
+    let mut rows = Vec::new();
+    let (mut count, mut width) = (0usize, 0f32);
+    for w in widths {
+        if count > 0 && width + w > limit {
+            rows.push(count);
+            (count, width) = (0, 0.0);
+        }
+        count += 1;
+        width += w;
+    }
+    if count > 0 {
+        rows.push(count);
+    }
+    rows
+}
+
+/// The entries in the rows the panel shows them in.
+pub fn into_rows(entries: Vec<OverlayEntry>, limit: f32) -> Vec<OverlayRow> {
+    let widths: Vec<f32> = entries.iter().map(entry_width).collect();
+    let mut entries = entries.into_iter();
+    wrap(&widths, limit)
+        .into_iter()
+        .map(|n| {
+            let row: Vec<OverlayEntry> = entries.by_ref().take(n).collect();
+            OverlayRow { entries: ModelRc::from(Rc::new(VecModel::from(row))) }
+        })
+        .collect()
 }
 
 fn place_window(window: &slint::Window, corner: i32, obstruction: Option<Rect>) {
@@ -442,6 +511,16 @@ fn monitor_area_at(x: i32, y: i32) -> RECT {
 mod tests {
     use super::*;
     use crate::reading::DeviceReading;
+
+    #[test]
+    fn a_long_list_goes_on_in_the_next_row() {
+        assert_eq!(wrap(&[100.0, 100.0, 100.0], 250.0), [2, 1]);
+        assert_eq!(wrap(&[100.0, 100.0], 250.0), [2]);
+        assert_eq!(wrap(&[300.0, 100.0, 100.0, 100.0], 250.0), [1, 2, 1], "one too wide still gets a row");
+        assert!(wrap(&[], 250.0).is_empty());
+        // Half the work area, as the C# panel: 1920 wide gives 960 less the padding; a narrow one never under 240
+        assert_eq!((row_limit(1920.0), row_limit(400.0), row_limit(200.0)), (948.0, 228.0, 164.0));
+    }
 
     #[test]
     fn timed_press_restarts_the_five_second_deadline() {

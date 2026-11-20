@@ -424,6 +424,7 @@ impl App {
         for alert in [&self.alert, &self.test_alert].into_iter().flatten() {
             alert.ui.global::<gui::T>().set_lang(loc::current().into());
         }
+        self.overlay.set_language();
         self.settings_changed();
         self.refresh_now(); // the devices' details come from the providers
     }

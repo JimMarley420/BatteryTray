@@ -160,7 +160,7 @@ fn main() {
     let overlay = OverlayWindow::new().unwrap();
     let window = last();
     gui::setup_texts(&overlay.global::<gui::T>());
-    overlay.set_entries(ModelRc::from(Rc::new(VecModel::from(vec![
+    let entries = vec![
         OverlayEntry {
             glyph: "\u{E7F6}".into(),
             name: "Razer Barracuda X".into(),
@@ -185,6 +185,25 @@ fn main() {
             color: rgb(0x6C, 0xCB, 0x5F),
             power: false,
         },
-    ]))));
+    ];
+    let rows = |entries: Vec<OverlayEntry>, limit: f32| {
+        ModelRc::from(Rc::new(VecModel::from(batterytray::overlay::into_rows(entries, limit))))
+    };
+    overlay.set_rows(rows(entries.clone(), batterytray::overlay::row_limit(1920.0)));
     render(&window, scale, (420.0, 44.0), &folder.join("overlay.png"));
+
+    // Many devices with their names, on a 1280 px wide screen: the list goes on in the next row
+    let many: Vec<OverlayEntry> = (0..7)
+        .map(|i| OverlayEntry {
+            name: ["Razer Barracuda X", "Attack Shark R3", "VXE R1 Pro Max", "Клавиатура AULA F75"][i % 4].into(),
+            show_name: true,
+            level: ["37%", "100%", "≈60%", "8%"][i % 4].into(),
+            ..entries[i % 3].clone()
+        })
+        .collect();
+    overlay.set_rows(rows(many, batterytray::overlay::row_limit(1280.0)));
+    // Drawn once for the rows to exist (off screen they only do once drawn), then at the size they ask for
+    render(&window, scale, (640.0, 200.0), &folder.join("overlay-rows.png"));
+    let size = (overlay.get_content_width(), overlay.get_content_height());
+    render(&window, scale, size, &folder.join("overlay-rows.png"));
 }
