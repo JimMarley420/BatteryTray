@@ -7,7 +7,12 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "rust/**"
+      - "src/**"
+      - "ui/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
       - ".cargo/**"
       - "app.ico"
       - "app.manifest"
@@ -36,30 +41,30 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/target
-          key: rust-desktop-${{ matrix.os }}-${{ hashFiles('rust/Cargo.lock', '.cargo/config.toml') }}
+            target
+          key: rust-desktop-${{ matrix.os }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
       - name: Build
         run: |
-          cargo build --release --locked --manifest-path rust/Cargo.toml --bins --examples
+          cargo build --release --locked --bins --examples
           if ($LASTEXITCODE -ne 0) { exit 1 }
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\bt\this", "$env:RUNNER_TEMP\bt\newer" | Out-Null
-          Copy-Item rust/target/release/BatteryTray.exe "$env:RUNNER_TEMP\bt\this"
+          Copy-Item target/release/BatteryTray.exe "$env:RUNNER_TEMP\bt\this"
       - name: Build the same with a higher version
         # What the next release is to this one: only the version differs
         run: |
-          $toml = [IO.File]::ReadAllText("$PWD\rust\Cargo.toml")
-          $lock = [IO.File]::ReadAllText("$PWD\rust\Cargo.lock")
+          $toml = [IO.File]::ReadAllText("$PWD\Cargo.toml")
+          $lock = [IO.File]::ReadAllText("$PWD\Cargo.lock")
           $m = [regex]::Match($toml, '(?m)^version = "(\d+)\.(\d+)\.(\d+)"')
           $old = "$($m.Groups[1].Value).$($m.Groups[2].Value).$($m.Groups[3].Value)"
           $new = "$($m.Groups[1].Value).$($m.Groups[2].Value).$([int]$m.Groups[3].Value + 100)"
           $toml = ([regex]('(?m)^version = "' + [regex]::Escape($old) + '"')).Replace($toml, "version = `"$new`"", 1)
           $lock = ([regex]('(name = "batterytray"\r?\nversion = ")' + [regex]::Escape($old) + '"')).Replace($lock, "`${1}$new`"", 1)
-          [IO.File]::WriteAllText("$PWD\rust\Cargo.toml", $toml)
-          [IO.File]::WriteAllText("$PWD\rust\Cargo.lock", $lock)
-          cargo build --release --locked --manifest-path rust/Cargo.toml --bin BatteryTray
+          [IO.File]::WriteAllText("$PWD\Cargo.toml", $toml)
+          [IO.File]::WriteAllText("$PWD\Cargo.lock", $lock)
+          cargo build --release --locked --bin BatteryTray
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          Copy-Item rust/target/release/BatteryTray.exe "$env:RUNNER_TEMP\bt\newer"
-          git checkout -- rust/Cargo.toml rust/Cargo.lock
+          Copy-Item target/release/BatteryTray.exe "$env:RUNNER_TEMP\bt\newer"
+          git checkout -- Cargo.toml Cargo.lock
           "$old and $new"
       - name: Install, update, uninstall
         # Windows PowerShell, as install.ps1 runs in on a user's PC
@@ -67,7 +72,7 @@ jobs:
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .github/scripts/desktop-test.ps1
           -Exe "$env:RUNNER_TEMP\bt\this\BatteryTray.exe"
           -Newer "$env:RUNNER_TEMP\bt\newer\BatteryTray.exe"
-          -Examples rust/target/release/examples
+          -Examples target/release/examples
           -Out "$env:RUNNER_TEMP\bt\out"
       - uses: actions/upload-artifact@v4
         if: always()

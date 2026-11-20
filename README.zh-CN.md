@@ -35,7 +35,7 @@ Razer Barracuda X（2.4 GHz 接收器，已测试）、Attack Shark R3 及其他
 
 ## 从源码构建
 
-构建步骤见[英文说明](README.md#build-from-source)。运行测试：在 `rust` 目录中执行 `cargo test`。
+构建步骤见[英文说明](README.md#build-from-source)。运行测试：`cargo test`。
 
 ## 许可证
 

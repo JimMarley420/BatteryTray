@@ -104,7 +104,7 @@ Get-PnpDevice -PresentOnly | ? InstanceId -match '^USB\\VID_\w{4}&PID_\w{4}\\' |
 
 Пригодится и диагностика: `"C:\Program Files\BatteryTray\BatteryTray.exe" --dump "%USERPROFILE%\Desktop\battery.txt"` — один опрос всех источников в файл, и лог `%LOCALAPPDATA%\BatteryTray\log.txt`.
 
-Новое устройство добавляется отдельным модулем в [`rust/src/providers/`](rust/src/providers) (трейт `Provider`: опросить устройство и сказать, когда опрашивать снова). Подробнее о коде — в [rust/README.md](rust/README.md).
+Новое устройство добавляется отдельным модулем в [`src/providers/`](src/providers) (трейт `Provider`: опросить устройство и сказать, когда опрашивать снова). Подробнее о коде — в [docs/development.md](docs/development.md).
 
 ## Как это работает
 
@@ -133,17 +133,15 @@ Get-PnpDevice -PresentOnly | ? InstanceId -match '^USB\\VID_\w{4}&PID_\w{4}\\' |
 Нужны [Rust](https://rustup.rs) и MSVC Build Tools с Windows SDK (нагрузка «Разработка классических приложений на C++» в Visual Studio Build Tools).
 
 ```
-cd rust
-cargo build --release               # rust\target\release\BatteryTray.exe
+cargo build --release               # target\release\BatteryTray.exe
 cargo test                          # тесты (без опроса устройств и без доступа к вашим настройкам)
-cd ..
 install.cmd                         # собрать и установить
 powershell -File build-release.ps1  # exe и zip для релиза в dist\
 ```
 
 ### Как выпустить новую версию
 
-1. Поднимите `version` в `rust/Cargo.toml` (например, `1.2.0`).
+1. Поднимите `version` в `Cargo.toml` (например, `1.2.0`).
 2. `powershell -File build-release.ps1`.
 3. `gh release create v1.2.0 dist\BatteryTray-1.2.0-win-x64.zip dist\BatteryTray.exe --title "BatteryTray 1.2.0" --notes "что нового"`.
 

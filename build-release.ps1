@@ -1,15 +1,14 @@
 # Builds the release: publish\BatteryTray.exe (the Rust app: one exe, nothing else to install) and
 # dist\BatteryTray-<version>-win-x64.zip with the exe, the install/uninstall scripts, the docs and the licenses of
-# the crates in the exe. Needs Rust and the MSVC build tools with a Windows SDK (see rust\README.md), and cargo-about
+# the crates in the exe. Needs Rust and the MSVC build tools with a Windows SDK (see docs\development.md), and cargo-about
 # for the licenses (`cargo install cargo-about --locked`, or its release binary).
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$rust = Join-Path $root 'rust'
-$version = (Select-String -Path (Join-Path $rust 'Cargo.toml') -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+$version = (Select-String -Path (Join-Path $root 'Cargo.toml') -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
 
-cargo build --release --locked --manifest-path (Join-Path $rust 'Cargo.toml')
+cargo build --release --locked --manifest-path (Join-Path $root 'Cargo.toml')
 if ($LASTEXITCODE -ne 0) { throw 'build failed' }
-$built = Join-Path $rust 'target\release\BatteryTray.exe'
+$built = Join-Path $root 'target\release\BatteryTray.exe'
 # The updaters (this one and the C# one before it) only install an exe that carries the release's version
 $fileVersion = (Get-Item $built).VersionInfo.FileVersion
 if ($fileVersion -ne "$version.0") { throw "BatteryTray.exe says $fileVersion, Cargo.toml $version" }
@@ -34,7 +33,7 @@ foreach ($f in $files) { Copy-Item (Join-Path $root $f) $stage }
 
 # The crates' licenses: MIT and the like ask for their notice to go along with the exe
 $licenses = Join-Path $stage 'THIRD_PARTY_LICENSES.md'
-Push-Location $rust
+Push-Location $root
 try {
     cargo about generate --locked about.hbs -o $licenses
     if ($LASTEXITCODE -ne 0) { throw 'cargo about failed (is cargo-about installed?)' }

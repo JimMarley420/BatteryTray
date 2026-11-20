@@ -1,7 +1,4 @@
-bin/
-# Cargo's folder for extra binaries, not build output
-!/rust/src/bin/
-obj/
+/target
 publish/
 dist/
 .vs/

@@ -110,7 +110,7 @@ A diagnostic poll helps too: `"C:\Program Files\BatteryTray\BatteryTray.exe" --d
 
 ## Languages
 
-English, Russian and Chinese. The app follows the Windows display language (Russian on a Russian Windows, Chinese on a Chinese one, English otherwise); pick another one any time in Settings → Language — it switches at once, no restart. Translations live in [`rust/src/loc.rs`](rust/src/loc.rs); corrections and new languages are welcome.
+English, Russian and Chinese. The app follows the Windows display language (Russian on a Russian Windows, Chinese on a Chinese one, English otherwise); pick another one any time in Settings → Language — it switches at once, no restart. Translations live in [`src/loc.rs`](src/loc.rs); corrections and new languages are welcome.
 
 ## Updates
 
@@ -143,24 +143,22 @@ Everything is in Settings → Updates: status, what's new, "Check now" and the a
 
 Files in `%LOCALAPPDATA%\BatteryTray`: `settings.json` (reminder levels, names, hidden devices, language), `state.json` (last known levels), `log.txt` (connections, level changes, reminders). If a hand edit leaves a mistake in `settings.json`, the app keeps the file as it was in `settings.json.bak`: a value of the wrong type just goes back to its default, while a file that is no longer valid JSON (a missing comma, a stray quote) starts over from the defaults.
 
-A new device family is one module in [`rust/src/providers/`](rust/src/providers) implementing the `Provider` trait: poll the hardware, say when to poll again. More on the code in [rust/README.md](rust/README.md).
+A new device family is one module in [`src/providers/`](src/providers) implementing the `Provider` trait: poll the hardware, say when to poll again. More on the code in [docs/development.md](docs/development.md).
 
 ## Build from source
 
 Needs [Rust](https://rustup.rs) and the MSVC build tools with a Windows SDK (the "Desktop development with C++" workload of the Visual Studio Build Tools).
 
 ```
-cd rust
-cargo build --release               # rust\target\release\BatteryTray.exe
+cargo build --release               # target\release\BatteryTray.exe
 cargo test                          # tests (no hardware polling or access to your saved settings)
-cd ..
 install.cmd                         # build and install
 powershell -File build-release.ps1  # release exe and zip in dist\
 ```
 
 ### Releasing a version
 
-1. Raise `version` in `rust/Cargo.toml`.
+1. Raise `version` in `Cargo.toml`.
 2. `powershell -File build-release.ps1`.
 3. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe --title "BatteryTray X.Y.Z" --notes "what's new"`.
 
