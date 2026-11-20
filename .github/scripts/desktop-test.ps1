@@ -309,6 +309,11 @@ while ($true) {
     $dump = Join-Path $Out 'dump.txt'
     Assert-That ((Invoke-Exe $installed "--dump `"$dump`"" 120) -eq 0 -and (Test-Path $dump)) '--dump wrote the readings'
     Get-Content $dump | Select-Object -First 12 | ForEach-Object { Write-Host "  | $_" }
+    # What a copy without admin rights has an elevated copy of itself do (behind a UAC prompt, which a runner lacks)
+    Set-Feed $Newer
+    Assert-That ((Invoke-Exe $installed '--update' 120) -eq 0) '--update installed the newer release'
+    Assert-That ((Get-ExeVersion $installed) -eq $newerVersion) "Program Files has $newerVersion"
+    Assert-That ((Invoke-Exe $installed '--update' 120) -eq 2) '--update again says there is nothing newer'
     $code = Invoke-Script (Join-Path $package 'uninstall.ps1')
     Assert-That ($code -eq 0 -and -not (Test-Path (Split-Path $installed))) 'uninstalled again'
 
