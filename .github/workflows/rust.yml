@@ -2,9 +2,9 @@ name: Rust
 
 on:
   push:
-    paths: ["rust/**", ".cargo/**", "app.ico", "app.manifest", ".github/workflows/rust.yml", ".github/scripts/**"]
+    paths: ["src/**", "ui/**", "examples/**", "Cargo.toml", "Cargo.lock", "build.rs", "rustfmt.toml", ".cargo/**", "app.ico", "app.manifest", ".github/workflows/rust.yml", ".github/scripts/**"]
   pull_request:
-    paths: ["rust/**", ".cargo/**", "app.ico", "app.manifest", ".github/workflows/rust.yml", ".github/scripts/**"]
+    paths: ["src/**", "ui/**", "examples/**", "Cargo.toml", "Cargo.lock", "build.rs", "rustfmt.toml", ".cargo/**", "app.ico", "app.manifest", ".github/workflows/rust.yml", ".github/scripts/**"]
 
 permissions:
   contents: read
@@ -13,9 +13,6 @@ jobs:
   check:
     # The app is Windows-only; the runner has the MSVC tools and the Windows SDK (rc.exe) build.rs needs
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: rust
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
@@ -25,8 +22,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/target
-          key: rust-${{ hashFiles('rust/Cargo.lock') }}
+            target
+          key: rust-${{ hashFiles('Cargo.lock') }}
       - name: Formatting
         run: cargo fmt --check
       - name: Lints
@@ -48,14 +45,14 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/target
-          key: rust-release-${{ hashFiles('rust/Cargo.lock', '.cargo/config.toml') }}
+            target
+          key: rust-release-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
       - name: Build
-        run: cargo build --release --locked --manifest-path rust/Cargo.toml
+        run: cargo build --release --locked
       - name: The check catches an exe that needs the redistributable
         # 1.99.0 was built without the C runtime in it
         run: |
           curl.exe -sSfL -o "$env:RUNNER_TEMP\BatteryTray-1.99.0.exe" https://github.com/qu1ncky/BatteryTray/releases/download/v1.99.0/BatteryTray.exe
           .github/scripts/clean-windows.ps1 "$env:RUNNER_TEMP\BatteryTray-1.99.0.exe" -MustFail
       - name: The exe starts on a clean Windows
-        run: .github/scripts/clean-windows.ps1 rust/target/release/BatteryTray.exe
+        run: .github/scripts/clean-windows.ps1 target/release/BatteryTray.exe
