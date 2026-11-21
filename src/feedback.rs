@@ -93,6 +93,7 @@ pub fn issue_url(version: &str, windows_build: u32, language: &str) -> String {
 }
 
 /// The same on macOS: the app's version, the macOS version ("26.6.2"), the language.
+#[cfg(target_os = "macos")]
 pub fn issue_url_macos(version: &str, macos: &str, language: &str) -> String {
     let about = loc::t_in(language, "feedback.about.mac").replace("{0}", version).replace("{1}", macos);
     link(&about, language)
@@ -163,6 +164,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn the_macos_link_names_macos() {
         let url = issue_url_macos("2.2.0", "26.6.2", "en");
         assert!(
