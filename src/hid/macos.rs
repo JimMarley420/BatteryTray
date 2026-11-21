@@ -29,8 +29,9 @@ const BLUETOOTH_LE: &str = "{00001812-0000-1000-8000-00805f9b34fb}";
 const QUEUE: usize = 32;
 
 const IO_RETURN_SUCCESS: i32 = 0;
-const RUN_FINISHED: i32 = 1;
 const IO_RETURN_TIMEOUT: i32 = 0xE000_02D6_u32 as i32;
+const IO_RETURN_ABORTED: i32 = 0xE000_02EB_u32 as i32;
+const USB_TRANSACTION_TIMEOUT: i32 = 0xE000_4051_u32 as i32;
 const IO_RETURN_UNSUPPORTED: i32 = 0xE000_02C7_u32 as i32;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -396,46 +397,83 @@ extern "C" fn on_input(
     inbox.take(unsafe { std::slice::from_raw_parts(report, length as usize) });
 }
 
-/// The thread whose run loop the device's callbacks run on.
+/// The thread whose run loop the device's callbacks run on. It is stopped through a source of its own: a signal stays
+/// pending until the loop next runs, so a stop that comes between two runs isn't lost (CFRunLoopStop would be), and
+/// the loop, which only its thread keeps alive, is held here until the thread has ended.
 struct RunLoop {
     run_loop: usize,
+    wake: usize,
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
+extern "C" fn woken(_info: *const c_void) {}
+
 impl RunLoop {
     fn start(device: usize) -> Option<Self> {
+        let mut context = SourceContext { version: 0, perform: Some(woken), ..SourceContext::default() };
+        let wake = unsafe { CFRunLoopSourceCreate(std::ptr::null(), 0, &mut context) } as usize;
+        if wake == 0 {
+            return None;
+        }
         let stop = Arc::new(AtomicBool::new(false));
         let (sender, receiver) = std::sync::mpsc::channel();
         let flag = stop.clone();
-        let thread = std::thread::Builder::new()
-            .name("hid input".into())
-            .spawn(move || unsafe {
-                let run_loop = CFRunLoopGetCurrent();
-                IOHIDDeviceScheduleWithRunLoop(device as CFTypeRef, run_loop, kCFRunLoopDefaultMode);
-                let _ = sender.send(run_loop as usize);
-                while !flag.load(Ordering::Acquire) {
-                    // Finished at once: nothing to wait on (the device took no input source), so no busy loop
-                    if CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, 0) == RUN_FINISHED {
-                        std::thread::sleep(Duration::from_millis(100));
-                    }
-                }
-                IOHIDDeviceUnscheduleFromRunLoop(device as CFTypeRef, run_loop, kCFRunLoopDefaultMode);
-            })
-            .ok()?;
-        let run_loop = receiver.recv().ok()?;
-        Some(Self { run_loop, stop, thread: Some(thread) })
+        let thread = std::thread::Builder::new().name("hid input".into()).spawn(move || unsafe {
+            let run_loop = CFRunLoopGetCurrent();
+            mac::CFRetain(run_loop);
+            CFRunLoopAddSource(run_loop, wake as CFTypeRef, kCFRunLoopDefaultMode);
+            IOHIDDeviceScheduleWithRunLoop(device as CFTypeRef, run_loop, kCFRunLoopDefaultMode);
+            let _ = sender.send(run_loop as usize);
+            // Back after each report or wake-up, to look at the flag
+            while !flag.load(Ordering::Acquire) {
+                CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, 1);
+            }
+            IOHIDDeviceUnscheduleFromRunLoop(device as CFTypeRef, run_loop, kCFRunLoopDefaultMode);
+            CFRunLoopRemoveSource(run_loop, wake as CFTypeRef, kCFRunLoopDefaultMode);
+        });
+        let started = thread.ok().and_then(|thread| receiver.recv().ok().map(|run_loop| (thread, run_loop)));
+        match started {
+            Some((thread, run_loop)) => Some(Self { run_loop, wake, stop, thread: Some(thread) }),
+            None => {
+                unsafe { mac::CFRelease(wake as CFTypeRef) };
+                None
+            }
+        }
     }
 }
 
 impl Drop for RunLoop {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
-        unsafe { CFRunLoopStop(self.run_loop as CFTypeRef) };
+        unsafe {
+            CFRunLoopSourceSignal(self.wake as CFTypeRef);
+            CFRunLoopWakeUp(self.run_loop as CFTypeRef);
+        }
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+        unsafe {
+            mac::CFRelease(self.wake as CFTypeRef);
+            mac::CFRelease(self.run_loop as CFTypeRef);
+        }
     }
+}
+
+/// CFRunLoopSourceContext, version 0: only `perform` is used.
+#[repr(C)]
+#[derive(Default)]
+struct SourceContext {
+    version: isize,
+    info: usize,
+    retain: usize,
+    release: usize,
+    copy_description: usize,
+    equal: usize,
+    hash: usize,
+    schedule: usize,
+    cancel: usize,
+    perform: Option<extern "C" fn(*const c_void)>,
 }
 
 /// Read/write handle to one HID collection.
@@ -561,9 +599,10 @@ impl HidDevice {
             }
             result = sent.done.wait_timeout(result, left).unwrap_or_else(|e| e.into_inner()).0;
         }
+        // A report not taken in time comes back timed out, or aborted by the timeout on some transports
         match result.unwrap_or(IO_RETURN_TIMEOUT) {
             IO_RETURN_SUCCESS => Ok(true),
-            IO_RETURN_TIMEOUT => Ok(false),
+            IO_RETURN_TIMEOUT | IO_RETURN_ABORTED | USB_TRANSACTION_TIMEOUT => Ok(false),
             code => Err(Error::os(code as u32)),
         }
     }
@@ -706,7 +745,11 @@ extern "C" {
     static kCFRunLoopDefaultMode: CFTypeRef;
     fn CFRunLoopGetCurrent() -> CFTypeRef;
     fn CFRunLoopRunInMode(mode: CFTypeRef, seconds: f64, return_after_source: u8) -> i32;
-    fn CFRunLoopStop(run_loop: CFTypeRef);
+    fn CFRunLoopWakeUp(run_loop: CFTypeRef);
+    fn CFRunLoopSourceCreate(allocator: CFTypeRef, order: isize, context: *mut SourceContext) -> CFTypeRef;
+    fn CFRunLoopAddSource(run_loop: CFTypeRef, source: CFTypeRef, mode: CFTypeRef);
+    fn CFRunLoopRemoveSource(run_loop: CFTypeRef, source: CFTypeRef, mode: CFTypeRef);
+    fn CFRunLoopSourceSignal(source: CFTypeRef);
 }
 
 #[cfg(test)]

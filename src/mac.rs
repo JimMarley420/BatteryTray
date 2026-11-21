@@ -142,6 +142,7 @@ pub fn macos_version() -> String {
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     pub fn CFRelease(object: CFTypeRef);
+    pub fn CFRetain(object: CFTypeRef) -> CFTypeRef;
     pub fn CFGetTypeID(object: CFTypeRef) -> usize;
     fn CFStringGetTypeID() -> usize;
     fn CFNumberGetTypeID() -> usize;

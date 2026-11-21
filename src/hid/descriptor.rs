@@ -48,7 +48,7 @@ impl Field {
     pub fn bit_of(&self, usage_page: u16, usage: u16) -> Option<usize> {
         let wanted = ((usage_page as u32) << 16) | usage as u32;
         let index = self.usages.iter().position(|&u| u == wanted)?;
-        (index < self.count).then(|| self.offset + index * self.size)
+        (index < self.count).then(|| self.offset.checked_add(index.checked_mul(self.size)?)).flatten()
     }
 }
 
@@ -69,6 +69,24 @@ struct Globals {
     report_count: usize,
 }
 
+/// A local Usage item: its value, and whether it names its page itself (a 4-byte item).
+#[derive(Clone, Copy)]
+struct Usage {
+    value: u32,
+    paged: bool,
+}
+
+impl Usage {
+    /// Page in the high 16 bits, usage in the low ones: the item's own page, or `page`.
+    fn full(self, page: u16) -> u32 {
+        if self.paged {
+            self.value
+        } else {
+            ((page as u32) << 16) | (self.value & 0xFFFF)
+        }
+    }
+}
+
 /// Bits used so far by each report: (kind, report ID) and its length in bits.
 type Lengths = Vec<((Kind, u8), usize)>;
 
@@ -79,8 +97,10 @@ pub fn parse(bytes: &[u8]) -> Descriptor {
     let mut result = Descriptor::default();
     let mut globals = Globals::default();
     let mut stack: Vec<Globals> = Vec::new();
-    let mut usages: Vec<u32> = Vec::new();
-    let (mut usage_min, mut usage_max): (Option<u32>, Option<u32>) = (None, None);
+    // Local usages as given: a 4-byte one names its page, a shorter one takes the page in effect at the main item it
+    // belongs to (as Windows' parser does: a Usage Page may follow the Usage it applies to)
+    let mut usages: Vec<Usage> = Vec::new();
+    let (mut usage_min, mut usage_max): (Option<Usage>, Option<Usage>) = (None, None);
     let mut depth = 0usize;
     let mut lengths: Lengths = Vec::new();
     // The top-level collection each report belongs to
@@ -108,9 +128,7 @@ pub fn parse(bytes: &[u8]) -> Descriptor {
             4 => unsigned as i32,
             _ => 0,
         };
-        // A usage given in 4 bytes names its page itself
-        let full_usage =
-            |value: u32, page: u16| if size == 4 { value } else { ((page as u32) << 16) | (value & 0xFFFF) };
+        let usage = Usage { value: unsigned, paged: size == 4 };
         let (kind, tag) = ((prefix >> 2) & 0x03, prefix >> 4);
         match kind {
             // Main
@@ -123,19 +141,23 @@ pub fn parse(bytes: &[u8]) -> Descriptor {
                             _ => Kind::Feature,
                         };
                         let key = (field_kind, globals.report_id);
-                        let bits = globals.report_size * globals.report_count;
+                        let page = globals.usage_page;
+                        // Sizes and counts as large as a 4-byte item holds add up without overflowing
+                        let bits = globals.report_size.saturating_mul(globals.report_count);
                         let offset = match lengths.iter_mut().find(|l| l.0 == key) {
                             Some(l) => {
-                                l.1 += bits;
-                                l.1 - bits
+                                let offset = l.1;
+                                l.1 = l.1.saturating_add(bits);
+                                offset
                             }
                             None => {
                                 lengths.push((key, bits));
                                 0
                             }
                         };
-                        let mut field_usages = usages.clone();
-                        if let (Some(lo), Some(hi)) = (usage_min, usage_max) {
+                        let mut field_usages: Vec<u32> = usages.iter().map(|u| u.full(page)).collect();
+                        if let (Some(lo), Some(hi)) = (usage_min.map(|u| u.full(page)), usage_max.map(|u| u.full(page)))
+                        {
                             if hi >= lo && hi - lo < MAX_USAGES {
                                 field_usages.extend(lo..=hi);
                             }
@@ -165,7 +187,8 @@ pub fn parse(bytes: &[u8]) -> Descriptor {
                     }
                     0xA => {
                         if depth == 0 {
-                            let usage = usages.first().copied().or(usage_min).unwrap_or(0);
+                            let page = globals.usage_page;
+                            let usage = usages.first().or(usage_min.as_ref()).map_or(0, |u| u.full(page));
                             result.collections.push(Collection {
                                 usage_page: (usage >> 16) as u16,
                                 usage: usage as u16,
@@ -197,9 +220,9 @@ pub fn parse(bytes: &[u8]) -> Descriptor {
             },
             // Local
             2 => match tag {
-                0x0 => usages.push(full_usage(unsigned, globals.usage_page)),
-                0x1 => usage_min = Some(full_usage(unsigned, globals.usage_page)),
-                0x2 => usage_max = Some(full_usage(unsigned, globals.usage_page)),
+                0x0 => usages.push(usage),
+                0x1 => usage_min = Some(usage),
+                0x2 => usage_max = Some(usage),
                 _ => {}
             },
             _ => {}
@@ -243,7 +266,7 @@ pub fn value_at(report: &[u8], bit: usize, size: usize) -> Option<u32> {
         return None;
     }
     let data = report.get(1..)?;
-    if (bit + size).div_ceil(8) > data.len() {
+    if bit.checked_add(size)?.div_ceil(8) > data.len() {
         return None;
     }
     let mut value = 0u64;
@@ -338,6 +361,27 @@ mod tests {
         ]);
         let f = &d.collections[0].fields[0];
         assert_eq!((f.logical_min, f.logical_max), (0, -1));
+    }
+
+    #[test]
+    fn a_usage_page_after_the_usage_still_counts_for_it() {
+        // Usage 01, then Usage Page 0C, then the collection: a Consumer Control collection on Windows
+        let d = parse(&[
+            0x05, 0x01, 0x09, 0x01, 0x05, 0x0C, 0xA1, 0x01, 0x09, 0xE9, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x01,
+            0x81, 0x02, 0xC0,
+        ]);
+        assert_eq!((d.collections[0].usage_page, d.collections[0].usage), (0x0C, 0x01));
+        assert_eq!(d.collections[0].fields[0].bit_of(0x0C, 0xE9), Some(0));
+        // A 4-byte usage keeps its own page whatever the page in effect
+        let d = parse(&[0x05, 0x0C, 0x0B, 0x02, 0x00, 0x01, 0x00, 0xA1, 0x01, 0xC0]);
+        assert_eq!((d.collections[0].usage_page, d.collections[0].usage), (0x01, 0x02));
+    }
+
+    #[test]
+    fn huge_sizes_and_counts_never_overflow() {
+        let d = parse(&[0x77, 0xFF, 0xFF, 0xFF, 0xFF, 0x97, 0xFF, 0xFF, 0xFF, 0xFF, 0x81, 0x00, 0x81, 0x00]);
+        assert_eq!(d.collections.len(), 1);
+        assert_eq!(value_at(&[0, 1], usize::MAX, 8), None);
     }
 
     #[test]
