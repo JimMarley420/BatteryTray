@@ -16,6 +16,7 @@ pub mod sonix_keyboard;
 pub mod standard_hid;
 pub mod steelseries;
 pub mod xenta;
+#[cfg(windows)]
 pub mod xinput;
 
 use crate::hid::HidInfo;
@@ -39,9 +40,10 @@ pub trait Provider: Send {
     fn set_pusher(&mut self, _push: Pusher) {}
 }
 
-/// Every provider, in the order the C# app polls them.
+/// Every provider, in the order the C# app polls them. macOS has no XInput: an Xbox controller reaches a Mac over
+/// Bluetooth only, where the Bluetooth provider has its level from macOS.
 pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
-    vec![
+    let mut providers: Vec<Box<dyn Provider>> = vec![
         Box::new(barracuda::RazerBarracudaProvider::new(state.clone())),
         Box::new(rongyuan::RongyuanDongleProvider::new(state.clone())),
         Box::new(xenta::XentaReceiverProvider::new(state.clone())),
@@ -65,10 +67,12 @@ pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
         Box::new(devices::controllers::SteamControllerProvider::default()),
         Box::new(logitech::LogitechProvider::default()),
         Box::new(playstation::PlayStationProvider),
-        Box::new(xinput::XInputProvider),
-        Box::new(bluetooth::BluetoothProvider),
-        Box::new(standard_hid::StandardHidBatteryProvider),
-    ]
+    ];
+    #[cfg(windows)]
+    providers.push(Box::new(xinput::XInputProvider));
+    providers.push(Box::new(bluetooth::BluetoothProvider));
+    providers.push(Box::new(standard_hid::StandardHidBatteryProvider));
+    providers
 }
 
 /// Tells the device of a row whose USB IDs unrelated products share from somebody else's device with the same IDs:

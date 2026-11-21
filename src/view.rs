@@ -1,0 +1,550 @@
+//! What the windows show, worked out from the app's state the same way on both systems: a device as the list shows it,
+//! the update status, the number and tooltip of the tray icon (the menu bar item on macOS), the overlay's entries.
+//! The Windows windows (Slint) and the macOS app (SwiftUI, through macos/core) both draw from these.
+
+use crate::loc::{self, t, tf};
+use crate::reading::DeviceKind;
+use crate::rows::{self, Block, DeviceRow};
+use crate::settings::AppSettings;
+use crate::update_service::{Stage, Status};
+use crate::updater::Version;
+use chrono::{DateTime, Local};
+
+pub type Rgb = (u8, u8, u8);
+
+/// The level color a device shows at: its own thresholds when set, the global ones otherwise.
+pub fn level_color(level: Option<i32>, charging: bool, online: bool, id: &str, s: &AppSettings) -> Rgb {
+    const GOOD: Rgb = (0x6C, 0xCB, 0x5F);
+    const WARN: Rgb = (0xF7, 0xC0, 0x4A);
+    const BAD: Rgb = (0xFF, 0x6B, 0x6B);
+    const CHARGE: Rgb = (0x60, 0xCD, 0xFF);
+    const OFFLINE: Rgb = (0x7A, 0x7A, 0x7A);
+    match level {
+        _ if !online => OFFLINE,
+        _ if charging => CHARGE,
+        None => OFFLINE,
+        Some(l) if l <= s.critical_for(id) => BAD,
+        Some(l) if l <= s.low_for(id) => WARN,
+        Some(_) => GOOD,
+    }
+}
+
+/// One device as any part of the list shows it (a card, a "Not connected" row, a hidden row), and what its menu and
+/// its name field start from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeviceView {
+    pub id: String,
+    pub name: String,
+    pub kind: DeviceKind,
+    pub subtitle: String,
+    pub connected: bool,
+    pub pinned: bool,
+    pub level_text: String,
+    pub color: Rgb,
+    pub charging: bool,
+    /// Charging with no readable level: the bar is drawn full and faint, the lightning alone says it all
+    pub indeterminate: bool,
+    /// How much of the level bar is filled, 0 to 1
+    pub fill: f32,
+    pub custom_name: String,
+    pub own_name: String,
+    /// "via · own name", shown while the name is typed
+    pub source: String,
+    pub alerts: bool,
+    pub low: i32,
+    pub critical: i32,
+    pub own_levels: bool,
+}
+
+/// The device list as the window shows it, block by block.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeviceLists<T> {
+    pub pinned: Vec<T>,
+    pub connected: Vec<T>,
+    pub offline: Vec<T>,
+    pub hidden: Vec<T>,
+    /// No device of the first two blocks is connected: the window says so instead
+    pub none_online: bool,
+}
+
+impl<T> DeviceLists<T> {
+    pub fn map<U>(self, f: impl Fn(T) -> U) -> DeviceLists<U> {
+        DeviceLists {
+            pinned: self.pinned.into_iter().map(&f).collect(),
+            connected: self.connected.into_iter().map(&f).collect(),
+            offline: self.offline.into_iter().map(&f).collect(),
+            hidden: self.hidden.into_iter().map(&f).collect(),
+            none_online: self.none_online,
+        }
+    }
+}
+
+/// The rows in the list's order, each in the block it is shown in.
+pub fn device_lists(rows: &[DeviceRow], s: &AppSettings, now: DateTime<Local>) -> DeviceLists<DeviceView> {
+    let mut lists = DeviceLists {
+        pinned: Vec::new(),
+        connected: Vec::new(),
+        offline: Vec::new(),
+        hidden: Vec::new(),
+        none_online: true,
+    };
+    for row in rows::list_order(rows, s) {
+        let block = rows::block(row, s);
+        // A pinned device is shown with or without a connection; a hidden one doesn't count
+        if row.online() && matches!(block, Block::Pinned | Block::Connected) {
+            lists.none_online = false;
+        }
+        let view = device_view(row, s, now);
+        match block {
+            Block::Pinned => lists.pinned.push(view),
+            Block::Connected => lists.connected.push(view),
+            Block::Offline => lists.offline.push(view),
+            Block::Hidden => lists.hidden.push(view),
+        }
+    }
+    lists
+}
+
+pub fn device_view(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> DeviceView {
+    let mut parts = Vec::new();
+    let (mut level, mut estimate, mut unknown, mut charging) = (None, false, false, false);
+    let mut color = (0x7A, 0x7A, 0x7A);
+    if row.online() {
+        let cur = row.current.as_ref().expect("online rows have a reading");
+        level = cur.level;
+        estimate = cur.estimate;
+        unknown = cur.charging && level.is_none();
+        if cur.charging {
+            parts.push(t("state.charging"));
+        } else if cur.full_on_charger {
+            parts.push(t("state.full"));
+        }
+        parts.push(cur.via.clone());
+        if let Some(detail) = cur.detail.as_ref().filter(|d| !d.is_empty()) {
+            parts.push(detail.clone());
+        }
+        charging = cur.charging;
+        color = level_color(level, cur.charging, true, &row.id, s);
+    } else {
+        // The reason, when the provider knows it ("asleep or off"), reads better than a bare "Not connected"
+        let why = row.current.as_ref().and_then(|c| c.detail.clone()).filter(|d| !d.is_empty());
+        parts.push(match why {
+            Some(why) => {
+                let mut chars = why.chars();
+                chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
+            }
+            None => t("state.offline"),
+        });
+        if let Some(last) = &row.last {
+            if let Some(was) = last.level {
+                parts.push(tf("last.seen", &[&was, &ago(last.time, now)]));
+            }
+        }
+    }
+    let ds = s.device(&row.id);
+    let any = row.any();
+    DeviceView {
+        id: row.id.clone(),
+        name: row.name.clone(),
+        kind: row.kind(),
+        subtitle: parts.join(" · "),
+        connected: row.online(),
+        pinned: s.is_pinned(&row.id),
+        // An estimate is marked as one; while charging with no readable level the lightning alone says it all
+        level_text: match level {
+            Some(l) => format!("{}{l}%", if estimate { "≈" } else { "" }),
+            None if unknown => String::new(),
+            None => "—".into(),
+        },
+        color,
+        charging,
+        indeterminate: unknown,
+        fill: (level.unwrap_or(0) as f32 / 100.0).clamp(0.0, 1.0),
+        custom_name: ds.name.clone().unwrap_or_default(),
+        own_name: any.name.clone(),
+        source: format!("{} · {}", any.via, any.name),
+        alerts: ds.alerts,
+        low: s.low_for(&row.id),
+        critical: s.critical_for(&row.id),
+        own_levels: ds.low_percent.is_some() || ds.critical_percent.is_some(),
+    }
+}
+
+/// "just now", "5 min ago", "3 h ago", then the day and time.
+pub fn ago(time: DateTime<Local>, now: DateTime<Local>) -> String {
+    let d = now - time;
+    if d.num_minutes() < 1 {
+        t("ago.now")
+    } else if d.num_hours() < 1 {
+        tf("ago.min", &[&d.num_minutes()])
+    } else if d.num_days() < 1 {
+        tf("ago.hours", &[&d.num_hours()])
+    } else {
+        loc::date_time(&time)
+    }
+}
+
+/// "Updated at 15:40:53", or that the devices are still being asked.
+pub fn updated_text(rows: &[DeviceRow]) -> String {
+    match rows.iter().filter_map(|r| r.current.as_ref().map(|c| c.time)).max() {
+        Some(time) => tf("updated.at", &[&time.format("%H:%M:%S")]),
+        None => t("polling"),
+    }
+}
+
+/// The updates card and the update banner.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UpdateView {
+    pub status: String,
+    /// When it was last asked, as a second line while there is nothing newer
+    pub checked: String,
+    pub install_visible: bool,
+    pub install_text: String,
+    pub check_enabled: bool,
+    /// The release notes (Markdown, shown as plain text) of a newer version
+    pub notes: String,
+    pub banner_visible: bool,
+    pub banner_text: String,
+    pub banner_button_visible: bool,
+}
+
+pub fn update_view(u: &Status) -> UpdateView {
+    let version = Version::current().to_string();
+    let latest = u.latest.as_ref().map(|l| l.version.to_string()).unwrap_or_default();
+    let status = match u.stage {
+        Stage::Checking => t("upd.checking"),
+        Stage::UpToDate => tf("upd.uptodate", &[&version]),
+        Stage::Available => tf("upd.available", &[&latest, &version]),
+        Stage::Installing if u.progress > 0 && u.progress < 100 => tf("upd.downloading", &[&latest, &u.progress]),
+        Stage::Installing => tf("upd.installing", &[&latest]),
+        Stage::Failed => tf("upd.failed", &[&u.error.clone().unwrap_or_default()]),
+        Stage::NotChecked => tf("upd.idle", &[&version]),
+    };
+    let checked = match u.last_check {
+        Some(c) if u.stage == Stage::UpToDate => tf("upd.checked", &[&c.format("%H:%M")]),
+        _ => String::new(),
+    };
+    let newer = u.newer_available();
+    let notes = if newer {
+        u.latest.as_ref().map(|l| l.notes.replace("**", "").replace('`', "").trim().to_string())
+    } else {
+        None
+    }
+    .unwrap_or_default();
+    let notes = if notes.chars().count() > 600 {
+        notes.chars().take(600).collect::<String>().trim_end().to_string() + "…"
+    } else {
+        notes
+    };
+    UpdateView {
+        checked,
+        install_visible: newer && matches!(u.stage, Stage::Available | Stage::Failed),
+        install_text: tf("upd.install", &[&latest]),
+        check_enabled: !matches!(u.stage, Stage::Checking | Stage::Installing),
+        notes,
+        banner_visible: newer && matches!(u.stage, Stage::Available | Stage::Installing),
+        banner_text: if u.stage == Stage::Installing { status.clone() } else { tf("upd.banner", &[&latest]) },
+        banner_button_visible: u.stage == Stage::Available,
+        status,
+    }
+}
+
+/// The tray icon (the menu bar item on macOS): a number in a color, and a line per device.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrayView {
+    pub label: String,
+    pub color: Rgb,
+    /// One line per device on the air, in the list's order; empty when no level is known
+    pub lines: Vec<String>,
+    /// The lines joined, or "no data"
+    pub tooltip: String,
+}
+
+pub fn tray_view(rows: &[DeviceRow], s: &AppSettings) -> TrayView {
+    // In the order of the window's list
+    let shown: Vec<&DeviceRow> =
+        rows::list_order(rows, s).into_iter().filter(|r| r.online() && !s.device(&r.id).hidden).collect();
+    // A device charging without a readable level is listed too, without a made-up number
+    let lines: Vec<String> = shown
+        .iter()
+        .filter_map(|r| {
+            let c = r.current.as_ref()?;
+            match c.level {
+                Some(l) => Some(format!(
+                    "{}: {}{l}%{}",
+                    short(&r.name),
+                    if c.estimate { "≈" } else { "" },
+                    if c.charging { " ⚡" } else { "" }
+                )),
+                None if c.charging => Some(tf("tray.charging", &[&short(&r.name)])),
+                None => None,
+            }
+        })
+        .collect();
+    let tooltip = if lines.is_empty() { t("tray.nodata") } else { lines.join("\n") };
+
+    // The icon shows the device that needs charging most by its own levels: a critical one first, then one below its
+    // reminder level, the least charged among equals; charging ones only when nothing else is left
+    let live: Vec<(&DeviceRow, bool, i32)> =
+        shown.iter().filter_map(|r| r.current.as_ref().and_then(|c| c.level.map(|l| (*r, c.charging, l)))).collect();
+    let urgency = |id: &str, level: i32| {
+        if level <= s.critical_for(id) {
+            2
+        } else if level <= s.low_for(id) {
+            1
+        } else {
+            0
+        }
+    };
+    let pick = live
+        .iter()
+        .filter(|(_, charging, _)| !charging)
+        .min_by_key(|(r, _, l)| (std::cmp::Reverse(urgency(&r.id, *l)), *l))
+        .or_else(|| live.iter().min_by_key(|(_, _, l)| *l));
+    let (label, color) = match pick {
+        None => ("--".to_string(), (0x80, 0x80, 0x80)),
+        Some((r, charging, l)) => (l.to_string(), level_color(Some(*l), *charging, true, &r.id, s)),
+    };
+    TrayView { label, color, lines, tooltip }
+}
+
+/// A name as the tooltip has room for it.
+pub fn short(name: &str) -> String {
+    if name.chars().count() > 24 {
+        name.chars().take(23).collect::<String>() + "…"
+    } else {
+        name.to_string()
+    }
+}
+
+/// The devices the overlay shows: on the air and not hidden, in the order of the list (never by level). Names are
+/// shown for kinds that occur more than once, or for all when the settings say so.
+pub fn overlay_select<'a>(rows: &'a [DeviceRow], settings: &AppSettings) -> Vec<(&'a DeviceRow, bool)> {
+    let shown: Vec<&DeviceRow> = crate::rows::list_order(rows, settings)
+        .into_iter()
+        .filter(|r| r.online() && !settings.device(&r.id).hidden)
+        .collect();
+    let kinds: Vec<DeviceKind> = shown.iter().map(|r| r.kind()).collect();
+    let duplicate = |k: DeviceKind| kinds.iter().filter(|&&x| x == k).count() > 1;
+    shown.into_iter().map(|r| (r, settings.overlay_show_names || duplicate(r.kind()))).collect()
+}
+
+/// One device in the overlay.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OverlayEntryView {
+    pub kind: DeviceKind,
+    pub name: String,
+    pub show_name: bool,
+    pub level: String,
+    pub color: Rgb,
+    /// Charging or full on its charger: the lightning follows the level
+    pub power: bool,
+}
+
+pub fn overlay_entries(rows: &[DeviceRow], s: &AppSettings) -> Vec<OverlayEntryView> {
+    overlay_select(rows, s)
+        .into_iter()
+        .map(|(row, show_name)| {
+            let c = row.current.as_ref().expect("shown rows are on the air");
+            let power = c.charging || c.full_on_charger;
+            OverlayEntryView {
+                kind: row.kind(),
+                name: row.name.clone(),
+                show_name,
+                level: match c.level {
+                    Some(l) => format!("{}{l}%", if c.estimate { "≈" } else { "" }),
+                    None if power => String::new(),
+                    None => "—".into(),
+                },
+                color: level_color(c.level, power, true, &row.id, s),
+                power,
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reading::DeviceReading;
+
+    fn row(id: &str, kind: DeviceKind, online: bool) -> DeviceRow {
+        let reading = DeviceReading { online, level: Some(50), ..DeviceReading::new(id, id, kind, "2.4 GHz") };
+        DeviceRow { id: id.into(), current: Some(reading.clone()), last: Some(reading), name: id.into() }
+    }
+
+    fn ids(list: &[DeviceView]) -> Vec<&str> {
+        list.iter().map(|d| d.id.as_str()).collect()
+    }
+
+    #[test]
+    fn a_device_is_listed_in_one_block_in_list_order() {
+        let rows = [
+            row("mouse", DeviceKind::Mouse, false),
+            row("hidden", DeviceKind::Headset, true),
+            row("keyboard", DeviceKind::Keyboard, true),
+            row("pad", DeviceKind::Gamepad, false),
+            row("headset", DeviceKind::Headset, true),
+            row("pinned-mouse", DeviceKind::Mouse, true),
+        ];
+        let mut s = AppSettings::default();
+        s.device_mut("pinned-mouse").pinned = true;
+        s.device_mut("pad").pinned = true;
+        // Hiding a pinned device keeps its pin, and it is shown with the hidden ones only
+        s.device_mut("hidden").pinned = true;
+        s.device_mut("hidden").hidden = true;
+        s.device_order = vec!["keyboard".into(), "headset".into()];
+        let lists = device_lists(&rows, &s, Local::now());
+        assert_eq!(ids(&lists.pinned), ["pinned-mouse", "pad"]);
+        assert_eq!(ids(&lists.connected), ["keyboard", "headset"]);
+        assert_eq!(ids(&lists.offline), ["mouse"]);
+        assert_eq!(ids(&lists.hidden), ["hidden"]);
+        let pad = &lists.pinned[1];
+        assert_eq!((pad.connected, pad.pinned, pad.level_text.as_str()), (false, true, "—"));
+        assert!(pad.subtitle.starts_with("Not connected · last: 50%"), "{}", pad.subtitle);
+        let keyboard = &lists.connected[0];
+        assert_eq!((keyboard.level_text.as_str(), keyboard.fill, keyboard.color), ("50%", 0.5, (0x6C, 0xCB, 0x5F)));
+    }
+
+    #[test]
+    fn no_device_online_counts_pinned_ones() {
+        let mut s = AppSettings::default();
+        assert!(device_lists(&[], &s, Local::now()).none_online, "no devices at all");
+
+        let rows = [row("pinned", DeviceKind::Mouse, true), row("away", DeviceKind::Keyboard, false)];
+        s.device_mut("pinned").pinned = true;
+        assert!(!device_lists(&rows, &s, Local::now()).none_online, "a pinned device is connected");
+
+        s.device_mut("pinned").hidden = true;
+        assert!(device_lists(&rows, &s, Local::now()).none_online, "a hidden one doesn't count");
+    }
+
+    #[test]
+    fn the_tray_shows_the_device_that_needs_charging_most() {
+        let mut s = AppSettings::default();
+        let at = |id: &str, level: i32, charging: bool| {
+            let mut r = row(id, DeviceKind::Mouse, true);
+            let c = r.current.as_mut().unwrap();
+            c.level = Some(level);
+            c.charging = charging;
+            r
+        };
+        assert_eq!(tray_view(&[], &s).label, "--");
+        assert_eq!(tray_view(&[], &s).tooltip, "Device Battery: no data");
+        let rows = [at("a", 60, false), at("b", 15, false), at("c", 5, true)];
+        let tray = tray_view(&rows, &s);
+        assert_eq!((tray.label.as_str(), tray.color), ("15", (0xF7, 0xC0, 0x4A)));
+        assert_eq!(tray.lines, ["a: 60%", "b: 15%", "c: 5% ⚡"]);
+        // Its own reminder level makes the fuller one the more urgent
+        s.device_mut("a").low_percent = Some(70);
+        s.device_mut("a").critical_percent = Some(65);
+        assert_eq!(tray_view(&rows, &s).label, "60");
+        // Only charging ones left: the least charged of them
+        assert_eq!(tray_view(&[at("c", 5, true), at("d", 40, true)], &s).label, "5");
+    }
+
+    #[test]
+    fn the_update_card_by_stage() {
+        let mut status = Status { stage: Stage::Checking, latest: None, last_check: None, progress: 0, error: None };
+        let v = update_view(&status);
+        assert!(!v.check_enabled && !v.banner_visible && !v.install_visible);
+        status.stage = Stage::Available;
+        status.latest = Some(crate::updater::ReleaseInfo {
+            version: Version(99, 0, 0),
+            tag: "v99.0.0".into(),
+            notes: "**New** `thing`".into(),
+            page_url: String::new(),
+            exe_url: String::new(),
+            exe_size: 1,
+            sha256: String::new(),
+        });
+        let v = update_view(&status);
+        assert!(v.banner_visible && v.banner_button_visible && v.install_visible && v.check_enabled);
+        assert_eq!((v.notes.as_str(), v.install_text.as_str()), ("New thing", "Update to 99.0.0"));
+        status.stage = Stage::Installing;
+        status.progress = 40;
+        let v = update_view(&status);
+        assert_eq!(v.banner_text, "Downloading version 99.0.0: 40%");
+        assert!(v.banner_visible && !v.banner_button_visible && !v.install_visible);
+    }
+
+    #[test]
+    fn filters_offline_and_hidden_devices_without_using_remembered_levels() {
+        let mut settings = AppSettings::default();
+        settings.device_mut("hidden").hidden = true;
+        let offline = row("offline", DeviceKind::Mouse, false);
+        let remembered = DeviceRow { id: "remembered".into(), current: None, ..offline.clone() };
+        let rows =
+            [row("shown", DeviceKind::Keyboard, true), offline, remembered, row("hidden", DeviceKind::Mouse, true)];
+        let result = overlay_select(&rows, &settings);
+        assert_eq!(result.iter().map(|r| r.0.id.as_str()).collect::<Vec<_>>(), ["shown"]);
+    }
+
+    #[test]
+    fn names_are_shown_only_for_duplicate_kinds_unless_enabled_for_all() {
+        let rows = [
+            row("m1", DeviceKind::Mouse, true),
+            row("m2", DeviceKind::Mouse, true),
+            row("k", DeviceKind::Keyboard, true),
+        ];
+        let mut settings = AppSettings::default();
+        for (r, show) in overlay_select(&rows, &settings) {
+            assert_eq!(show, r.kind() == DeviceKind::Mouse);
+        }
+        settings.overlay_show_names = true;
+        assert!(overlay_select(&rows, &settings).iter().all(|r| r.1));
+    }
+
+    #[test]
+    fn order_does_not_follow_battery_levels() {
+        let rows: Vec<DeviceRow> = (0..20).rev().map(|i| row(&format!("{i:02}"), DeviceKind::Headset, true)).collect();
+        let settings = AppSettings::default();
+        let before: Vec<String> = overlay_select(&rows, &settings).iter().map(|r| r.0.id.clone()).collect();
+        let changed: Vec<DeviceRow> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let mut r = r.clone();
+                r.current.as_mut().unwrap().level = Some(i as i32);
+                r
+            })
+            .collect();
+        let after: Vec<String> = overlay_select(&changed, &settings).iter().map(|r| r.0.id.clone()).collect();
+        assert_eq!(before, after);
+        assert_eq!(before.len(), 20);
+    }
+
+    #[test]
+    fn the_order_is_the_lists() {
+        let rows = [
+            row("mouse", DeviceKind::Mouse, true),
+            row("off", DeviceKind::Headset, false),
+            row("headset", DeviceKind::Headset, true),
+            row("keys", DeviceKind::Keyboard, true),
+            row("pad", DeviceKind::Gamepad, true),
+        ];
+        let shown = |settings: &AppSettings| -> Vec<String> {
+            overlay_select(&rows, settings).iter().map(|r| r.0.id.clone()).collect()
+        };
+        let mut settings = AppSettings::default();
+        assert_eq!(shown(&settings), ["headset", "mouse", "keys", "pad"], "by kind and name until the user orders it");
+        // The pinned one first, then the others as the user put them; what is off or hidden is left out as before
+        settings.device_order = ["pad", "off", "keys", "headset", "mouse"].map(String::from).to_vec();
+        settings.device_mut("mouse").pinned = true;
+        assert_eq!(shown(&settings), ["mouse", "pad", "keys", "headset"]);
+        settings.device_mut("keys").hidden = true;
+        assert_eq!(shown(&settings), ["mouse", "pad", "headset"]);
+    }
+
+    #[test]
+    fn overlay_entries_mark_estimates_and_power() {
+        let mut charging = row("c", DeviceKind::Mouse, true);
+        charging.current.as_mut().unwrap().level = None;
+        charging.current.as_mut().unwrap().charging = true;
+        let mut estimate = row("e", DeviceKind::Keyboard, true);
+        estimate.current.as_mut().unwrap().estimate = true;
+        let entries = overlay_entries(&[charging, estimate], &AppSettings::default());
+        assert_eq!((entries[0].level.as_str(), entries[0].power), ("", true));
+        assert_eq!((entries[1].level.as_str(), entries[1].power), ("≈50%", false));
+    }
+}

@@ -59,7 +59,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::providers::{contains_ignore_case, group_by, one_per_id, receiver_name, secs, sleep_ms, Provider};
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use std::time::Duration;
@@ -482,12 +482,12 @@ fn keychron_name(pid: u16) -> Option<&'static str> {
 }
 
 /// Who is paired to the receiver (it answers this itself), or None when it didn't say.
-fn keychron_8k_slots(io: &mut Io) -> win::Result<Option<Vec<(u16, u16, u8)>>> {
+fn keychron_8k_slots(io: &mut Io) -> sys::Result<Option<Vec<(u16, u16, u8)>>> {
     Ok(io.ask(&[0xB5, 0x03], |d| d.len() >= 18 && d[1] == 0x03, 8, false)?.map(|r| slots(&r, 3, false)))
 }
 
 /// The status of the mouse; one that is asleep behind its receiver doesn't answer.
-fn keychron_8k_power(io: &mut Io) -> win::Result<State> {
+fn keychron_8k_power(io: &mut Io) -> sys::Result<State> {
     Ok(io.ask(&[0xB3, 0x06], is_keychron_8k_status, 8, false)?.map_or_else(off, |r| power_byte(r[20])))
 }
 
@@ -510,11 +510,11 @@ fn is_nordic_reply(d: &[u8], command: u8, what: u8) -> bool {
     d.len() >= 13 && d[0] == command && d[3] == what
 }
 
-fn nordic_ask(io: &mut Io, command: u8, what: u8) -> win::Result<Option<Vec<u8>>> {
+fn nordic_ask(io: &mut Io, command: u8, what: u8) -> sys::Result<Option<Vec<u8>>> {
     io.ask(&nordic_request(command, what), |d| is_nordic_reply(d, command, what), 8, false)
 }
 
-fn keychron_4k(io: &mut Io) -> win::Result<State> {
+fn keychron_4k(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(KEYCHRON_TIMEOUT_MS);
     // The receiver's own answer tells the Launcher's two protocols on this collection apart, and they keep the
     // level in different places
@@ -542,7 +542,7 @@ pub fn keychron_4k_state(d: &[u8]) -> State {
 }
 
 /// The Nape Pro itself, or the one a Link-KM passes the request to.
-fn nape_battery(io: &mut Io) -> win::Result<State> {
+fn nape_battery(io: &mut Io) -> sys::Result<State> {
     let r = io.ask(&[0x00, 0xA7, 0x31], |d| d.len() >= 4 && d[0] == 0xA7 && d[1] == 0x31, 8, false)?;
     Ok(r.map_or_else(off, |r| State { full: r[3] == 2, ..battery(r[2], r[3] == 1) }))
 }
@@ -605,7 +605,7 @@ fn dms_ask(io: &mut Io, command: u8) -> Option<Vec<u8>> {
     None
 }
 
-fn machenike_l7(io: &mut Io) -> win::Result<State> {
+fn machenike_l7(io: &mut Io) -> sys::Result<State> {
     // Machenike's own tool writes and reads report 51 at its own length, which is how this was checked on an L7;
     // the collection's longest report is far longer
     io.set_feature_length(DMS_LENGTH);
@@ -624,7 +624,7 @@ pub fn machenike_state(s: &DmsStatus, cable: bool) -> State {
     on(s.level as i32, s.power == 1)
 }
 
-fn darmoshark(io: &mut Io, mouse: u16) -> win::Result<State> {
+fn darmoshark(io: &mut Io, mouse: u16) -> sys::Result<State> {
     if io.product_id() != mouse {
         // The receiver answers this one itself, at once; the status that follows comes from the mouse, and the
         // echo of this one in between is what proves that status new
@@ -639,7 +639,7 @@ fn darmoshark(io: &mut Io, mouse: u16) -> win::Result<State> {
     })
 }
 
-fn darmoshark_m3s_pro(io: &mut Io) -> win::Result<State> {
+fn darmoshark_m3s_pro(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(KEYCHRON_TIMEOUT_MS);
     let r = io.ask(&nordic_request(0x41, 0x01), is_m3s_pro_reply, 8, false)?;
     Ok(r.map_or_else(off, |r| battery(r[6], false)))
@@ -787,7 +787,7 @@ fn keychron_mouse(pid: u16, state: State) -> Paired {
     Paired { key: format!("keychron-{pid:04x}"), name, state }
 }
 
-fn link_query(io: &mut Io, pid: u16) -> win::Result<Option<Paired>> {
+fn link_query(io: &mut Io, pid: u16) -> sys::Result<Option<Paired>> {
     let is_mouse = |pid| keychron_name(pid).is_some();
     let nape = |state| Paired { key: "keychron-nape-pro".into(), name: "Keychron Nape Pro".into(), state };
     Ok(match pid {
@@ -847,7 +847,7 @@ pub fn pulsar_level(r: &[u8]) -> Option<u8> {
     (r.len() >= 65 && r[1] == 0x01 && r[2..5] == PULSAR_BATTERY).then(|| r[7])
 }
 
-fn pulsar(io: &mut Io) -> win::Result<State> {
+fn pulsar(io: &mut Io) -> sys::Result<State> {
     let wired = matches!(io.product_id(), 0x3402 | 0x3406);
     // A dongle doesn't say which of the models that ship with it is paired
     let name = (!wired).then(|| brand_mouse("Pulsar"));
@@ -923,7 +923,7 @@ fn mchose_name(product: Option<&str>) -> String {
     }
 }
 
-fn mchose_v2(io: &mut Io) -> win::Result<State> {
+fn mchose_v2(io: &mut Io) -> sys::Result<State> {
     let name = mchose_name(io.info().product.as_deref());
     let mut echoed = false;
     // M HUB reads the status on the short report; the long one is what answered on some receivers
@@ -1006,7 +1006,7 @@ pub fn mchose_v3_info(r: &[u8]) -> MchoseInfo {
     MchoseInfo::Info { linked: data[10] != 0, charging: data[11] == 1, level: data[12] }
 }
 
-fn mchose_v3(io: &mut Io) -> win::Result<State> {
+fn mchose_v3(io: &mut Io) -> sys::Result<State> {
     // The product string names the model; the ID inside the reply doesn't (an A7 V3 Ultra+ reports the A5's)
     let name = Some(mchose_name(io.info().product.as_deref()));
     // A receiver answers for an idle mouse a second after the request
@@ -1054,7 +1054,7 @@ pub fn bitmouse_value(d: &[u8], command: u8, zero: bool) -> Option<u8> {
     good.then(|| d[7])
 }
 
-fn bitmouse(io: &mut Io, zero: bool) -> win::Result<State> {
+fn bitmouse(io: &mut Io, zero: bool) -> sys::Result<State> {
     io.set_timeout(700);
     let target = u8::from(io.product_id() != ATK_ZERO_CABLE);
     let mut ask = |command: u8| {
@@ -1074,7 +1074,7 @@ fn bitmouse(io: &mut Io, zero: bool) -> win::Result<State> {
 
 // ---- MSI ----
 
-fn msi(io: &mut Io) -> win::Result<State> {
+fn msi(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(1000);
     // Only this status request is sent. MSI Center first sends 41 80, which puts the mouse under software control:
     // that one never is.
@@ -1117,7 +1117,7 @@ pub fn device_info(d: &[u8], command: u8) -> Option<DeviceInfo> {
     })
 }
 
-fn ask_device_info(io: &mut Io, command: u8, packets: u8) -> win::Result<Option<DeviceInfo>> {
+fn ask_device_info(io: &mut Io, command: u8, packets: u8) -> sys::Result<Option<DeviceInfo>> {
     io.set_timeout(400);
     for _ in 0..3 {
         // No data, so the checksum in the last byte is 0
@@ -1130,7 +1130,7 @@ fn ask_device_info(io: &mut Io, command: u8, packets: u8) -> win::Result<Option<
     Ok(None)
 }
 
-fn aj179(io: &mut Io) -> win::Result<State> {
+fn aj179(io: &mut Io) -> sys::Result<State> {
     let receiver = io.info().vendor_id != TELINK;
     let product = io.info().product.clone();
     Ok(ask_device_info(io, 0x10, 0x00)?.map_or_else(off, |info| aj179_state(info, receiver, product.as_deref())))
@@ -1149,7 +1149,7 @@ pub fn aj179_state(info: DeviceInfo, receiver: bool, product: Option<&str>) -> S
     State { name, ..if receiver && !linked { asleep() } else { battery(level, power != 0) } }
 }
 
-fn sc580(io: &mut Io) -> win::Result<State> {
+fn sc580(io: &mut Io) -> sys::Result<State> {
     Ok(ask_device_info(io, 0x30, 0x01)?.map_or_else(off, sc580_state))
 }
 
@@ -1172,7 +1172,7 @@ static DELUX_SEQUENCE: AtomicU8 = AtomicU8::new(0);
 /// and the name shouldn't change when the mouse dozes off.
 static DELUX_MODEL: AtomicU32 = AtomicU32::new(0);
 
-fn delux_m800(io: &mut Io) -> win::Result<State> {
+fn delux_m800(io: &mut Io) -> sys::Result<State> {
     let receiver = io.product_id() == 0x5B2F;
     let product = io.info().product.clone();
     let mut state = off();
@@ -1225,7 +1225,7 @@ pub fn delux_state(r: &[u8], receiver: bool) -> State {
 
 // ---- Niceboy MW400 ----
 
-fn niceboy_mw400(io: &mut Io) -> win::Result<State> {
+fn niceboy_mw400(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(500);
     let r = io.ask(&[0x05, 0x24, 0xFA, 0x48], is_niceboy_reply, 8, false)?;
     Ok(r.map_or_else(off, |r| niceboy_state(&r)))
@@ -1249,7 +1249,7 @@ pub fn niceboy_state(d: &[u8]) -> State {
 
 // ---- Mice on Sinowealth's stock receiver ----
 
-fn sinowealth_receiver(io: &mut Io) -> win::Result<State> {
+fn sinowealth_receiver(io: &mut Io) -> sys::Result<State> {
     // "M690-PRO" on that mouse's receiver; most say nothing ("2.4G Wireless Receiver") and get the row's "Mouse"
     let name = named_by(io.info().product.as_deref());
     let mut ask = |command: u8| {
@@ -1310,7 +1310,7 @@ pub fn togran_battery(r: &[u8]) -> State {
     battery((r[8] as u32 * 100 / max) as u8, r[7] == 1)
 }
 
-fn dareu_togran(io: &mut Io) -> win::Result<State> {
+fn dareu_togran(io: &mut Io) -> sys::Result<State> {
     let mut name = None;
     let slot = if io.product_id() == 0x1148 {
         0
@@ -1334,7 +1334,7 @@ pub fn is_mg6_collection(i: &HidInfo, page: u16) -> bool {
     i.usage_page == page && i.usage == 0x0001 && i.input_length == 65 && i.output_length == 65
 }
 
-fn rk_mg6_pro(io: &mut Io) -> win::Result<State> {
+fn rk_mg6_pro(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(600);
     let cable = matches!(io.product_id(), 0x00A5 | 0x00E5);
     // Other notifications arrive on the same collection

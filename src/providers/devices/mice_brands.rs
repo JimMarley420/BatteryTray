@@ -43,7 +43,7 @@ use super::{off, off_because, on, Io, Spec, State};
 use crate::hid::HidInfo;
 use crate::loc::tf;
 use crate::providers::{pad, sleep_ms};
-use crate::win;
+use crate::sys;
 
 // Mice on their cable. The receiver IDs are in the rows.
 const VAXEE_CABLE: &[u16] =
@@ -188,7 +188,7 @@ const VAXEE_HEADER: u8 = 0xA5;
 const VAXEE_LEVEL: u8 = 0x0B;
 const VAXEE_CHARGING: u8 = 0x10;
 
-fn vaxee(io: &mut Io) -> win::Result<State> {
+fn vaxee(io: &mut Io) -> sys::Result<State> {
     let name = Some(vaxee_name(io.product_id()));
     // A mouse that has just woken can let the first exchange pass: the sources try twice, 300 ms apart
     for attempt in 0..2 {
@@ -272,7 +272,7 @@ fn status_15_collection(info: &HidInfo) -> bool {
 }
 
 /// `has_full_flag`: byte 11 says the battery is full, as the PM1's web driver reads it.
-fn status_15(io: &mut Io, has_full_flag: bool) -> win::Result<State> {
+fn status_15(io: &mut Io, has_full_flag: bool) -> sys::Result<State> {
     let pid = io.product_id();
     let cable = SORA_V2_CABLE.contains(&pid) || PM1_CABLE.contains(&pid);
     let mut state = off();
@@ -332,7 +332,7 @@ fn ten_collection(info: &HidInfo) -> bool {
     info.usage_page == 0xFF01 && info.usage == 0x0001 && info.feature_length == 16
 }
 
-fn ninjutso_ten(io: &mut Io) -> win::Result<State> {
+fn ninjutso_ten(io: &mut Io) -> sys::Result<State> {
     let Some(linked) = ten_get(io, TEN_LINKED) else { return Ok(off()) };
     if linked != 1 {
         return Ok(asleep());
@@ -387,7 +387,7 @@ const ENDGAME_OK: u8 = 0x01;
 const ENDGAME_BUSY: u8 = 0x03;
 const ENDGAME_DATA: usize = 16;
 
-fn endgame_4k(io: &mut Io) -> win::Result<State> {
+fn endgame_4k(io: &mut Io) -> sys::Result<State> {
     let cable = ENDGAME_CABLE.contains(&io.product_id());
     let mut mouse = endgame_command(io, ENDGAME_MOUSE_INFO, 0x00).as_deref().and_then(endgame_mouse);
     if mouse.is_none() && !cable {
@@ -463,7 +463,7 @@ pub fn endgame_name(pid: u16) -> Option<&'static str> {
 
 // ---- Cooler Master MM712 / MM731 ----
 
-fn cooler_master(io: &mut Io) -> win::Result<State> {
+fn cooler_master(io: &mut Io) -> sys::Result<State> {
     let pid = io.product_id();
     // A sleeping mouse doesn't answer through the dongle; an awake one does at once
     io.set_timeout(600);
@@ -506,7 +506,7 @@ fn zowie_cw_collection(info: &HidInfo) -> bool {
     (info.usage_page >= 0xFF00 || info.usage_page == 0x00FF) && info.output_length == 65 && info.input_length >= 5
 }
 
-fn zowie_ec_cw(io: &mut Io) -> win::Result<State> {
+fn zowie_ec_cw(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(1000);
     // A5 03 and nothing else: other A5 commands restart the receiver and unpair the mouse
     let reply = io.ask(&[0x00, 0xA5, 0x03], is_zowie_cw_reply, 4, false)?;
@@ -536,7 +536,7 @@ pub fn zowie_cw_state(d: &[u8]) -> State {
 
 // ---- ROCCAT Kone Pro Air ----
 
-fn kone_pro_air(io: &mut Io) -> win::Result<State> {
+fn kone_pro_air(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(500);
     let reply = io.ask(&[0x00, 0x90, 0x0A], is_kone_status, 8, false)?;
     Ok(reply.map_or_else(off, |r| kone_state(&r)))
@@ -569,7 +569,7 @@ const FINALMOUSE_LINK: u8 = 36;
 const FINALMOUSE_CHARGING: u8 = 37;
 const FINALMOUSE_CHARGE: u8 = 38;
 
-fn finalmouse_ulx(io: &mut Io) -> win::Result<State> {
+fn finalmouse_ulx(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(350);
     match finalmouse_get(io, FINALMOUSE_LINK, 1)? {
         Some(link) if link[0] != 0 => {}
@@ -588,7 +588,7 @@ fn finalmouse_ulx(io: &mut Io) -> win::Result<State> {
 }
 
 /// The data of the answer to a read of `command`, at least `least` bytes of it.
-fn finalmouse_get(io: &mut Io, command: u8, least: usize) -> win::Result<Option<Vec<u8>>> {
+fn finalmouse_get(io: &mut Io, command: u8, least: usize) -> sys::Result<Option<Vec<u8>>> {
     let data = |d: &[u8]| finalmouse_data(d, command).filter(|p| p.len() >= least).map(<[u8]>::to_vec);
     Ok(io.ask(&finalmouse_request(command), |d| data(d).is_some(), 16, false)?.and_then(|r| data(&r)))
 }

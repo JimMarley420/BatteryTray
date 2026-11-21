@@ -13,11 +13,13 @@ use std::path::PathBuf;
 
 pub const AUTO: &str = "auto";
 
-/// Win32 hotkey modifiers, without the registration-only MOD_NOREPEAT flag.
+/// Win32 hotkey modifiers, without the registration-only MOD_NOREPEAT flag. A shortcut is kept as a Win32 virtual key
+/// and these on macOS too, where Alt is ⌥ (Option), Ctrl is ⌃ (Control) and MOD_WIN is ⌘ (Command).
 pub const MOD_ALT: i32 = 0x0001;
 pub const MOD_CONTROL: i32 = 0x0002;
 pub const MOD_SHIFT: i32 = 0x0004;
-/// Ctrl+Alt+V
+pub const MOD_WIN: i32 = 0x0008;
+/// Ctrl+Alt+V (⌃⌥V on macOS)
 pub const DEFAULT_HOTKEY: (i32, i32) = (0x56, MOD_ALT | MOD_CONTROL);
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -118,6 +120,16 @@ impl Default for AppSettings {
 /// A shortcut the overlay may use: Ctrl or Alt with an ordinary key, or a function key alone (not F12); the
 /// clipboard shortcuts and Alt+F4 stay with the focused app.
 pub fn hotkey_valid(key: i32, modifiers: i32) -> bool {
+    if cfg!(target_os = "macos") {
+        macos_hotkey_valid(key, modifiers)
+    } else {
+        windows_hotkey_valid(key, modifiers)
+    }
+}
+
+/// Windows: an ordinary key needs Ctrl or Alt (an F key goes alone); the Windows keys, F12 (the debugger's), Ctrl+C,
+/// Ctrl+V, Ctrl+X and Alt+F4 stay the system's.
+pub fn windows_hotkey_valid(key: i32, modifiers: i32) -> bool {
     (modifiers & !(MOD_ALT | MOD_CONTROL | MOD_SHIFT)) == 0
         && (0x08..=0xFE).contains(&key)
         && ![0x10, 0x11, 0x12, 0x14, 0x5B, 0x5C, 0x5D, 0x7B, 0x90, 0x91].contains(&key)
@@ -127,9 +139,24 @@ pub fn hotkey_valid(key: i32, modifiers: i32) -> bool {
         && !(modifiers == MOD_ALT && key == 0x73)
 }
 
+/// macOS: an ordinary key needs ⌘, ⌃ or ⌥ (an F key goes alone, F12 too); what every Mac app and the system answer
+/// stays theirs - ⌘Q, ⌘W, ⌘H, ⌘M, ⌘C, ⌘V, ⌘X, ⌘Z, ⌘A, ⌘Tab, ⌘`, ⌘Space, ⌃Space, ⇧⌘3/4/5 and ⌥⌘Esc.
+pub fn macos_hotkey_valid(key: i32, modifiers: i32) -> bool {
+    const COMMAND_KEYS: [i32; 12] = [0x51, 0x57, 0x48, 0x4D, 0x43, 0x56, 0x58, 0x5A, 0x41, 0x09, 0xC0, 0x20];
+    (modifiers & !(MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN)) == 0
+        && (0x08..=0xFE).contains(&key)
+        && ![0x10, 0x11, 0x12, 0x14, 0x5B, 0x5C, 0x5D, 0x90, 0x91].contains(&key)
+        && !(0xA0..=0xA5).contains(&key)
+        && ((modifiers & (MOD_ALT | MOD_CONTROL | MOD_WIN)) != 0 || (0x70..=0x87).contains(&key))
+        && !(modifiers == MOD_WIN && COMMAND_KEYS.contains(&key))
+        && !(modifiers == MOD_CONTROL && key == 0x20)
+        && !(modifiers == MOD_WIN | MOD_SHIFT && [0x33, 0x34, 0x35].contains(&key))
+        && !(modifiers == MOD_WIN | MOD_ALT && key == 0x1B)
+}
+
 impl AppSettings {
     pub fn path() -> PathBuf {
-        crate::win::app_data_folder().join("settings.json")
+        crate::sys::app_data_folder().join("settings.json")
     }
 
     pub fn load() -> Self {
@@ -579,11 +606,29 @@ mod tests {
 
     #[test]
     fn shortcuts() {
-        assert!(hotkey_valid(0x56, MOD_ALT | MOD_CONTROL));
-        assert!(hotkey_valid(0x71, 0), "F2 alone");
-        assert!(!hotkey_valid(0x7B, 0), "F12 is the debugger's");
-        assert!(!hotkey_valid(0x41, 0), "an ordinary key needs Ctrl or Alt");
-        assert!(!hotkey_valid(0x43, MOD_CONTROL), "Ctrl+C");
+        let valid = windows_hotkey_valid;
+        assert!(valid(0x56, MOD_ALT | MOD_CONTROL));
+        assert!(valid(0x71, 0), "F2 alone");
+        assert!(!valid(0x7B, 0), "F12 is the debugger's");
+        assert!(!valid(0x41, 0), "an ordinary key needs Ctrl or Alt");
+        assert!(!valid(0x43, MOD_CONTROL), "Ctrl+C");
+        assert!(!valid(0x56, MOD_WIN | MOD_ALT), "the Windows key is the system's");
+    }
+
+    #[test]
+    fn shortcuts_on_a_mac() {
+        let valid = macos_hotkey_valid;
+        assert!(valid(DEFAULT_HOTKEY.0, DEFAULT_HOTKEY.1), "⌃⌥V");
+        assert!(valid(0x42, MOD_WIN | MOD_SHIFT), "⇧⌘B");
+        assert!(valid(0x56, MOD_WIN | MOD_ALT), "⌥⌘V");
+        assert!(valid(0x7B, 0), "F12 alone: no debugger there");
+        assert!(!valid(0x41, MOD_SHIFT), "an ordinary key needs ⌘, ⌃ or ⌥");
+        assert!(!valid(0x43, MOD_WIN), "⌘C");
+        assert!(!valid(0x20, MOD_WIN), "⌘Space, Spotlight");
+        assert!(!valid(0x20, MOD_CONTROL), "⌃Space, the input source");
+        assert!(!valid(0x34, MOD_WIN | MOD_SHIFT), "⇧⌘4, a screenshot");
+        assert!(!valid(0x1B, MOD_WIN | MOD_ALT), "⌥⌘Esc, Force Quit");
+        assert!(!valid(0x5B, MOD_WIN), "a modifier alone");
     }
 
     #[test]

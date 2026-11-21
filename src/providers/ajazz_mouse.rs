@@ -22,7 +22,7 @@ use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
@@ -143,7 +143,7 @@ impl Provider for AjazzMouseProvider {
 
 impl AjazzMouseProvider {
     /// Asks for the battery; None when nothing answered or the reply has no level.
-    fn query(&mut self, family: &Family, vendor: &HidInfo, trace: &mut Vec<String>) -> win::Result<Option<Battery>> {
+    fn query(&mut self, family: &Family, vendor: &HidInfo, trace: &mut Vec<String>) -> sys::Result<Option<Battery>> {
         let dev = HidDevice::open(vendor)?;
         let forms = family.forms;
         let answered = self.answered.get(&vendor.path);
@@ -188,7 +188,7 @@ impl AjazzMouseProvider {
 }
 
 /// Sends the request and waits for the battery reply; None when it didn't come.
-fn ask(dev: &HidDevice, request: &[u8], trace: &mut Vec<String>) -> win::Result<Option<Vec<u8>>> {
+fn ask(dev: &HidDevice, request: &[u8], trace: &mut Vec<String>) -> sys::Result<Option<Vec<u8>>> {
     dev.flush();
     trace.push(format!("> {}", hex(request)));
     if !dev.write(request, TIMEOUT_MS as u32)? {

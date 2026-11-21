@@ -22,7 +22,7 @@ pub fn set_echo(echo: bool) {
 }
 
 pub fn folder() -> PathBuf {
-    FOLDER.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_else(crate::win::app_data_folder)
+    FOLDER.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_else(crate::sys::app_data_folder)
 }
 
 pub fn write(text: &str) {
@@ -32,7 +32,7 @@ pub fn write(text: &str) {
     if ECHO.load(Ordering::Relaxed) {
         eprintln!("{line}");
     }
-    let folder = guard.clone().unwrap_or_else(crate::win::app_data_folder);
+    let folder = guard.clone().unwrap_or_else(crate::sys::app_data_folder);
     // Logging must never break the app
     let _ = (|| -> std::io::Result<()> {
         fs::create_dir_all(&folder)?;

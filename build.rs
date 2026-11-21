@@ -7,10 +7,18 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    // The macOS core has neither: its app is built from macos/ (see docs/development.md)
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    windows_exe();
+}
+
+fn windows_exe() {
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let icon = root.join("app.ico");
     let manifest = root.join("app.manifest");
-    println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", icon.display());
     println!("cargo:rerun-if-changed={}", manifest.display());
 

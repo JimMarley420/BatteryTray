@@ -18,7 +18,7 @@ use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::t;
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -83,7 +83,7 @@ impl Provider for LogitechProvider {
             }
             let pid = list[0].product_id;
             let receiver = (0xC500..=0xC5FF).contains(&pid);
-            let polled = (|| -> win::Result<()> {
+            let polled = (|| -> sys::Result<()> {
                 let mut link = Link::open(short, long)?;
                 let indices: &[u8] = if receiver { &[1, 2, 3, 4, 5, 6] } else { &[0xFF] };
                 for &dev in indices {
@@ -163,7 +163,7 @@ impl LogitechProvider {
         dev: u8,
         receiver: bool,
         pid: u16,
-    ) -> win::Result<Option<DeviceReading>> {
+    ) -> sys::Result<Option<DeviceReading>> {
         let key = format!("{channel}#{dev}");
         let mut dev = dev;
         let mut ping = link.ping(dev)?;
@@ -235,7 +235,7 @@ fn reading(
     }
 }
 
-fn describe(link: &mut Link, dev: u8, hidpp20: bool, pid: u16) -> win::Result<Option<Slot>> {
+fn describe(link: &mut Link, dev: u8, hidpp20: bool, pid: u16) -> sys::Result<Option<Slot>> {
     let mut slot = Slot {
         name: format!("Logitech {pid:04X}{}", if (1..=6).contains(&dev) { format!(" #{dev}") } else { String::new() }),
         kind: DeviceKind::Other,
@@ -288,7 +288,7 @@ fn describe(link: &mut Link, dev: u8, hidpp20: bool, pid: u16) -> win::Result<Op
     Ok(Some(slot))
 }
 
-fn read_feature(link: &mut Link, dev: u8, slot: &Slot) -> win::Result<Option<Battery>> {
+fn read_feature(link: &mut Link, dev: u8, slot: &Slot) -> sys::Result<Option<Battery>> {
     let b = |online, level, charging, full| Some(Battery { online, level, charging, full });
     Ok(match slot.feature_id {
         0x1004 => {
@@ -339,7 +339,7 @@ fn read_feature(link: &mut Link, dev: u8, slot: &Slot) -> win::Result<Option<Bat
 }
 
 /// HID++ 1.0 battery registers: 0x0D (percent), then 0x07 (four levels).
-fn read_registers(link: &mut Link, dev: u8) -> win::Result<Option<Battery>> {
+fn read_registers(link: &mut Link, dev: u8) -> sys::Result<Option<Battery>> {
     if let Some(charge) = link.read_register(dev, 0x0D)? {
         if (1..=100).contains(&charge[0]) {
             return Ok(Some(Battery {
@@ -416,13 +416,13 @@ fn same_device(r: &[u8], dev: u8) -> bool {
 }
 
 impl Link {
-    fn open(short: Option<&HidInfo>, long: Option<&HidInfo>) -> win::Result<Self> {
+    fn open(short: Option<&HidInfo>, long: Option<&HidInfo>) -> sys::Result<Self> {
         let short = short.map(HidDevice::open).transpose()?;
         let long = long.map(HidDevice::open).transpose()?;
         Ok(Self { short, long, mark: 0x5A })
     }
 
-    fn ping(&mut self, dev: u8) -> win::Result<Ping> {
+    fn ping(&mut self, dev: u8) -> sys::Result<Ping> {
         self.mark = self.mark.wrapping_add(1);
         let (mark, f) = (self.mark, 0x10 | SOFTWARE_ID);
         let r = self.request(&[0x10, dev, 0x00, f, 0, 0, mark], &|x| {
@@ -442,12 +442,12 @@ impl Link {
     }
 
     /// The feature's index, 0 when the device doesn't have it, None when it didn't answer.
-    fn get_feature(&mut self, dev: u8, feature_id: u16) -> win::Result<Option<u8>> {
+    fn get_feature(&mut self, dev: u8, feature_id: u16) -> sys::Result<Option<u8>> {
         Ok(self.call(dev, 0x00, 0, &[(feature_id >> 8) as u8, feature_id as u8])?.map(|r| r[0]))
     }
 
     /// A HID++ 2.0 function call; returns the 16 reply parameter bytes, or None on error/timeout.
-    fn call(&mut self, dev: u8, feature_index: u8, function: u8, parameters: &[u8]) -> win::Result<Option<Vec<u8>>> {
+    fn call(&mut self, dev: u8, feature_index: u8, function: u8, parameters: &[u8]) -> sys::Result<Option<Vec<u8>>> {
         let f = (function << 4) | SOFTWARE_ID;
         let mut request = vec![0u8; 20];
         request[0] = 0x11;
@@ -477,7 +477,7 @@ impl Link {
     }
 
     /// HID++ 1.0 short register read; returns the three value bytes.
-    fn read_register(&mut self, dev: u8, register: u8) -> win::Result<Option<Vec<u8>>> {
+    fn read_register(&mut self, dev: u8, register: u8) -> sys::Result<Option<Vec<u8>>> {
         let r = self.request(&[0x10, dev, 0x81, register, 0, 0, 0], &|x| {
             x.len() >= 7
                 && same_device(x, dev)
@@ -486,7 +486,7 @@ impl Link {
         Ok(r.filter(|r| r[2] == 0x81).map(|r| r[4..7].to_vec()))
     }
 
-    fn request(&mut self, request: &[u8], is_reply: &dyn Fn(&[u8]) -> bool) -> win::Result<Option<Vec<u8>>> {
+    fn request(&mut self, request: &[u8], is_reply: &dyn Fn(&[u8]) -> bool) -> sys::Result<Option<Vec<u8>>> {
         let mut request = request.to_vec();
         let target = if request[0] == 0x10 {
             match (&self.short, &self.long) {

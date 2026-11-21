@@ -9,7 +9,7 @@ use crate::log;
 use crate::monitor::{no_push, Pusher};
 use crate::reading::{DeviceKind, DeviceReading};
 use crate::state::StateStore;
-use crate::win;
+use crate::sys;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -421,7 +421,7 @@ impl HeadsetEvents {
     fn listen(info: HidInfo, shared: Arc<EventsShared>, changed: Pusher) {
         // However it ends, a panic included: a listener that isn't running is started again by the next poll
         let _running = super::ClearOnDrop(&shared.running);
-        let result = (|| -> win::Result<()> {
+        let result = (|| -> sys::Result<()> {
             let dev = HidDevice::open_read_only(&info)?;
             let report_id = report_id(&info);
             while !shared.stopped.load(Ordering::Relaxed) {
@@ -544,7 +544,7 @@ pub fn report_id(info: &HidInfo) -> u8 {
 }
 
 /// None when the dongle is present but the headset doesn't answer (e.g. powered off).
-fn query(dev: &HidDevice, sample_count: usize) -> win::Result<Option<BatteryReading>> {
+fn query(dev: &HidDevice, sample_count: usize) -> sys::Result<Option<BatteryReading>> {
     dev.flush();
     if report_id(&dev.info) != 0x02 && !enter_macronix_app_mode(dev)? {
         return Ok(None);
@@ -560,7 +560,7 @@ fn query(dev: &HidDevice, sample_count: usize) -> win::Result<Option<BatteryRead
     // The headset reports voltage only - no charging flag and no percentage. While charging, the voltage is raised
     // by the charger and swings by tens of millivolts between samples; on battery it is steady within a few
     // millivolts. So take a few samples and use their spread to tell the two apart.
-    let sampled = (|| -> win::Result<Vec<i32>> {
+    let sampled = (|| -> sys::Result<Vec<i32>> {
         let mut samples = Vec::new();
         for i in 0..sample_count {
             if i > 0 {
@@ -607,7 +607,7 @@ pub fn evaluate(samples: Vec<i32>) -> BatteryReading {
 
 /// Sends an Airoha RACE command (50 41 group seq body...) and returns the matching response payload
 /// (50 49 ... [10] group, [11] 0x80|seq, [12] status ...), or None.
-fn race(dev: &HidDevice, group: u8, body: &[u8]) -> win::Result<Option<Vec<u8>>> {
+fn race(dev: &HidDevice, group: u8, body: &[u8]) -> sys::Result<Option<Vec<u8>>> {
     let seq = next_sequence();
     let mut packet = vec![0x50, 0x41, group, seq];
     packet.extend_from_slice(body);
@@ -633,7 +633,7 @@ fn next_sequence() -> u8 {
 
 // ---- YS-Tech bridge (report ID 0x02) ----
 
-fn send_ys_tech(dev: &HidDevice, packet: &[u8], matches: &dyn Fn(&[u8]) -> bool) -> win::Result<Option<Vec<u8>>> {
+fn send_ys_tech(dev: &HidDevice, packet: &[u8], matches: &dyn Fn(&[u8]) -> bool) -> sys::Result<Option<Vec<u8>>> {
     let mut frame = vec![0u8; dev.info.output_length.max(5 + packet.len())];
     frame[0] = 0x02;
     frame[1] = 0x80;
@@ -687,7 +687,7 @@ pub fn crc16_xmodem(data: &[u8]) -> u16 {
 
 // ---- Macronix bridge (report ID 0x01) ----
 
-fn enter_macronix_app_mode(dev: &HidDevice) -> win::Result<bool> {
+fn enter_macronix_app_mode(dev: &HidDevice) -> sys::Result<bool> {
     let id = report_id(&dev.info);
     if !dev.write(&[id, 0x40], TIMEOUT_MS as u32)? {
         return Ok(false);
@@ -696,7 +696,7 @@ fn enter_macronix_app_mode(dev: &HidDevice) -> win::Result<bool> {
     Ok(mode.is_some_and(|m| m[2] == 0x01 && m[3] == 0x01))
 }
 
-fn send_macronix(dev: &HidDevice, packet: &[u8], matches: &dyn Fn(&[u8]) -> bool) -> win::Result<Option<Vec<u8>>> {
+fn send_macronix(dev: &HidDevice, packet: &[u8], matches: &dyn Fn(&[u8]) -> bool) -> sys::Result<Option<Vec<u8>>> {
     let id = report_id(&dev.info);
     let mut frame = vec![id, 0x80, packet.len() as u8];
     frame.extend_from_slice(packet);
@@ -755,7 +755,7 @@ fn split(report: &[u8], offset: usize, length: usize) -> Vec<Vec<u8>> {
 
 /// Reads input reports until `extract` returns something, or the timeout expires. The dongle interleaves
 /// unrelated reports, which are skipped.
-fn read_until(dev: &HidDevice, extract: &dyn Fn(&[u8]) -> Option<Vec<u8>>) -> win::Result<Option<Vec<u8>>> {
+fn read_until(dev: &HidDevice, extract: &dyn Fn(&[u8]) -> Option<Vec<u8>>) -> sys::Result<Option<Vec<u8>>> {
     let deadline = Instant::now() + Duration::from_millis(TIMEOUT_MS);
     while Instant::now() < deadline {
         let Some(r) = dev.read(remaining_ms(deadline))? else { return Ok(None) };

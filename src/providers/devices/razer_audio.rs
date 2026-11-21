@@ -54,7 +54,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::providers::{no_link_reason, secs, sleep_ms, Provider};
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::OnceLock;
@@ -219,7 +219,7 @@ pub fn answer_value(d: &[u8]) -> Option<u8> {
     (d[1] == DONE && d[12] >= 1 && d[6].checked_sub(4) == Some(d[12])).then(|| d[13])
 }
 
-fn get(io: &mut Io, route: u8, command: u8, counting: bool) -> win::Result<Option<u8>> {
+fn get(io: &mut Io, route: u8, command: u8, counting: bool) -> sys::Result<Option<u8>> {
     for _ in 0..2 {
         let request = frame(route, command, if counting { counter() } else { 0 });
         // Volume keys, the mute switch and the headset's own reports arrive on the same collection
@@ -246,7 +246,7 @@ pub fn report_02_state(level: u8, charging: Option<u8>, cable_charges: bool) -> 
     on(level as i32, charging)
 }
 
-fn report_02(io: &mut Io, cable: bool, counting: bool, cable_charges: bool) -> win::Result<State> {
+fn report_02(io: &mut Io, cable: bool, counting: bool, cable_charges: bool) -> sys::Result<State> {
     io.set_timeout(REPORT_02_MS);
     let route = if cable { DIRECT } else { HEADSET };
     let Some(level) = get(io, route, BATTERY, counting)?.filter(|&level| level <= 100) else { return Ok(off()) };
@@ -258,7 +258,7 @@ fn report_02(io: &mut Io, cable: bool, counting: bool, cable_charges: bool) -> w
 /// firmware version, its idea of the charging state) and only wake the channel: without them the receiver doesn't
 /// pass the others on. The third is the charging state of the headset, the fourth its battery. All are reads, and
 /// no more than these go over the radio.
-fn blackshark_v3(io: &mut Io) -> win::Result<State> {
+fn blackshark_v3(io: &mut Io) -> sys::Result<State> {
     for command in [FIRMWARE, CHARGING] {
         if !io.send(&frame(DIRECT, command, 0))? {
             return Ok(off());
@@ -430,7 +430,7 @@ pub fn v3x_state(level: Option<u8>, charging: Option<u8>) -> State {
     }
 }
 
-fn blackshark_v3_x(io: &mut Io) -> win::Result<State> {
+fn blackshark_v3_x(io: &mut Io) -> sys::Result<State> {
     let level = v3x_get(io, V3X_BATTERY);
     if !matches!(level, Some(1..=100)) {
         return Ok(off());
@@ -464,7 +464,7 @@ pub fn v2_pro_2020_state(r: &[u8]) -> Option<State> {
     })
 }
 
-fn blackshark_v2_pro_2020(io: &mut Io) -> win::Result<State> {
+fn blackshark_v2_pro_2020(io: &mut Io) -> sys::Result<State> {
     if !io.set_feature(&V2_PRO_2020_REQUEST) {
         return Ok(off());
     }
@@ -521,13 +521,13 @@ pub fn bridge_value(d: &[u8], report_id: u8, id: u8) -> Option<u8> {
 }
 
 /// Remote mode on or off; the receiver takes a moment to switch.
-fn bridge_remote(io: &mut Io, report_id: u8, on: bool) -> win::Result<bool> {
+fn bridge_remote(io: &mut Io, report_id: u8, on: bool) -> sys::Result<bool> {
     let sent = io.send(&bridge_frame(report_id, BRIDGE_LINK, &[0x02, 0xE1, on as u8]))?;
     sleep_ms(if report_id == V2_PRO { 35 } else { 50 });
     Ok(sent)
 }
 
-fn bridge_ask(io: &mut Io, report_id: u8, id: u8) -> win::Result<Option<u8>> {
+fn bridge_ask(io: &mut Io, report_id: u8, id: u8) -> sys::Result<Option<u8>> {
     let answer = io.ask(&bridge_read(report_id, id), |d| bridge_value(d, report_id, id).is_some(), 8, false)?;
     Ok(answer.and_then(|d| bridge_value(&d, report_id, id)))
 }
@@ -543,8 +543,8 @@ pub fn bridge_state(level: Option<u8>, charging: Option<u8>) -> State {
 /// One value of the V2 Pro (2023), the way Synapse and OpenRazer's driver get it: remote mode on, the read, remote
 /// mode off. The link dozes off after about 0.3 s without traffic and the first frame after that only wakes it,
 /// so one "remote on" goes ahead and every attempt repeats it; the wait for the reply stays under those 0.3 s.
-fn v2_pro_2023_get(io: &mut Io, id: u8) -> win::Result<Option<u8>> {
-    let asked = (|| -> win::Result<Option<u8>> {
+fn v2_pro_2023_get(io: &mut Io, id: u8) -> sys::Result<Option<u8>> {
+    let asked = (|| -> sys::Result<Option<u8>> {
         bridge_remote(io, V2_PRO, true)?;
         for _ in 0..3 {
             bridge_remote(io, V2_PRO, true)?;
@@ -561,7 +561,7 @@ fn v2_pro_2023_get(io: &mut Io, id: u8) -> win::Result<Option<u8>> {
     Ok(value)
 }
 
-fn blackshark_v2_pro_2023(io: &mut Io) -> win::Result<State> {
+fn blackshark_v2_pro_2023(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(150);
     let level = v2_pro_2023_get(io, BATTERY)?;
     if !matches!(level, Some(0..=100)) {
@@ -571,10 +571,10 @@ fn blackshark_v2_pro_2023(io: &mut Io) -> win::Result<State> {
 }
 
 /// The Barracuda Pro as Synapse reads it: remote mode on, both reads, remote mode off.
-fn barracuda_pro(io: &mut Io) -> win::Result<State> {
+fn barracuda_pro(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(300);
     io.drain()?;
-    let asked = (|| -> win::Result<(Option<u8>, Option<u8>)> {
+    let asked = (|| -> sys::Result<(Option<u8>, Option<u8>)> {
         if !bridge_remote(io, BARRACUDA_PRO, true)? {
             return Ok((None, None));
         }

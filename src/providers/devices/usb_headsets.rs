@@ -57,7 +57,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::providers::{hex_trimmed, no_link_reason, pad, secs, sleep_ms, Provider};
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
@@ -538,7 +538,7 @@ fn maxwell_is_on_its_cable() -> bool {
         .any(|i| !i.access_denied && i.usage_page == 0xFF13 && i.usage == 0x0001)
 }
 
-fn race_battery(io: &mut Io, link: RaceLink) -> win::Result<State> {
+fn race_battery(io: &mut Io, link: RaceLink) -> sys::Result<State> {
     if link == RaceLink::AudezeDongle && names_no_headset(io.info().product.as_deref()) {
         return Ok(off());
     }
@@ -582,7 +582,7 @@ fn over_control_pipe(
     wait_ms: u64,
     every_ms: u64,
     mut read: impl FnMut(&[u8]) -> Option<State>,
-) -> win::Result<State> {
+) -> sys::Result<State> {
     for _ in 0..attempts {
         let mut held = Vec::new();
         for _ in 0..8 {
@@ -630,7 +630,7 @@ fn alienware_state(d: &[u8]) -> Option<State> {
     (level <= 100).then(|| on(level as i32, d[7] == 1))
 }
 
-fn alienware_aw920h(io: &mut Io) -> win::Result<State> {
+fn alienware_aw920h(io: &mut Io) -> sys::Result<State> {
     // About one request in a hundred is never answered (as the source measured), hence three
     over_control_pipe(io, &pad(REPORT_LENGTH, &[REPORT_OUT, 0xC0, 0x0A]), 3, 180, 15, alienware_state)
 }
@@ -668,7 +668,7 @@ fn poly_battery(d: &[u8]) -> Option<State> {
     (levels >= 2 && level < levels).then(|| on(level * 100 / (levels - 1), d.get(13).is_some_and(|&c| c != 0)))
 }
 
-fn poly_bt600(io: &mut Io) -> win::Result<State> {
+fn poly_bt600(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(1000);
     // The adapter answers nothing until its sessions are open, which takes what Windows itself sends when the
     // adapter is plugged in: the output report 06 01, a hello to the adapter and one to the headset. It opens
@@ -756,12 +756,12 @@ fn jabra_name(d: &[u8]) -> Option<String> {
     Some(if name.to_ascii_lowercase().starts_with("jabra") { name.to_string() } else { format!("Jabra {name}") })
 }
 
-fn jabra_get(io: &mut Io, address: u8, what: (u8, u8)) -> win::Result<Option<Vec<u8>>> {
+fn jabra_get(io: &mut Io, address: u8, what: (u8, u8)) -> sys::Result<Option<Vec<u8>>> {
     let seq = JABRA_SEQ.fetch_add(1, Ordering::Relaxed);
     io.ask(&jabra_request(address, seq, what), |d| is_jabra_reply(d, address, seq, what), 16, false)
 }
 
-fn jabra(io: &mut Io, address: u8) -> win::Result<State> {
+fn jabra(io: &mut Io, address: u8) -> sys::Result<State> {
     io.set_timeout(1000);
     let Some(mut state) = jabra_get(io, address, JABRA_BATTERY)?.and_then(|r| jabra_battery(&r)) else {
         return Ok(off());
@@ -836,7 +836,7 @@ fn epos_reply(d: &[u8], target: u16, command: (u16, u16)) -> Option<EposFrame> {
     })
 }
 
-fn epos_ask(io: &mut Io, target: u16, command: (u16, u16)) -> win::Result<Option<EposFrame>> {
+fn epos_ask(io: &mut Io, target: u16, command: (u16, u16)) -> sys::Result<Option<EposFrame>> {
     let reply = io.ask(&epos_request(target, command), |d| epos_reply(d, target, command).is_some(), 8, false)?;
     Ok(reply.and_then(|r| epos_reply(&r, target, command)))
 }
@@ -846,7 +846,7 @@ fn epos_level(reply: &EposFrame, target: u16) -> Option<i32> {
     (reply.target == target - 1 && reply.values.len() == 1 && reply.values[0] <= 100).then(|| reply.values[0] as i32)
 }
 
-fn epos_h3pro(io: &mut Io, dongle: bool) -> win::Result<State> {
+fn epos_h3pro(io: &mut Io, dongle: bool) -> sys::Result<State> {
     io.set_timeout(1000);
     if dongle {
         // The dongle says whether its headset is there, which saves waiting for an answer it can't pass on
@@ -890,7 +890,7 @@ fn jbl_info_state(d: &[u8]) -> Option<State> {
     (d[10] & 0x80 == 0 && level <= 100).then(|| on(level as i32, d[15] & 0x80 != 0))
 }
 
-fn jbl_device_info(io: &mut Io) -> win::Result<State> {
+fn jbl_device_info(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(800);
     io.drain()?;
     if !io.set_feature(&JBL_BATTERY_REQUEST) {
@@ -917,7 +917,7 @@ fn jbl_kept_level(level: Option<u8>) -> State {
 
 /// The older dongles are only read: feature report 68 is 1 while the headset is linked, and 49 is the level,
 /// which stays at its last value while the headset is off - hence the link first.
-fn jbl_feature_bytes(io: &mut Io) -> win::Result<State> {
+fn jbl_feature_bytes(io: &mut Io) -> sys::Result<State> {
     if jbl_feature_byte(io.get_feature(0x68), 0x68) != Some(1) {
         return Ok(off());
     }
@@ -941,7 +941,7 @@ fn rog_data(d: &[u8]) -> Option<&[u8]> {
     (d[1] == 0x12 && d[5..7] != [0xFF, 0xAA]).then_some(d)
 }
 
-fn rog_ask(io: &mut Io, sub: u8) -> win::Result<Option<Vec<u8>>> {
+fn rog_ask(io: &mut Io, sub: u8) -> sys::Result<Option<Vec<u8>>> {
     // The first answer after the headset reconnects can take about 750 ms
     io.set_timeout(1200);
     let reply = io.ask(&pad(64, &[0xCC, 0x12, sub]), |d| is_rog_reply(d, sub), 4, false)?;
@@ -954,7 +954,7 @@ fn lower_bud(left: u8, right: u8) -> Option<i32> {
 }
 
 /// `CC 12 07`: byte 6 is the level, FE while it isn't known yet. `CC 12 08`: byte 5 is 1 while charging.
-fn rog_headset(io: &mut Io) -> win::Result<State> {
+fn rog_headset(io: &mut Io) -> sys::Result<State> {
     let Some(battery) = rog_ask(io, 0x07)? else { return Ok(off()) };
     let charging = rog_ask(io, 0x08)?.is_some_and(|c| c[5] == 1);
     Ok(if battery[6] <= 100 { on(battery[6] as i32, charging) } else { level_unknown(charging) })
@@ -962,7 +962,7 @@ fn rog_headset(io: &mut Io) -> win::Result<State> {
 
 /// The same two requests, with the left earbud, the right one and the case in bytes 6-8, and a charging bit
 /// for each earbud.
-fn rog_cetra_speednova(io: &mut Io) -> win::Result<State> {
+fn rog_cetra_speednova(io: &mut Io) -> sys::Result<State> {
     let Some(battery) = rog_ask(io, 0x07)? else { return Ok(off()) };
     let Some(level) = lower_bud(battery[6], battery[7]) else { return Ok(off()) };
     let charging = rog_ask(io, 0x08)?.is_some_and(|c| c[5] & 0x03 != 0);
@@ -970,7 +970,7 @@ fn rog_cetra_speednova(io: &mut Io) -> win::Result<State> {
 }
 
 /// `CC 12 12`: the left earbud, the right one and the case in bytes 5-7. No charging state is known.
-fn rog_cetra_open(io: &mut Io) -> win::Result<State> {
+fn rog_cetra_open(io: &mut Io) -> sys::Result<State> {
     let Some(battery) = rog_ask(io, 0x12)? else { return Ok(off()) };
     Ok(lower_bud(battery[5], battery[6]).map_or_else(off, |level| on(level, false)))
 }
@@ -1002,7 +1002,7 @@ fn strix_go_state(d: &[u8]) -> Option<State> {
     })
 }
 
-fn rog_strix_go(io: &mut Io) -> win::Result<State> {
+fn rog_strix_go(io: &mut Io) -> sys::Result<State> {
     for _ in 0..2 {
         if !io.set_feature(&[0xFF, 0x08, 0x00, 0xFD, 0x04, 0x12, 0xF1, 0x03, 0x52, 0x01]) {
             return Ok(off());
@@ -1033,11 +1033,11 @@ fn fractal_battery(d: &[u8]) -> Option<State> {
     (d[15] <= 100).then(|| on(d[15] as i32, d[23] == 1))
 }
 
-fn fractal_state(io: &mut Io, who: u8) -> win::Result<Option<Vec<u8>>> {
+fn fractal_state(io: &mut Io, who: u8) -> sys::Result<Option<Vec<u8>>> {
     io.ask(&pad(64, &[0x02, who, FRACTAL_GET_STATE]), |d| is_fractal_state(d, who), 8, false)
 }
 
-fn fractal_scape(io: &mut Io, dongle: bool) -> win::Result<State> {
+fn fractal_scape(io: &mut Io, dongle: bool) -> sys::Result<State> {
     io.set_timeout(1000);
     if dongle {
         // Byte 4 of the dongle's state: 1 while a headset is linked (on its charging stand it unlinks)
@@ -1058,7 +1058,7 @@ fn moondrop_state(d: &[u8]) -> Option<State> {
         .then(|| on(d[9] as i32, false))
 }
 
-fn moondrop_gm01(io: &mut Io) -> win::Result<State> {
+fn moondrop_gm01(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(400);
     let reply =
         io.ask(&pad(64, &[0x4B, 0x80, 0x27, 0x00]), |d| d.len() >= 10 && d[..3] == [0x4B, 0x80, 0x27], 4, false)?;

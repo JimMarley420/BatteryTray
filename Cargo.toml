@@ -7,7 +7,7 @@ edition = "2021"
 rust-version = "1.88"
 license = "MIT"
 publish = false
-description = "Battery levels of wireless headsets, mice, keyboards and gamepads in the Windows tray"
+description = "Battery levels of wireless headsets, mice, keyboards and gamepads in the Windows tray and the macOS menu bar"
 repository = "https://github.com/qu1ncky/BatteryTray"
 build = "build.rs"
 autobins = false
@@ -29,6 +29,9 @@ path = "src/bin/batterytray-core.rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# The Windows app: Win32 and WinRT, and the windows in Slint
+[target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [
     "Devices_Bluetooth",
     "Foundation",
@@ -61,12 +64,36 @@ slint = { version = "1", default-features = false, features = [
     "unstable-winit-030",
 ] }
 
+# The macOS core: IOKit and CoreFoundation are declared by hand, as the Win32 calls are; HTTPS goes through
+# NSURLSession, which has no C interface. The app around it is written in Swift (macos/).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "NSData",
+    "NSDate",
+    "NSError",
+    "NSString",
+    "NSURL",
+    "NSURLRequest",
+    "NSURLResponse",
+    "NSURLSession",
+] }
+
 [dev-dependencies]
 png = "0.17"
 
+# The Windows exe's resources and windows; build.rs uses them only when the target is Windows. Not under a target
+# section: Cargo matches a build dependency's platform against the machine that builds, not the target.
 [build-dependencies]
 embed-resource = "3"
 slint-build = "1"
+
+[workspace]
+# macos/core: the core as a static library for the macOS app (built on a Mac only; see docs/development.md)
+members = [".", "macos/core"]
 
 [profile.release]
 # For size: a tray app that draws a few small windows now and then gains nothing from faster code (13.9 MB at 3,

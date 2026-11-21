@@ -19,7 +19,8 @@ use crate::state::StateStore;
 use crate::tray::{self, Tray, MENU_EXIT, MENU_OPEN, MENU_REFRESH, MENU_SETTINGS};
 use crate::update_service::{Event, Status, UpdateService};
 use crate::updater::{self, ReleaseInfo, Version};
-use crate::{diag, gui, log, providers, win};
+pub use crate::view::level_color;
+use crate::{diag, gui, log, providers, view, win};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -702,57 +703,11 @@ impl App {
     }
 
     fn update_tray(&mut self) {
-        let rows = self.rows();
-        // In the order of the window's list
-        let shown: Vec<&DeviceRow> = rows::list_order(&rows, &self.settings)
-            .into_iter()
-            .filter(|r| r.online() && !self.settings.device(&r.id).hidden)
-            .collect();
-        // A device charging without a readable level is listed too, without a made-up number
-        let lines: Vec<String> = shown
-            .iter()
-            .filter_map(|r| {
-                let c = r.current.as_ref()?;
-                match c.level {
-                    Some(l) => Some(format!(
-                        "{}: {}{l}%{}",
-                        short(&r.name),
-                        if c.estimate { "≈" } else { "" },
-                        if c.charging { " ⚡" } else { "" }
-                    )),
-                    None if c.charging => Some(tf("tray.charging", &[&short(&r.name)])),
-                    None => None,
-                }
-            })
-            .collect();
-        self.tooltip = if lines.is_empty() { t("tray.nodata") } else { lines.join("\n") };
-
-        // The icon shows the device that needs charging most by its own levels: a critical one first, then one
-        // below its reminder level, the least charged among equals; charging ones only when nothing else is left
-        let live: Vec<(&DeviceRow, &DeviceReading, i32)> =
-            shown.iter().filter_map(|r| r.current.as_ref().and_then(|c| c.level.map(|l| (*r, c, l)))).collect();
-        let s = &self.settings;
-        let urgency = |id: &str, level: i32| {
-            if level <= s.critical_for(id) {
-                2
-            } else if level <= s.low_for(id) {
-                1
-            } else {
-                0
-            }
-        };
-        let pick = live
-            .iter()
-            .filter(|(_, c, _)| !c.charging)
-            .min_by_key(|(r, _, l)| (std::cmp::Reverse(urgency(&r.id, *l)), *l))
-            .or_else(|| live.iter().min_by_key(|(_, _, l)| *l));
-        let (label, color) = match pick {
-            None => ("--".to_string(), (0x80, 0x80, 0x80)),
-            Some((r, c, l)) => (l.to_string(), level_color(Some(*l), c.charging, true, &r.id, s)),
-        };
+        let tray = view::tray_view(&self.rows(), &self.settings);
+        self.tooltip = tray.tooltip;
         let tooltip = self.tooltip.clone();
-        if let Some(tray) = &mut self.tray {
-            tray.update(&label, color, &tooltip);
+        if let Some(tray_icon) = &mut self.tray {
+            tray_icon.update(&tray.label, tray.color, &tooltip);
         }
     }
 
@@ -825,31 +780,6 @@ impl App {
             let _ = DestroyWindow(self.activator);
         }
         self.single = None;
-    }
-}
-
-/// The level color a device shows at: its own thresholds when set, the global ones otherwise.
-pub fn level_color(level: Option<i32>, charging: bool, online: bool, id: &str, s: &AppSettings) -> (u8, u8, u8) {
-    const GOOD: (u8, u8, u8) = (0x6C, 0xCB, 0x5F);
-    const WARN: (u8, u8, u8) = (0xF7, 0xC0, 0x4A);
-    const BAD: (u8, u8, u8) = (0xFF, 0x6B, 0x6B);
-    const CHARGE: (u8, u8, u8) = (0x60, 0xCD, 0xFF);
-    const OFFLINE: (u8, u8, u8) = (0x7A, 0x7A, 0x7A);
-    match level {
-        _ if !online => OFFLINE,
-        _ if charging => CHARGE,
-        None => OFFLINE,
-        Some(l) if l <= s.critical_for(id) => BAD,
-        Some(l) if l <= s.low_for(id) => WARN,
-        Some(_) => GOOD,
-    }
-}
-
-fn short(name: &str) -> String {
-    if name.chars().count() > 24 {
-        name.chars().take(23).collect::<String>() + "…"
-    } else {
-        name.to_string()
     }
 }
 

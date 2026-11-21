@@ -1,5 +1,6 @@
 //! The app's texts in Russian, English and Chinese: the windows', the providers', the tray's and the updater's.
-//! The windows ask for theirs by key through `t_in`. The language follows Windows unless chosen in the settings.
+//! The windows ask for theirs by key through `t_in`. The language follows the system unless chosen in the settings.
+//! On macOS the texts that speak of Windows have their own wording (MAC), and the Swift app's own texts are here too.
 
 use std::fmt::Display;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -8,11 +9,11 @@ pub const LANGUAGES: [&str; 3] = ["ru", "en", "zh"];
 
 static CURRENT: AtomicU8 = AtomicU8::new(1);
 
-/// The language for a setting: "ru", "en" or "zh" as chosen, anything else follows Windows.
+/// The language for a setting: "ru", "en" or "zh" as chosen, anything else follows the system.
 pub fn resolve(setting: Option<&str>) -> &'static str {
     match setting.and_then(|s| LANGUAGES.iter().find(|&&l| l == s)) {
         Some(l) => l,
-        None => crate::win::ui_language(),
+        None => crate::sys::ui_language(),
     }
 }
 
@@ -25,9 +26,31 @@ pub fn current() -> &'static str {
     LANGUAGES[CURRENT.load(Ordering::Relaxed) as usize]
 }
 
+/// A key's texts: on macOS its own wording first.
+fn entry(key: &str) -> Option<&'static (&'static str, &'static str, &'static str, &'static str)> {
+    #[cfg(target_os = "macos")]
+    if let Some(found) = MAC.iter().find(|s| s.0 == key) {
+        return Some(found);
+    }
+    STRINGS.iter().find(|s| s.0 == key)
+}
+
+/// Every key with its text in a language, for a window that takes them all at once (the macOS app).
+pub fn all_in(language: &str) -> Vec<(&'static str, String)> {
+    #[cfg(target_os = "macos")]
+    let mac = MAC.iter().map(|s| s.0);
+    #[cfg(not(target_os = "macos"))]
+    let mac = std::iter::empty();
+    let mut keys: Vec<&'static str> = mac.chain(STRINGS.iter().map(|s| s.0)).collect();
+    keys.dedup();
+    keys.sort_unstable();
+    keys.dedup();
+    keys.into_iter().map(|k| (k, t_in(language, k))).collect()
+}
+
 /// The text for a key in the current language; anything that isn't a key comes back as it is.
 pub fn t(key: &str) -> String {
-    match STRINGS.iter().find(|s| s.0 == key) {
+    match entry(key) {
         None => key.to_string(),
         Some(&(_, ru, en, zh)) => match CURRENT.load(Ordering::Relaxed) {
             0 => ru,
@@ -40,7 +63,7 @@ pub fn t(key: &str) -> String {
 
 /// The text for a key in a given language (what the windows bind to, so they switch with it).
 pub fn t_in(language: &str, key: &str) -> String {
-    match STRINGS.iter().find(|s| s.0 == key) {
+    match entry(key) {
         None => key.to_string(),
         Some(&(_, ru, en, zh)) => match language {
             "ru" => ru,
@@ -268,4 +291,43 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
         "约值：鼠标以 10% 为单位报告电量"),
     ("d.unknownModel", "заряд этой модели программа пока не читает — её поможет добавить лог",
         "this model's level can't be read yet; its log can help add it", "暂时无法读取此型号的电量，日志可帮助添加支持"),
+];
+
+/// macOS: the texts that speak of Windows, in the words of a Mac, and the texts only the Mac app has.
+#[cfg(target_os = "macos")]
+static MAC: &[(&str, &str, &str, &str)] = &[
+    ("autostart", "Открывать при входе в систему", "Open at login", "登录时打开"),
+    ("autostart.banner", "BatteryTray не открывается при входе в систему", "BatteryTray doesn't open at login",
+        "BatteryTray 未设置登录时打开"),
+    ("charged.hint", "Уведомление macOS. Работает с устройствами, которые сами сообщают, что зарядились",
+        "A macOS notification, for devices that report a finished charge", "macOS 通知，适用于会报告充电完成的设备"),
+    ("feedback.about.mac", "BatteryTray {0} · macOS {1} · язык: русский", "BatteryTray {0} · macOS {1} · language: English",
+        "BatteryTray {0} · macOS {1} · 语言：中文"),
+    ("overlay.compatibility", "На экране активного приложения, поверх окон и полноэкранных приложений. Не перехватывает мышь и фокус.",
+        "Appears on the active app's display, above windows and full-screen apps, without taking focus or mouse input.",
+        "显示在当前应用所在的显示器上，位于窗口和全屏应用之上，不抢占焦点或鼠标操作。"),
+    ("overlay.invalid", "Выберите другое сочетание. Для обычных клавиш нужен ⌘, ⌃ или ⌥. ⌘Q, ⌘W, ⌘H, ⌘M, ⌘C, ⌘V, ⌘X, ⌘Z, ⌘A, ⌘Tab, ⌘Пробел, ⌃Пробел и снимки экрана (⇧⌘3, 4, 5) зарезервированы.",
+        "Choose another shortcut. Ordinary keys require ⌘, ⌃ or ⌥. ⌘Q, ⌘W, ⌘H, ⌘M, ⌘C, ⌘V, ⌘X, ⌘Z, ⌘A, ⌘Tab, ⌘Space, ⌃Space and the screenshot shortcuts (⇧⌘3, 4, 5) are reserved.",
+        "请选择其他快捷键。普通按键需搭配 ⌘、⌃ 或 ⌥。⌘Q、⌘W、⌘H、⌘M、⌘C、⌘V、⌘X、⌘Z、⌘A、⌘Tab、⌘空格、⌃空格和截屏快捷键（⇧⌘3、4、5）为保留快捷键。"),
+    ("key.space", "Пробел", "Space", "空格"),
+    ("d.needsAdmin", "нужно разрешение «Мониторинг ввода»", "needs the Input Monitoring permission", "需要“输入监控”权限"),
+    ("d.budLeft", "левый {0}%", "left {0}%", "左耳 {0}%"),
+    ("d.budRight", "правый {0}%", "right {0}%", "右耳 {0}%"),
+    ("d.case", "кейс {0}%", "case {0}%", "充电盒 {0}%"),
+    ("permission.banner", "Для некоторых мышей и клавиатур нужно разрешение «Мониторинг ввода»",
+        "Some mice and keyboards need the Input Monitoring permission", "部分鼠标和键盘需要“输入监控”权限"),
+    ("permission.text", "macOS даёт читать клавиатуры и мыши с клавишами только программам с разрешением «Мониторинг ввода». BatteryTray читает только заряд, нажатия клавиш ей не нужны.",
+        "macOS lets only apps with the Input Monitoring permission read keyboards and mice that have keyboard keys. BatteryTray reads only the battery level, never what you type.",
+        "macOS 仅允许拥有“输入监控”权限的应用读取键盘和带键盘按键的鼠标。BatteryTray 只读取电量，从不读取您的输入。"),
+    ("permission.allow", "Разрешить", "Allow", "允许"),
+    ("permission.settings", "Открыть настройки", "Open Settings", "打开设置"),
+    ("tray.exit", "Завершить BatteryTray", "Quit BatteryTray", "退出 BatteryTray"),
+    ("tray.open", "Открыть BatteryTray", "Open BatteryTray", "打开 BatteryTray"),
+    ("upd.err.version", "в релизе {0} лежит приложение версии {1}", "release {0} contains an app of version {1}",
+        "版本 {0} 中的应用版本为 {1}"),
+    ("upd.err.notBundle", "программа запущена не из BatteryTray.app", "the app isn't running from BatteryTray.app",
+        "程序不是从 BatteryTray.app 运行的"),
+    ("upd.err.translocated", "переместите BatteryTray в папку «Программы», тогда она сможет обновляться",
+        "move BatteryTray to the Applications folder so it can update itself", "请将 BatteryTray 移到“应用程序”文件夹，以便它能自动更新"),
+    ("upd.err.unpack", "не удалось распаковать архив", "couldn't unpack the archive", "无法解压更新包"),
 ];

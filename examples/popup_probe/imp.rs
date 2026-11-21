@@ -76,7 +76,7 @@ fn settings() -> batterytray::settings::AppSettings {
     batterytray::settings::AppSettings { overlay_corner: 3, overlay_show_names: true, ..Default::default() }
 }
 
-fn main() {
+pub fn main() {
     gui::init().unwrap();
     batterytray::loc::set("ru");
     let (area, scale) = gui::primary_monitor();

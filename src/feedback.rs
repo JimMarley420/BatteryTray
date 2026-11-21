@@ -1,27 +1,36 @@
 //! "Suggest an improvement": a new GitHub issue, already holding the questions to answer and what the app is and runs
 //! on. Nothing that names the user's devices or anything else of theirs goes into the link.
-//! The link is opened by the shell (Explorer, asked through its automation object), so the browser gets the user's
+//! On macOS the app opens the link itself (NSWorkspace). On Windows it is opened by the shell (Explorer, asked through its automation object), so the browser gets the user's
 //! own rights also when this app runs elevated, and gets the whole link. explorer.exe, which hands a link over as
 //! well, passes on the first 259 characters of its command line: in 2.1.0 that cut the Russian and the Chinese link
 //! in the middle of a letter, and GitHub answered HTTP 400.
 
-use crate::{loc, log};
+use crate::loc;
+#[cfg(windows)]
+use crate::log;
+#[cfg(windows)]
 use windows::core::{Interface, BSTR};
+#[cfg(windows)]
 use windows::Win32::System::Com::{
     CoAllowSetForegroundWindow, CoCreateInstance, CoInitializeEx, CoUninitialize, IDispatch, IServiceProvider,
     CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED,
 };
+#[cfg(windows)]
 use windows::Win32::System::Variant::VARIANT;
+#[cfg(windows)]
 use windows::Win32::UI::Shell::{
     IShellBrowser, IShellDispatch2, IShellFolderViewDual, IShellWindows, SID_STopLevelBrowser, ShellWindows,
     CSIDL_DESKTOP, SVGIO_BACKGROUND, SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
+#[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 /// What explorer.exe passes on of a link on its command line.
+#[cfg(windows)]
 const EXPLORER_TAKES: usize = 259;
 
 /// Opens a link in the default browser. It waits for the shell, another process: not for the UI thread.
+#[cfg(windows)]
 pub fn open(url: &str) {
     if let Err(e) = shell_open(url) {
         // No Explorer to ask (another shell, or it is restarting)
@@ -32,6 +41,7 @@ pub fn open(url: &str) {
 
 /// Has Explorer open the link as it opens one typed into Win+R: the desktop's window gives the shell's automation
 /// object, which runs in Explorer, with the user's own rights.
+#[cfg(windows)]
 fn shell_open(url: &str) -> windows::core::Result<()> {
     unsafe {
         CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
@@ -54,6 +64,7 @@ fn shell_open(url: &str) -> windows::core::Result<()> {
 
 /// The link as explorer.exe can pass it on: itself when it fits, else the empty form. A link cut in the middle is one
 /// GitHub refuses.
+#[cfg(windows)]
 fn for_explorer(url: &str) -> String {
     if url.len() <= EXPLORER_TAKES {
         url.to_string()
@@ -62,6 +73,7 @@ fn for_explorer(url: &str) -> String {
     }
 }
 
+#[cfg(windows)]
 fn explorer_open(url: &str) {
     use std::os::windows::process::CommandExt;
     // Quoted as one field: Explorer splits its command line at commas and equals signs
@@ -77,6 +89,16 @@ pub fn issue_url(version: &str, windows_build: u32, language: &str) -> String {
         .replace("{0}", version)
         .replace("{1}", windows)
         .replace("{2}", &windows_build.to_string());
+    link(&about, language)
+}
+
+/// The same on macOS: the app's version, the macOS version ("26.6.2"), the language.
+pub fn issue_url_macos(version: &str, macos: &str, language: &str) -> String {
+    let about = loc::t_in(language, "feedback.about.mac").replace("{0}", version).replace("{1}", macos);
+    link(&about, language)
+}
+
+fn link(about: &str, language: &str) -> String {
     let (what, why) = (loc::t_in(language, "feedback.what"), loc::t_in(language, "feedback.why"));
     let body = format!("### {what}\n\n\n### {why}\n\n\n---\n{about}\n");
     format!("{}/issues/new?body={}", env!("CARGO_PKG_REPOSITORY"), percent_encode(&body))
@@ -114,6 +136,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn explorer_exe_gets_no_link_it_would_cut() {
         // 2.1.0 on Windows 11: the Russian link is 463 characters, and the 259th is inside a letter of "нужно"
         let ru = issue_url("2.1.0", 26200, "ru");
@@ -137,6 +160,16 @@ mod tests {
         assert!(issue_url("2.0.0", 19045, "ru").contains("Windows%2010%20"));
         assert!(issue_url("2.0.0", 21999, "en").contains("Windows%2010%20"));
         assert!(issue_url("2.0.0", 22000, "en").contains("Windows%2011%20"));
+    }
+
+    #[test]
+    fn the_macos_link_names_macos() {
+        let url = issue_url_macos("2.2.0", "26.6.2", "en");
+        assert!(
+            url.ends_with("BatteryTray%202.2.0%20%C2%B7%20macOS%2026.6.2%20%C2%B7%20language%3A%20English%0A"),
+            "{url}"
+        );
+        assert!(issue_url_macos("2.2.0", "26.6.2", "ru").starts_with(&issue_url("2.2.0", 26100, "ru")[..200]));
     }
 
     #[test]

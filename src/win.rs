@@ -1,7 +1,7 @@
-//! Small Win32 helpers shared by the rest: UTF-16 strings, Win32 errors, elevation, the app's data folder.
+//! Small Win32 helpers shared by the Windows parts: UTF-16 strings, Win32 errors, elevation, the app's data folder
+//! (the rest of the core reaches the last three through `sys`).
 
 use std::ffi::c_void;
-use std::fmt;
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 
@@ -15,41 +15,7 @@ pub fn from_wide(buf: &[u16]) -> String {
     String::from_utf16_lossy(&buf[..end])
 }
 
-/// What failed, as C#'s exceptions said it: a Win32 error code when there is one, and the text shown to the user.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Error {
-    pub code: Option<u32>,
-    pub message: String,
-}
-
-impl Error {
-    /// Windows' own text for the code ("Access is denied."), as C#'s Win32Exception gives it.
-    pub fn win32(code: u32) -> Self {
-        Self { code: Some(code), message: system_message(code) }
-    }
-
-    pub fn last() -> Self {
-        Self::win32(last_error())
-    }
-
-    pub fn with_message(code: u32, message: impl Into<String>) -> Self {
-        Self { code: Some(code), message: message.into() }
-    }
-
-    pub fn other(message: impl Into<String>) -> Self {
-        Self { code: None, message: message.into() }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for Error {}
-
-pub type Result<T> = std::result::Result<T, Error>;
+pub use crate::sys::{Error, Result};
 
 pub fn last_error() -> u32 {
     unsafe { GetLastError() }

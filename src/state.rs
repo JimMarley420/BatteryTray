@@ -19,7 +19,7 @@ struct Inner {
 
 impl StateStore {
     pub fn default_path() -> PathBuf {
-        crate::win::app_data_folder().join("state.json")
+        crate::sys::app_data_folder().join("state.json")
     }
 
     pub fn load() -> Self {

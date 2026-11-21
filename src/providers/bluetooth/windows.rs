@@ -1,12 +1,10 @@
-//! Bluetooth devices whose battery level Windows itself knows (the level in Settings > Bluetooth & devices).
-//! Windows keeps that property after a device disconnects, so the level only counts
-//! while the device is actually connected.
+//! The levels Windows knows (Settings > Bluetooth & devices): a device-node property. Windows keeps that property
+//! after a device disconnects, so the level only counts while the device is actually connected.
 
-use super::{secs, Provider};
+use super::kind_by_name;
 use crate::hid::{self, ffi::Guid, PropertyKey};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
-use std::time::Duration;
 use windows::Devices::Bluetooth::{
     BluetoothClassOfDevice, BluetoothConnectionStatus, BluetoothDevice, BluetoothLEAppearance,
     BluetoothLEAppearanceCategories, BluetoothLEAppearanceSubcategories, BluetoothLEDevice, BluetoothMajorClass,
@@ -25,47 +23,35 @@ const BATTERY_KEY: PropertyKey = PropertyKey {
     id: 2,
 };
 
-pub struct BluetoothProvider;
-
-impl Provider for BluetoothProvider {
-    fn name(&self) -> &'static str {
-        "Bluetooth"
+pub fn poll() -> Vec<DeviceReading> {
+    // WinRT needs the thread to be in an apartment; a second call on the same thread is harmless
+    unsafe {
+        let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
+    }
+    // By address, in the order first seen: (address, low energy, level)
+    let mut levels: Vec<(u64, bool, u8)> = Vec::new();
+    for (instance_id, value) in hid::byte_property(&["BTHENUM", "BTHLE"], BATTERY_KEY) {
+        let address = parse_address(&instance_id);
+        if address == 0 {
+            continue;
+        }
+        let low_energy = instance_id.to_ascii_uppercase().starts_with("BTHLE");
+        match levels.iter_mut().find(|l| l.0 == address) {
+            Some(l) => *l = (address, low_energy, value),
+            None => levels.push((address, low_energy, value)),
+        }
     }
 
-    fn poll(&mut self) -> Vec<DeviceReading> {
-        // WinRT needs the thread to be in an apartment; a second call on the same thread is harmless
-        unsafe {
-            let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
-        }
-        // By address, in the order first seen: (address, low energy, level)
-        let mut levels: Vec<(u64, bool, u8)> = Vec::new();
-        for (instance_id, value) in hid::byte_property(&["BTHENUM", "BTHLE"], BATTERY_KEY) {
-            let address = parse_address(&instance_id);
-            if address == 0 {
-                continue;
-            }
-            let low_energy = instance_id.to_ascii_uppercase().starts_with("BTHLE");
-            match levels.iter_mut().find(|l| l.0 == address) {
-                Some(l) => *l = (address, low_energy, value),
-                None => levels.push((address, low_energy, value)),
-            }
-        }
-
-        let mut result = Vec::new();
-        for (address, low_energy, level) in levels {
-            let Some((name, kind, connected)) = describe(address, low_energy) else { continue };
-            result.push(DeviceReading {
-                online: connected,
-                level: (connected && level <= 100).then_some(level as i32),
-                ..DeviceReading::new(format!("bt:{address:012X}"), name, kind, "Bluetooth")
-            });
-        }
-        result
+    let mut result = Vec::new();
+    for (address, low_energy, level) in levels {
+        let Some((name, kind, connected)) = describe(address, low_energy) else { continue };
+        result.push(DeviceReading {
+            online: connected,
+            level: (connected && level <= 100).then_some(level as i32),
+            ..DeviceReading::new(format!("bt:{address:012X}"), name, kind, "Bluetooth")
+        });
     }
-
-    fn delay(&self, _last: &[DeviceReading]) -> Duration {
-        secs(60)
-    }
+    result
 }
 
 /// The device address inside an instance ID such as BTHLE\DEV_A1B2C3D4E5F6\7&1234ABC&0&A1B2C3D4E5F6 or
@@ -173,22 +159,6 @@ fn kind_of_classic(name: &str, cod: Option<BluetoothClassOfDevice>) -> DeviceKin
     by_class.ok().flatten().unwrap_or_else(|| kind_by_name(name))
 }
 
-pub fn kind_by_name(name: &str) -> DeviceKind {
-    let n = name.to_lowercase();
-    let any = |words: &[&str]| words.iter().any(|w| n.contains(w));
-    if any(&["mouse", "мыш"]) {
-        DeviceKind::Mouse
-    } else if any(&["controller", "gamepad", "xbox", "dualsense", "dualshock", "joy"]) {
-        DeviceKind::Gamepad
-    } else if any(&["keyboard", "клав", "rainy", "keychron"]) {
-        DeviceKind::Keyboard
-    } else if any(&["headset", "headphone", "buds", "barracuda", "kraken", "arctis", "airpods", "наушн"]) {
-        DeviceKind::Headset
-    } else {
-        DeviceKind::Other
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,13 +174,5 @@ mod tests {
         );
         assert_eq!(parse_address(r"BTHENUM\{0000111E-0000-1000-8000-00805F9B34FB}_LOCALMFG&0002\7&1"), 0x00805F9B34FB);
         assert_eq!(parse_address("nothing here"), 0);
-    }
-
-    #[test]
-    fn kind_from_the_name() {
-        assert_eq!(kind_by_name("Razer Barracuda X"), DeviceKind::Headset);
-        assert_eq!(kind_by_name("Беспроводная мышь"), DeviceKind::Mouse);
-        assert_eq!(kind_by_name("Xbox Wireless Controller"), DeviceKind::Gamepad);
-        assert_eq!(kind_by_name("Keychron K2"), DeviceKind::Keyboard);
     }
 }

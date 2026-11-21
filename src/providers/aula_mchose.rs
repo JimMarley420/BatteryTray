@@ -23,7 +23,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
 use crate::state::StateStore;
-use crate::win;
+use crate::sys;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -142,7 +142,7 @@ impl Provider for AulaMchoseProvider {
             match vendor {
                 None => error = Some(t(no_link_reason(&collections))),
                 Some(v) => {
-                    let asked = (|| -> win::Result<()> {
+                    let asked = (|| -> sys::Result<()> {
                         let dev = HidDevice::open(v)?;
                         if receiver.model_code && !self.models.contains_key(&v.path) {
                             if let Some(code) = ask(&dev, MODEL_COMMAND, &mut trace)? {
@@ -237,7 +237,7 @@ fn vendor_collection<'a>(receiver: &Receiver, collections: &'a [HidInfo]) -> Opt
 }
 
 /// Sends one request and waits for its reply; None when the keyboard didn't answer.
-fn ask(dev: &HidDevice, command: u8, trace: &mut Vec<String>) -> win::Result<Option<Vec<u8>>> {
+fn ask(dev: &HidDevice, command: u8, trace: &mut Vec<String>) -> sys::Result<Option<Vec<u8>>> {
     dev.flush();
     let req = request(command);
     trace.push(format!("> {}", hex(&req)));

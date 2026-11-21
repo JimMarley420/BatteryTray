@@ -1,0 +1,9 @@
+[package]
+name = "batterytray-macos"
+version = "2.2.0"
+edition = "2021"
+publish = false
+[lib]
+crate-type = ["staticlib"]
+[dependencies]
+batterytray = { path = "../.." }

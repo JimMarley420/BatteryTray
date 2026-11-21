@@ -3,18 +3,19 @@
 //! The device lists are changed row by row and never replaced: a row that stays keeps its element, and with it an
 //! open menu's anchor, a name being typed, a card being dragged and a running animation.
 
-use crate::app::{level_color, with_app, App};
+use crate::app::{with_app, App};
 use crate::autostart;
 use crate::feedback;
 use crate::gui::{self, DeviceItem, Kind, MainWindow};
 use crate::hotkey::{self, Gesture};
 use crate::list_diff::{self, Step};
-use crate::loc::{self, t, tf};
+use crate::loc::{self, t};
 use crate::reading::DeviceKind;
-use crate::rows::{self, Block, DeviceRow};
+use crate::rows::DeviceRow;
 use crate::settings::AppSettings;
-use crate::update_service::{Stage, Status};
+use crate::update_service::Status;
 use crate::updater::Version;
+use crate::view::{self, DeviceView};
 use crate::win;
 use chrono::{DateTime, Local};
 use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
@@ -48,14 +49,7 @@ pub struct MainView {
 }
 
 /// The device list as the window shows it, block by block.
-pub struct DeviceLists {
-    pub pinned: Vec<DeviceItem>,
-    pub connected: Vec<DeviceItem>,
-    pub offline: Vec<DeviceItem>,
-    pub hidden: Vec<DeviceItem>,
-    /// No device of the first two blocks is connected: the window says so instead
-    pub none_online: bool,
-}
+pub type DeviceLists = view::DeviceLists<DeviceItem>;
 
 impl MainView {
     pub fn open(app: &App) -> Result<Self, slint::PlatformError> {
@@ -188,59 +182,20 @@ impl MainView {
             sync(model, fresh, &renaming);
         }
 
-        let newest = rows.iter().filter_map(|r| r.current.as_ref().map(|c| c.time)).max();
-        ui.set_updated_text(
-            match newest {
-                Some(t) => tf("updated.at", &[&t.format("%H:%M:%S")]),
-                None => t("polling"),
-            }
-            .into(),
-        );
+        ui.set_updated_text(view::updated_text(rows).into());
     }
 
     pub fn refresh_update(&self, u: &Status) {
-        let version = Version::current().to_string();
-        let latest = u.latest.as_ref().map(|l| l.version.to_string()).unwrap_or_default();
-        let status = match u.stage {
-            Stage::Checking => t("upd.checking"),
-            Stage::UpToDate => tf("upd.uptodate", &[&version]),
-            Stage::Available => tf("upd.available", &[&latest, &version]),
-            Stage::Installing if u.progress > 0 && u.progress < 100 => tf("upd.downloading", &[&latest, &u.progress]),
-            Stage::Installing => tf("upd.installing", &[&latest]),
-            Stage::Failed => tf("upd.failed", &[&u.error.clone().unwrap_or_default()]),
-            Stage::NotChecked => tf("upd.idle", &[&version]),
-        };
-        // When it was last asked, as a second line while there is nothing newer
-        let checked = match u.last_check {
-            Some(c) if u.stage == Stage::UpToDate => tf("upd.checked", &[&c.format("%H:%M")]),
-            _ => String::new(),
-        };
-        self.ui.set_update_checked_text(checked.into());
-        let newer = u.newer_available();
-        self.ui.set_install_visible(newer && matches!(u.stage, Stage::Available | Stage::Failed));
-        self.ui.set_install_text(tf("upd.install", &[&latest]).into());
-        self.ui.set_check_enabled(!matches!(u.stage, Stage::Checking | Stage::Installing));
-
-        // Release notes are Markdown; shown as plain text
-        let notes = if newer {
-            u.latest.as_ref().map(|l| l.notes.replace("**", "").replace('`', "").trim().to_string())
-        } else {
-            None
-        }
-        .unwrap_or_default();
-        let notes = if notes.chars().count() > 600 {
-            notes.chars().take(600).collect::<String>().trim_end().to_string() + "…"
-        } else {
-            notes
-        };
-        self.ui.set_update_notes(notes.into());
-
-        self.ui.set_banner_visible(newer && matches!(u.stage, Stage::Available | Stage::Installing));
-        self.ui.set_banner_text(
-            if u.stage == Stage::Installing { status.clone() } else { tf("upd.banner", &[&latest]) }.into(),
-        );
-        self.ui.set_banner_button_visible(u.stage == Stage::Available);
-        self.ui.set_update_status(status.into());
+        let v = view::update_view(u);
+        self.ui.set_update_checked_text(v.checked.into());
+        self.ui.set_install_visible(v.install_visible);
+        self.ui.set_install_text(v.install_text.into());
+        self.ui.set_check_enabled(v.check_enabled);
+        self.ui.set_update_notes(v.notes.into());
+        self.ui.set_banner_visible(v.banner_visible);
+        self.ui.set_banner_text(v.banner_text.into());
+        self.ui.set_banner_button_visible(v.banner_button_visible);
+        self.ui.set_update_status(v.status.into());
     }
 }
 
@@ -283,108 +238,30 @@ fn hold_renaming(lists: &mut DeviceLists, home: usize, index: usize, id: &str) {
 
 /// The rows in the list's order, each in the block it is shown in.
 pub fn device_lists(rows: &[DeviceRow], s: &AppSettings, now: DateTime<Local>) -> DeviceLists {
-    let mut lists = DeviceLists {
-        pinned: Vec::new(),
-        connected: Vec::new(),
-        offline: Vec::new(),
-        hidden: Vec::new(),
-        none_online: true,
-    };
-    for row in rows::list_order(rows, s) {
-        let block = rows::block(row, s);
-        // A pinned device is shown with or without a connection; a hidden one doesn't count
-        if row.online() && matches!(block, Block::Pinned | Block::Connected) {
-            lists.none_online = false;
-        }
-        let item = device_item(row, s, now);
-        match block {
-            Block::Pinned => lists.pinned.push(item),
-            Block::Connected => lists.connected.push(item),
-            Block::Offline => lists.offline.push(item),
-            Block::Hidden => lists.hidden.push(item),
-        }
-    }
-    lists
+    view::device_lists(rows, s, now).map(device_item)
 }
 
-/// One device as any part of the list shows it (a card, a "Not connected" row, a hidden row), and what its menu and
-/// its name field start from.
-pub fn device_item(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> DeviceItem {
-    let mut parts = Vec::new();
-    let (mut level, mut estimate, mut unknown, mut charging) = (None, false, false, false);
-    let mut level_rgb = (0x7A, 0x7A, 0x7A);
-    if row.online() {
-        let cur = row.current.as_ref().expect("online rows have a reading");
-        level = cur.level;
-        estimate = cur.estimate;
-        unknown = cur.charging && level.is_none();
-        if cur.charging {
-            parts.push(t("state.charging"));
-        } else if cur.full_on_charger {
-            parts.push(t("state.full"));
-        }
-        parts.push(cur.via.clone());
-        if let Some(detail) = cur.detail.as_ref().filter(|d| !d.is_empty()) {
-            parts.push(detail.clone());
-        }
-        charging = cur.charging;
-        level_rgb = level_color(level, cur.charging, true, &row.id, s);
-    } else {
-        // The reason, when the provider knows it ("asleep or off"), reads better than a bare "Not connected"
-        let why = row.current.as_ref().and_then(|c| c.detail.clone()).filter(|d| !d.is_empty());
-        parts.push(match why {
-            Some(why) => {
-                let mut chars = why.chars();
-                chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
-            }
-            None => t("state.offline"),
-        });
-        if let Some(last) = &row.last {
-            if let Some(was) = last.level {
-                parts.push(tf("last.seen", &[&was, &ago(last.time, now)]));
-            }
-        }
-    }
-    let ds = s.device(&row.id);
-    let any = row.any();
+/// One device as the window's rows take it.
+pub fn device_item(d: DeviceView) -> DeviceItem {
     DeviceItem {
-        id: row.id.clone().into(),
-        name: row.name.clone().into(),
-        glyph: glyph(row.kind()).into(),
-        subtitle: parts.join(" · ").into(),
-        connected: row.online(),
-        pinned: s.is_pinned(&row.id),
-        // An estimate is marked as one; while charging with no readable level the lightning alone says it all
-        level_text: match level {
-            Some(l) => format!("{}{l}%", if estimate { "≈" } else { "" }),
-            None if unknown => String::new(),
-            None => "—".into(),
-        }
-        .into(),
-        color: color(level_rgb),
-        charging,
-        indeterminate: unknown,
-        fill: (level.unwrap_or(0) as f32 / 100.0).clamp(0.0, 1.0),
-        custom_name: ds.name.clone().unwrap_or_default().into(),
-        own_name: any.name.clone().into(),
-        source: format!("{} · {}", any.via, any.name).into(),
-        alerts: ds.alerts,
-        low: s.low_for(&row.id),
-        critical: s.critical_for(&row.id),
-        own_levels: ds.low_percent.is_some() || ds.critical_percent.is_some(),
-    }
-}
-
-fn ago(time: DateTime<Local>, now: DateTime<Local>) -> String {
-    let d = now - time;
-    if d.num_minutes() < 1 {
-        t("ago.now")
-    } else if d.num_hours() < 1 {
-        tf("ago.min", &[&d.num_minutes()])
-    } else if d.num_days() < 1 {
-        tf("ago.hours", &[&d.num_hours()])
-    } else {
-        loc::date_time(&time)
+        glyph: glyph(d.kind).into(),
+        id: d.id.into(),
+        name: d.name.into(),
+        subtitle: d.subtitle.into(),
+        connected: d.connected,
+        pinned: d.pinned,
+        level_text: d.level_text.into(),
+        color: color(d.color),
+        charging: d.charging,
+        indeterminate: d.indeterminate,
+        fill: d.fill,
+        custom_name: d.custom_name.into(),
+        own_name: d.own_name.into(),
+        source: d.source.into(),
+        alerts: d.alerts,
+        low: d.low,
+        critical: d.critical,
+        own_levels: d.own_levels,
     }
 }
 
@@ -568,54 +445,9 @@ fn connect(ui: &MainWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reading::DeviceReading;
-
-    fn row(id: &str, kind: DeviceKind, online: bool) -> DeviceRow {
-        let reading = DeviceReading { online, level: Some(50), ..DeviceReading::new(id, id, kind, "2.4 GHz") };
-        DeviceRow { id: id.into(), current: Some(reading), last: None, name: id.into() }
-    }
 
     fn ids(list: &[DeviceItem]) -> Vec<&str> {
         list.iter().map(|d| d.id.as_str()).collect()
-    }
-
-    #[test]
-    fn a_device_is_listed_in_one_block_in_list_order() {
-        let rows = [
-            row("mouse", DeviceKind::Mouse, false),
-            row("hidden", DeviceKind::Headset, true),
-            row("keyboard", DeviceKind::Keyboard, true),
-            row("pad", DeviceKind::Gamepad, false),
-            row("headset", DeviceKind::Headset, true),
-            row("pinned-mouse", DeviceKind::Mouse, true),
-        ];
-        let mut s = AppSettings::default();
-        s.device_mut("pinned-mouse").pinned = true;
-        s.device_mut("pad").pinned = true;
-        // Hiding a pinned device keeps its pin, and it is shown with the hidden ones only
-        s.device_mut("hidden").pinned = true;
-        s.device_mut("hidden").hidden = true;
-        s.device_order = vec!["keyboard".into(), "headset".into()];
-        let lists = device_lists(&rows, &s, Local::now());
-        assert_eq!(ids(&lists.pinned), ["pinned-mouse", "pad"]);
-        assert_eq!(ids(&lists.connected), ["keyboard", "headset"]);
-        assert_eq!(ids(&lists.offline), ["mouse"]);
-        assert_eq!(ids(&lists.hidden), ["hidden"]);
-        let pad = &lists.pinned[1];
-        assert_eq!((pad.connected, pad.pinned, pad.level_text.as_str()), (false, true, "—"));
-    }
-
-    #[test]
-    fn no_device_online_counts_pinned_ones() {
-        let mut s = AppSettings::default();
-        assert!(device_lists(&[], &s, Local::now()).none_online, "no devices at all");
-
-        let rows = [row("pinned", DeviceKind::Mouse, true), row("away", DeviceKind::Keyboard, false)];
-        s.device_mut("pinned").pinned = true;
-        assert!(!device_lists(&rows, &s, Local::now()).none_online, "a pinned device is connected");
-
-        s.device_mut("pinned").hidden = true;
-        assert!(device_lists(&rows, &s, Local::now()).none_online, "a hidden one doesn't count");
     }
 
     fn item(id: &str, subtitle: &str) -> DeviceItem {

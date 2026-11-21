@@ -126,7 +126,7 @@ fn sample_rows(settings: &AppSettings, now: DateTime<Local>) -> Vec<DeviceRow> {
     rows::rows(current, &remembered, settings)
 }
 
-fn main() {
+pub fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let folder = std::path::PathBuf::from(args.first().cloned().unwrap_or_else(|| ".".into()));
     let language = args.get(1).map(String::as_str).unwrap_or("ru");

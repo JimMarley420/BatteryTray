@@ -8,6 +8,7 @@
 //! runs an exe found through the environment, and the task's XML never passes through a file another program could
 //! change between writing and reading it.
 
+use super::BACKGROUND_SWITCH;
 use crate::log;
 use crate::win::{self, wide};
 use std::path::PathBuf;
@@ -28,8 +29,6 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 pub const TASK_NAME: &str = "BatteryTray";
-/// Passed by the task: start in the tray without opening the window.
-pub const BACKGROUND_SWITCH: &str = "--background";
 
 fn exe() -> PathBuf {
     std::env::current_exe().unwrap_or_default()

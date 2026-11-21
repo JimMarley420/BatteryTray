@@ -13,7 +13,7 @@ use super::{contains_ignore_case, remaining_ms, secs, Provider};
 use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::time::{Duration, Instant};
 
 const SONY_VID: u16 = 0x054C;
@@ -91,7 +91,7 @@ fn read(
     bluetooth: bool,
     adapter: bool,
     template: DeviceReading,
-) -> win::Result<DeviceReading> {
+) -> sys::Result<DeviceReading> {
     let dev = HidDevice::open_read_only(info)?;
     dev.flush();
     let deadline = Instant::now() + Duration::from_millis(TIMEOUT_MS);

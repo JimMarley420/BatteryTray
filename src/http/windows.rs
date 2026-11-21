@@ -3,6 +3,9 @@
 
 use crate::win::{self, wide, Error, Result};
 use std::ffi::c_void;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::ptr::{null, null_mut};
 
 const ACCESS_TYPE_AUTOMATIC_PROXY: u32 = 4;
@@ -42,7 +45,7 @@ fn ok(result: i32) -> Result<()> {
 fn last_error() -> Error {
     let code = win::last_error();
     if !(12000..13000).contains(&code) {
-        return Error::win32(code);
+        return Error::os(code);
     }
     let mut buf = [0u16; 512];
     let module = unsafe { GetModuleHandleW(wide("winhttp.dll").as_ptr()) };
@@ -149,6 +152,34 @@ pub fn get(url: &str, user_agent: &str, accept: Option<&str>) -> Result<Response
             .then_some(length);
         Ok(Response { _session: session, _connect: connect, request, content_length })
     }
+}
+
+/// The body of a GET as text.
+pub fn get_text(url: &str, user_agent: &str, accept: Option<&str>) -> Result<String> {
+    get(url, user_agent, accept)?.text()
+}
+
+/// Downloads a file of `size` bytes into `path`, telling `progress` each new percentage.
+pub fn download(url: &str, user_agent: &str, path: &Path, size: u64, progress: &dyn Fn(i32)) -> Result<()> {
+    let mut response = get(url, user_agent, None)?;
+    let mut file = File::create(path).map_err(|e| Error::other(e.to_string()))?;
+    let mut buf = vec![0u8; 1 << 16];
+    let mut done: u64 = 0;
+    let mut last_percent = -1;
+    loop {
+        let n = response.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n]).map_err(|e| Error::other(e.to_string()))?;
+        done += n as u64;
+        let percent = (done * 100 / size.max(1)) as i32;
+        if percent != last_percent {
+            last_percent = percent;
+            progress(percent);
+        }
+    }
+    file.sync_all().map_err(|e| Error::other(e.to_string()))
 }
 
 #[link(name = "winhttp", kind = "raw-dylib")]

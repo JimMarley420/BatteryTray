@@ -12,7 +12,7 @@
 
 use super::devices::{map, off, on, Io, Spec, State};
 use super::{pad, sleep_ms};
-use crate::win;
+use crate::sys;
 
 // Voltage (mV) -> percent tables HeadsetControl uses for the Logitech headsets
 const G533: &[(i32, i32)] = &[(4200, 100), (3850, 50), (3790, 30), (3750, 20), (3680, 5), (3330, 0)];
@@ -493,7 +493,7 @@ pub static SPECS: &[Spec] = &[
     },
 ];
 
-fn hyperx_cloud_alpha(io: &mut Io) -> win::Result<State> {
+fn hyperx_cloud_alpha(io: &mut Io) -> sys::Result<State> {
     // Mute events 21 BB 23 arrive on the same collection: match the command echo
     let ask = |io: &mut Io, cmd: u8| {
         io.ask(&[0x21, 0xBB, cmd], |d| d.len() > 3 && d[0] == 0x21 && d[1] == 0xBB && d[2] == cmd, 4, false)
@@ -509,7 +509,7 @@ fn hyperx_cloud_alpha(io: &mut Io) -> win::Result<State> {
     })
 }
 
-fn hyperx_cloud_ii_hp(io: &mut Io) -> win::Result<State> {
+fn hyperx_cloud_ii_hp(io: &mut Io) -> sys::Result<State> {
     let ask = |io: &mut Io, cmd: u8| {
         io.ask(
             &pad(52, &[0x06, 0xFF, 0xBB, cmd]),
@@ -523,7 +523,7 @@ fn hyperx_cloud_ii_hp(io: &mut Io) -> win::Result<State> {
     Ok(on(b[7] as i32, charging))
 }
 
-fn hyperx_cloud_ii_kingston(io: &mut Io) -> win::Result<State> {
+fn hyperx_cloud_ii_kingston(io: &mut Io) -> sys::Result<State> {
     let ask = |io: &mut Io, cmd: u8| {
         io.get_input_report(0x06); // HeadsetControl wakes the receiver this way; the reply is ignored
         io.ask(
@@ -538,7 +538,7 @@ fn hyperx_cloud_ii_kingston(io: &mut Io) -> win::Result<State> {
     Ok(on(b[7] as i32, charging))
 }
 
-fn hyperx_cloud_iii(io: &mut Io) -> win::Result<State> {
+fn hyperx_cloud_iii(io: &mut Io) -> sys::Result<State> {
     // The dongle also sends the same reports by itself when something changes, with 0B / 0C / 0D in place of the
     // command: either one is the answer
     let ask = |io: &mut Io, cmd: u8, unasked: u8| {
@@ -559,7 +559,7 @@ fn hyperx_cloud_iii(io: &mut Io) -> win::Result<State> {
     })
 }
 
-fn hyperx_cloud_flight(io: &mut Io) -> win::Result<State> {
+fn hyperx_cloud_flight(io: &mut Io) -> sys::Result<State> {
     // 64 xx (power) and 65 xx (mute) are events, not the reply
     let Some(r) = io.ask(&pad(20, &[0x21, 0xFF, 0x05]), |d| d.len() >= 5 && !matches!(d[0], 0x64 | 0x65), 4, false)?
     else {
@@ -583,7 +583,7 @@ fn hyperx_cloud_flight(io: &mut Io) -> win::Result<State> {
     Ok(on(percent.round_ties_even() as i32, false))
 }
 
-fn logitech_g930(io: &mut Io) -> win::Result<State> {
+fn logitech_g930(io: &mut Io) -> sys::Result<State> {
     if !io.set_feature(&pad(64, &[0xFF, 0x09, 0x00, 0xFD, 0xF4, 0x10, 0x05, 0xB1, 0xBF, 0xA0, 0x04])) {
         return Ok(off());
     }
@@ -598,7 +598,7 @@ fn logitech_g930(io: &mut Io) -> win::Result<State> {
     })
 }
 
-fn astro_a50(io: &mut Io) -> win::Result<State> {
+fn astro_a50(io: &mut Io) -> sys::Result<State> {
     let r = io.ask(
         &pad(64, &[0x02, 0x0C, 0x03, 0x00, 0x06, 0x0C]),
         |d| d.len() > 8 && d[0] == 0x02 && d[1] == 0x0C && d[4] == 0x06,
@@ -608,25 +608,25 @@ fn astro_a50(io: &mut Io) -> win::Result<State> {
     Ok(r.map_or_else(off, |r| on(r[6] as i32, r[8] != 0)))
 }
 
-fn arctis_1(io: &mut Io) -> win::Result<State> {
+fn arctis_1(io: &mut Io) -> sys::Result<State> {
     Ok(match io.ask(&[0x06, 0x12], |d| d.len() > 3, 4, false)? {
         Some(r) if r[2] != 0x01 => on(r[3] as i32, false),
         _ => off(),
     })
 }
 
-fn arctis_7(io: &mut Io) -> win::Result<State> {
+fn arctis_7(io: &mut Io) -> sys::Result<State> {
     Ok(io.ask(&[0x06, 0x18], |d| d.len() > 2, 4, false)?.map_or_else(off, |r| on(r[2] as i32, false)))
 }
 
-fn arctis_9(io: &mut Io) -> win::Result<State> {
+fn arctis_9(io: &mut Io) -> sys::Result<State> {
     Ok(match io.ask(&[0x00, 0x20], |d| d.len() > 4, 4, false)? {
         Some(r) if r[4] != 0xFF => on(map(r[3] as i32, 0x64, 0x9A, 0, 100), r[4] == 0x01),
         _ => off(),
     })
 }
 
-fn arctis_pro_wireless(io: &mut Io) -> win::Result<State> {
+fn arctis_pro_wireless(io: &mut Io) -> sys::Result<State> {
     match io.ask(&pad(31, &[0x41, 0xAA]), |d| !d.is_empty(), 4, false)? {
         Some(link) if link[0] != 0x02 => {}
         _ => return Ok(off()),
@@ -636,7 +636,7 @@ fn arctis_pro_wireless(io: &mut Io) -> win::Result<State> {
         .map_or_else(off, |r| on(map(r[0] as i32, 0, 4, 0, 100), false)))
 }
 
-fn arctis_nova_pro(io: &mut Io) -> win::Result<State> {
+fn arctis_nova_pro(io: &mut Io) -> sys::Result<State> {
     // The base station also streams volume / chat-mix / EQ frames: take the B0 status reply only
     Ok(match io.ask(&pad(31, &[0x06, 0xB0]), |d| d.len() >= 16 && d[1] == 0xB0, 4, false)? {
         Some(r) if r[15] != 0x01 => on(map(r[6] as i32, 0, 8, 0, 100), r[15] == 0x02),
@@ -644,7 +644,7 @@ fn arctis_nova_pro(io: &mut Io) -> win::Result<State> {
     })
 }
 
-fn arctis_nova_elite(io: &mut Io) -> win::Result<State> {
+fn arctis_nova_elite(io: &mut Io) -> sys::Result<State> {
     // The station also sends 07 xx frames by itself (volume, the spare battery, power): only the reply counts
     let omni = io.product_id() == 0x2290;
     let r = io.ask(&pad(64, &[0x01, 0xB0]), |d| d.len() > 15 && d[0] == 0x01 && d[1] == 0xB0, 8, false)?;
@@ -666,14 +666,14 @@ pub fn nova_elite_state(r: &[u8], omni: bool) -> State {
     on(level as i32, charging)
 }
 
-fn arctis_7_plus(io: &mut Io) -> win::Result<State> {
+fn arctis_7_plus(io: &mut Io) -> sys::Result<State> {
     Ok(match nova_status(io)? {
         Some(r) if r[1] != 0x01 => on(map(r[2] as i32, 0, 4, 0, 100), r[3] == 0x01),
         _ => off(),
     })
 }
 
-fn arctis_nova_7(io: &mut Io) -> win::Result<State> {
+fn arctis_nova_7(io: &mut Io) -> sys::Result<State> {
     let pid = io.product_id();
     Ok(match nova_status(io)? {
         Some(r) if r[3] != 0x00 => {
@@ -685,28 +685,28 @@ fn arctis_nova_7(io: &mut Io) -> win::Result<State> {
     })
 }
 
-fn arctis_nova_5(io: &mut Io) -> win::Result<State> {
+fn arctis_nova_5(io: &mut Io) -> sys::Result<State> {
     Ok(match nova_status(io)? {
         Some(r) if r[1] != 0x02 => on(r[3] as i32, r[4] == 0x01),
         _ => off(),
     })
 }
 
-fn arctis_gamebuds(io: &mut Io) -> win::Result<State> {
+fn arctis_gamebuds(io: &mut Io) -> sys::Result<State> {
     let Some(r) = nova_status(io)?.filter(|r| r.len() >= 7) else { return Ok(off()) };
     // 03 = out of the case; a bud in the case (02) reports 0% and no charging state
     let lowest = [(r[3], r[5]), (r[4], r[6])].iter().filter(|b| b.0 == 0x03).map(|b| b.1 as i32).min();
     Ok(lowest.map_or_else(off, |level| on(level, false)))
 }
 
-fn corsair_void(io: &mut Io) -> win::Result<State> {
+fn corsair_void(io: &mut Io) -> sys::Result<State> {
     Ok(match io.ask(&[0xC9, 0x64], |d| d.len() > 4 && d[0] == 0x64, 4, false)? {
         Some(r) if r[4] != 0 => on((r[2] & 0x7F) as i32, matches!(r[4], 4 | 5)),
         _ => off(),
     })
 }
 
-fn corsair_wireless_v2(io: &mut Io) -> win::Result<State> {
+fn corsair_wireless_v2(io: &mut Io) -> sys::Result<State> {
     // Read-only "get" requests: 02 <endpoint: 08 receiver, 09 headset> 02 <property>. On the receivers that number
     // their reports the 02 is the report ID; on the others a 00 goes in front of it, as Windows wants for a
     // collection without report IDs. The reply reads the same either way: 01 <who> 02 <status> <value>
@@ -739,7 +739,7 @@ fn corsair_wireless_v2(io: &mut Io) -> win::Result<State> {
     Ok(off())
 }
 
-fn sony_inzone_h5(io: &mut Io) -> win::Result<State> {
+fn sony_inzone_h5(io: &mut Io) -> sys::Result<State> {
     // FF = the headset is off; anything else over 100 is no level either
     Ok(match sony_inzone_battery(io, 2)? {
         Some(r) if r[14] <= 100 => on(r[14] as i32, r[13] != 0),
@@ -747,7 +747,7 @@ fn sony_inzone_h5(io: &mut Io) -> win::Result<State> {
     })
 }
 
-fn sony_inzone_buds(io: &mut Io) -> win::Result<State> {
+fn sony_inzone_buds(io: &mut Io) -> sys::Result<State> {
     // With both buds in the case the dongle takes the request and stays silent
     let r = sony_inzone_battery(io, 6)?;
     Ok(r.and_then(|r| buds_level(&r[13..19])).map_or_else(off, |level| on(level, false)))
@@ -761,7 +761,7 @@ pub fn buds_level(payload: &[u8]) -> Option<i32> {
 
 /// Asks an INZONE dongle for the battery and returns the reply, whose payload of at least `payload` bytes starts at
 /// [13]. The request is a "get" of event 04 to the headset (41), with our transaction ID (02 00) and a checksum.
-fn sony_inzone_battery(io: &mut Io, payload: usize) -> win::Result<Option<Vec<u8>>> {
+fn sony_inzone_battery(io: &mut Io, payload: usize) -> sys::Result<Option<Vec<u8>>> {
     let mut request = pad(64, &[0x02, 0x0C, 0x01, 0x00, 0xFC, 0x08, 0x96, 0xC3, 0x41, 0x04, 0x01, 0x02, 0x00]);
     request[13] = request[6..=12].iter().fold(0u8, |sum, &b| sum.wrapping_add(b));
     // Our transaction ID and a return / active-notification type, so unsolicited events don't count
@@ -814,7 +814,7 @@ const STATUS_5565_AWAY: u8 = 0x1A;
 
 /// The status request several C-Media dongles share: 55 65 01, answered by 55 65 <level> <status>. Other 55 xx
 /// reports come on the same collection (the HT6 says 55 0A when its headset is switched off).
-fn status_5565(io: &mut Io, status: Status5565) -> win::Result<State> {
+fn status_5565(io: &mut Io, status: Status5565) -> sys::Result<State> {
     let r = io.ask(&pad(64, &[0x55, 0x65, 0x01]), |d| is_5565_reply(d, status), 32, false)?;
     Ok(r.map_or_else(off, |r| parse_5565(&r, status)))
 }
@@ -835,7 +835,7 @@ pub fn parse_5565(r: &[u8], status: Status5565) -> State {
     }
 }
 
-fn vgn_omnisound(io: &mut Io) -> win::Result<State> {
+fn vgn_omnisound(io: &mut Io) -> sys::Result<State> {
     // The same request; the reply has no status byte, and the vendor's program shows no charging state either
     let r = io.ask(&pad(64, &[0x55, 0x65, 0x01]), |d| d.len() > 2 && d[0] == 0x55 && d[1] == 0x65, 32, false)?;
     Ok(match r {
@@ -844,7 +844,7 @@ fn vgn_omnisound(io: &mut Io) -> win::Result<State> {
     })
 }
 
-fn mchose_v9_pro_2(io: &mut Io) -> win::Result<State> {
+fn mchose_v9_pro_2(io: &mut Io) -> sys::Result<State> {
     // Read battery: start AA, version 01, no checksum, length 1, a request (00 01), sub-command 0B
     let request = pad(64, &[0x55, 0xAA, 0x01, 0x00, 0x01, 0x00, 0x01, 0x0B]);
     let r = io.ask(&request, |d| mc_battery(d).is_some(), 16, false)?;
@@ -879,7 +879,7 @@ pub fn mc_battery(d: &[u8]) -> Option<State> {
     (level <= 100).then(|| on(level as i32, d[9] & 0x80 != 0))
 }
 
-fn lenovo_voip(io: &mut Io) -> win::Result<State> {
+fn lenovo_voip(io: &mut Io) -> sys::Result<State> {
     if !io.set_feature(&pad(61, &[0x24, 0x01])) {
         return Ok(off());
     }
@@ -890,7 +890,7 @@ fn lenovo_voip(io: &mut Io) -> win::Result<State> {
 }
 
 /// Status reports (B0) can also arrive unasked on this interface; other replies start with 20.
-fn nova_status(io: &mut Io) -> win::Result<Option<Vec<u8>>> {
+fn nova_status(io: &mut Io) -> sys::Result<Option<Vec<u8>>> {
     io.ask(&[0x00, 0xB0], |d| d.len() > 4 && d[0] == 0xB0, 4, false)
 }
 
@@ -906,7 +906,7 @@ const BRAGI_POWER: u8 = 0x10;
 /// SS the status (00 ok, 05 no such property), then the value, little-endian. A receiver relays to its headset on
 /// target 09; a headset on its cable answers on 08, except the Virtuoso SE, which takes 09 there too and refuses 08.
 /// Read-only: properties are only read, the headset stays in hardware mode.
-fn bragi(io: &mut Io, wired: bool) -> win::Result<State> {
+fn bragi(io: &mut Io, wired: bool) -> sys::Result<State> {
     let targets: &[u8] = if wired { &[BRAGI_SELF, BRAGI_HEADSET] } else { &[BRAGI_HEADSET] };
     for &target in targets {
         // A receiver without its headset is silent or answers "no such property" for itself
@@ -917,7 +917,7 @@ fn bragi(io: &mut Io, wired: bool) -> win::Result<State> {
     Ok(off())
 }
 
-fn bragi_get(io: &mut Io, target: u8, property: u8) -> win::Result<Option<u32>> {
+fn bragi_get(io: &mut Io, target: u8, property: u8) -> sys::Result<Option<u32>> {
     Ok(io
         .ask(&pad(64, &[0x02, target, 0x02, property]), |d| is_bragi_reply(d, target), 8, false)?
         .and_then(|r| bragi_value(&r)))
@@ -944,7 +944,7 @@ pub fn bragi_state(level: u32, power: Option<u32>) -> State {
     }
 }
 
-fn logitech_voltage(io: &mut Io, feature_index: u8, function: u8, table: &[(i32, i32)]) -> win::Result<State> {
+fn logitech_voltage(io: &mut Io, feature_index: u8, function: u8, table: &[(i32, i32)]) -> sys::Result<State> {
     let r = io.ask(
         &pad(20, &[0x11, 0xFF, feature_index, function]),
         |d| {
