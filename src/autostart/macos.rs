@@ -68,6 +68,18 @@ pub fn register() -> bool {
     result.is_ok()
 }
 
+/// The login item starts the copy that wrote it. When this copy runs from somewhere else (it was moved to Applications,
+/// or another copy was started by hand), the item is pointed at this one: the one the user runs now is the one they
+/// mean to start at login.
+pub fn follow_this_copy() {
+    let Ok(text) = fs::read_to_string(agent()) else { return };
+    let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
+    if !exe.is_empty() && !text.contains(&format!("<string>{}</string>", escape(&exe))) {
+        log::write(&format!("login agent: now for {exe}"));
+        register();
+    }
+}
+
 pub fn unregister() -> bool {
     let path = agent();
     let result = match fs::remove_file(&path) {

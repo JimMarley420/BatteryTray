@@ -7,7 +7,7 @@ mod macos;
 mod windows;
 
 #[cfg(target_os = "macos")]
-pub use macos::{is_registered, register, set, unregister};
+pub use macos::{follow_this_copy, is_registered, register, set, unregister};
 #[cfg(windows)]
 pub use windows::{is_installed, is_registered, register, run_self_elevated, run_task, set, unregister, TASK_NAME};
 

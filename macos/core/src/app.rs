@@ -95,6 +95,9 @@ impl MacApp {
             demo::prepare(&folder);
             log::set_folder(folder.clone());
         }
+        if !demo {
+            autostart::follow_this_copy();
+        }
         let settings_path = folder.join("settings.json");
         let mut settings = AppSettings::load_from(&settings_path);
         batterytray::updater::clean_up();
