@@ -15,6 +15,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.autoenablesItems = false
         item.menu = menu
         item.button?.setAccessibilityLabel("BatteryTray")
+        item.behavior = []
+        item.isVisible = true
         update(model.snapshot?.tray)
     }
 
@@ -31,6 +33,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .bold)
         button.attributedTitle = NSAttributedString(string: label, attributes: [.foregroundColor: color, .font: font])
         button.toolTip = tray?.tooltip
+    }
+
+    /// Opens the menu and hands its window to `take` while it is open, then closes it (`--snapshot`).
+    func snapshotMenu(_ take: @escaping (NSWindow?) -> Void) {
+        let timer = Timer(timeInterval: 0.8, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                take(NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Menu") })
+                self?.menu.cancelTracking()
+            }
+        }
+        // Menu tracking runs the event loop in its own mode
+        RunLoop.main.add(timer, forMode: .common)
+        item.button?.performClick(nil)
     }
 
     /// Built afresh each time it opens, in the current language and with the current levels.
@@ -60,7 +75,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// "Razer Barracuda X   85% ⚡": the level in its color, after a tab so the levels line up.
     private func title(_ device: TrayItem) -> NSAttributedString {
         let text = NSMutableAttributedString(string: device.name + "\t")
-        let level = device.level + (device.charging ? " ⚡" : "")
+        let level = [device.level, device.charging ? "⚡" : ""].filter { !$0.isEmpty }.joined(separator: " ")
         let bold = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .semibold)
         text.append(NSAttributedString(string: level, attributes: [.foregroundColor: device.color.nsColor, .font: bold]))
         let style = NSMutableParagraphStyle()

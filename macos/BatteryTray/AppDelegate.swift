@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel.shared
     private let background: Bool
     private let demo: Bool
-    private var statusItem: StatusItemController?
+    private(set) var statusItem: StatusItemController?
     private var mainWindow: MainWindowController?
     private var settingsWindow: SettingsWindowController?
     private let reminder = ReminderController(test: false)
@@ -75,6 +75,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         openMain()
         return false
+    }
+
+    /// Opened again from Finder, Spotlight or `open` while it runs: macOS only brings a menu bar app to the front, with
+    /// nothing to show. As a second launch, the device window comes up. Its own windows activate the app too, but then
+    /// one of them is open already.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if mainWindow == nil && settingsWindow == nil && !quitting {
+            openMain()
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

@@ -18,6 +18,11 @@ enum Core {
         (try? JSONSerialization.jsonObject(with: data(command))) as? [String: Any] ?? [:]
     }
 
+    /// A line in the app's log (log.txt), next to the core's.
+    static func log(_ text: String) {
+        call(["cmd": "log", "text": text])
+    }
+
     /// Runs a command and decodes its answer.
     static func decode<T: Decodable>(_ type: T.Type, _ command: [String: Any]) -> T? {
         let decoder = JSONDecoder()

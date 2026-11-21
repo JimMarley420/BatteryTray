@@ -188,12 +188,14 @@ struct ReminderSettings: View {
         if let s = model.snapshot?.settings {
             Form {
                 Section {
-                    LevelSetting(title: model.t("alerts.low"), hint: nil, value: s.low, range: 10...50, accepts: 10...50,
-                                 unit: "%") { model.set("low", $0) }
+                    LevelSetting(title: model.t("alerts.low"), hint: nil, value: s.low, range: 10...50,
+                                 unit: "%", current: { model.snapshot?.settings.low ?? s.low }) { model.set("low", $0) }
                     LevelSetting(title: model.t("alerts.critical"), hint: model.t("alerts.critical.hint"),
-                                 value: s.critical, range: 5...45, accepts: 5...45, unit: "%") { model.set("critical", $0) }
+                                 value: s.critical, range: 5...45, unit: "%",
+                                 current: { model.snapshot?.settings.critical ?? s.critical }) { model.set("critical", $0) }
                     LevelSetting(title: model.t("alerts.repeat"), hint: nil, value: s.repeatMinutes, range: 5...60,
-                                 accepts: 1...120, unit: model.t("alerts.repeat.unit")) { model.set("repeat", $0) }
+                                 unit: model.t("alerts.repeat.unit"),
+                                 current: { model.snapshot?.settings.repeatMinutes ?? s.repeatMinutes }) { model.set("repeat", $0) }
                 }
                 Section {
                     Toggle(model.t("alerts.sound"), isOn: Binding(get: { s.sound }, set: { model.set("sound", $0) }))
@@ -220,14 +222,14 @@ struct ReminderSettings: View {
 }
 
 /// A level: the number as typed (accent colored) and a slider that moves in steps of 5. A typed value may be any the
-/// app accepts; the slider then stands where it falls.
+/// app accepts (it keeps it in range); the slider then stands where it falls.
 struct LevelSetting: View {
     let title: String
     let hint: String?
     let value: Int
     let range: ClosedRange<Int>
-    let accepts: ClosedRange<Int>
     let unit: String
+    let current: () -> Int
     let change: (Int) -> Void
 
     var body: some View {
@@ -238,20 +240,18 @@ struct LevelSetting: View {
                     Hint(text: hint)
                 }
                 Spacer()
-                NumberField(value: value, unit: unit) { typed in
-                    let kept = min(max(typed, accepts.lowerBound), accepts.upperBound)
-                    if kept != value { change(kept) }
-                }
-                .foregroundStyle(Color.accentColor)
+                NumberField(value: value, unit: unit, label: title, current: current, commit: change)
+                    .foregroundStyle(Color.accentColor)
             }
             Slider(
                 value: Binding(
                     get: { Double(min(max(value, range.lowerBound), range.upperBound)) },
                     set: { fresh in
-                        let stepped = Int((fresh / 5).rounded()) * 5
-                        if stepped != value { change(stepped) }
+                        let stepped = Int(fresh.rounded())
+                        if stepped != current() { change(stepped) }
                     }),
-                in: Double(range.lowerBound)...Double(range.upperBound)
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: 5
             ) {
                 Text(title)
             }

@@ -791,6 +791,32 @@ mod tests {
         assert_eq!(split_id(&[0x10, 1, 2]), (0x10, &[0x10u8, 1, 2][..]));
     }
 
+    /// The real thing, on this Mac: a collection is opened, read with a timeout, asked for a feature report and closed,
+    /// again and again, without hanging or leaking a thread. `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn this_macs_devices_open_read_and_close() {
+        let all = enumerate(|_, _| true);
+        let readable = all.iter().filter(|i| !i.access_denied && i.usage_page >= 0xFF00 && i.input_length > 0);
+        for info in readable.take(4) {
+            for _ in 0..3 {
+                let started = Instant::now();
+                let dev = HidDevice::open(info).unwrap_or_else(|e| panic!("{info}: {e}"));
+                let report = dev.read(150).unwrap();
+                dev.flush();
+                let feature = (info.feature_length > 0).then(|| dev.get_feature(0)).flatten();
+                drop(dev);
+                let took = started.elapsed();
+                println!(
+                    "{info}: read {:?}, feature {:?}, {took:?}",
+                    report.map(|r| r.len()),
+                    feature.map(|f| f.len())
+                );
+                assert!(took < Duration::from_secs(3), "{info} took {took:?}");
+            }
+        }
+    }
+
     /// The real thing, on this Mac: every HID device is listed with its collections, and none of them is opened.
     #[test]
     fn this_macs_devices() {

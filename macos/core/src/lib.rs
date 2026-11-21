@@ -90,6 +90,10 @@ fn call(command: &Value) -> Value {
                 loc::all_in(language).into_iter().map(|(k, v)| (k.to_string(), Value::String(v))).collect();
             return json!({ "lang": language, "texts": texts });
         }
+        "log" => {
+            log::write(str_of(command, "text"));
+            return json!({});
+        }
         "default_shortcut" => return MacApp::default_shortcut(),
         "suggestion_url" => return json!({ "url": MacApp::suggestion_url() }),
         "log_folder" => return json!({ "path": log::folder().display().to_string() }),

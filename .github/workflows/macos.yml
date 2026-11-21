@@ -1,0 +1,53 @@
+name: macOS
+
+# The macOS app: the core's lints and tests on a Mac, the app built for Apple Silicon and Intel, and its windows drawn
+# with the demo's devices in each language. The zip a release carries (BatteryTray-macOS.zip) is handed out, for trying
+# a build before it is released and for attaching to the release.
+on:
+  workflow_dispatch:
+  push:
+    paths: ["src/**", "macos/**", "Cargo.toml", "Cargo.lock", "rustfmt.toml", ".github/workflows/macos.yml"]
+  pull_request:
+    paths: ["src/**", "macos/**", "Cargo.toml", "Cargo.lock", "rustfmt.toml", ".github/workflows/macos.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt --target aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-macos-${{ hashFiles('Cargo.lock') }}
+      - name: Formatting
+        run: cargo fmt --check
+      - name: Lints
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+      - name: Build the app
+        run: macos/build.sh universal
+      - name: Draw the windows
+        run: |
+          for lang in ru en zh; do
+            target/macos/BatteryTray.app/Contents/MacOS/BatteryTray --snapshot "$RUNNER_TEMP/windows/$lang" "$lang"
+          done
+          ls -R "$RUNNER_TEMP/windows"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BatteryTray-macOS
+          path: target/macos/BatteryTray-macOS.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-windows
+          path: ${{ runner.temp }}/windows

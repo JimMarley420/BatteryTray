@@ -33,8 +33,10 @@ final class MainWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate 
         languageChanged()
     }
 
-    /// Under the menu bar item, kept inside the screen it is on.
-    private func place(near anchor: NSRect?, size: NSSize) {
+    /// Under the menu bar item, kept inside the screen it is on; in the top right corner while the item has no place
+    /// yet (right after the app starts).
+    private func place(near item: NSRect?, size: NSSize) {
+        let anchor = item.flatMap { $0.minX > 0 || $0.minY > 0 ? $0 : nil }
         let screen = NSScreen.screens.first { anchor.map($0.frame.intersects) ?? false } ?? NSScreen.main
         guard let area = screen?.visibleFrame else { return window.center() }
         let frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))

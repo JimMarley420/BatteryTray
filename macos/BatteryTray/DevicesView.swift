@@ -394,6 +394,13 @@ struct DeviceMenu: View {
         }
     }
 
+    /// The device's level in effect, as the app has it now.
+    private func current(_ command: String) -> Int? {
+        let devices = model.snapshot.map { $0.devices.pinned + $0.devices.connected + $0.devices.offline } ?? []
+        let now = devices.first { $0.id == device.id }
+        return command == "device_low" ? now?.low : now?.critical
+    }
+
     private func action(_ symbol: String, _ title: String, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
             HStack(spacing: 10) {
@@ -410,11 +417,9 @@ struct DeviceMenu: View {
         HStack {
             Text(title)
             Spacer()
-            NumberField(value: value, unit: "%") { typed in
-                // The value already shown is no change: it doesn't give the device levels of its own
-                if typed != value {
-                    model.send(["cmd": command, "id": device.id, "value": typed])
-                }
+            // The value already shown is no change: it doesn't give the device levels of its own
+            NumberField(value: value, unit: "%", label: title, current: { current(command) ?? value }) { typed in
+                model.send(["cmd": command, "id": device.id, "value": typed])
             }
         }
     }
@@ -443,10 +448,13 @@ struct MenuRowStyle: ButtonStyle {
 }
 
 /// A number typed in a field with its unit: kept on Return or when the field is left, put back on Esc or when it
-/// isn't a number. The app keeps it in range.
+/// isn't a number. The app keeps it in range; the field then shows what the app kept.
 struct NumberField: View {
     let value: Int
     let unit: String
+    let label: String
+    /// The value as the app has it right now (the view's `value` is the one it was drawn with)
+    let current: () -> Int
     let commit: (Int) -> Void
     @StateObject private var text = Local("")
     @FocusState private var focused: Bool
@@ -459,13 +467,14 @@ struct NumberField: View {
                 .monospacedDigit()
                 .frame(width: 52)
                 .focused($focused)
+                .accessibilityLabel(label)
                 .onSubmit(apply)
-                .onExitCommand { text.value = "\(value)" }
+                .onExitCommand { text.value = "\(current())" }
                 .onChange(of: focused) { isFocused in
                     if !isFocused { apply() }
                 }
                 .onChange(of: value) { fresh in
-                    if !focused { text.value = "\(fresh)" }
+                    text.value = "\(fresh)"
                 }
                 .onAppear { text.value = "\(value)" }
             Text(unit).foregroundStyle(.secondary)
@@ -474,12 +483,10 @@ struct NumberField: View {
 
     private func apply() {
         let digits = text.value.filter(\.isNumber)
-        guard !digits.isEmpty, let typed = Int(digits) else {
-            text.value = "\(value)"
-            return
+        if let typed = Int(digits), !digits.isEmpty, typed != current() {
+            commit(typed)
         }
-        commit(typed)
-        text.value = "\(value)"
+        text.value = "\(current())"
     }
 }
 

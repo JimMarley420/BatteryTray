@@ -46,7 +46,10 @@ final class HotkeyBinding {
         let status = RegisterEventHotKey(UInt32(key), shortcut.carbonModifiers,
                                          EventHotKeyID(signature: HotkeyBinding.signature, id: next),
                                          GetApplicationEventTarget(), 0, &fresh)
-        guard status == noErr, let fresh else { return false }
+        guard status == noErr, let fresh else {
+            Core.log("overlay shortcut \(shortcut.label) not registered: \(status)")
+            return false
+        }
         if let ref {
             UnregisterEventHotKey(ref)
         }

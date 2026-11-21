@@ -1,7 +1,8 @@
 import AppKit
 
 /// `--snapshot <folder> [ru|en|zh]`: the app with the demo's devices draws each of its windows to a PNG file and quits
-/// - the device list, a device's menu, a name being edited, each settings tab, the reminder and the overlay - for the
+/// - the device list, a device's menu, a name being edited, the menu bar item's menu, each settings tab, the reminder
+/// and the overlay - for the
 /// README's pictures and for checking a layout. An app may always take pictures of its own windows, so no Screen
 /// Recording permission is needed.
 @MainActor
@@ -30,6 +31,7 @@ final class Snapshots {
             { model.renamingID = model.snapshot?.devices.connected.first?.id },
             { self.take(self.window(titled: model.t("app.title")), "rename") },
             { model.renamingID = nil },
+            { self.app?.statusItem?.snapshotMenu { self.take($0, "menu-bar", wait: 0) } },
             { self.app?.openSettings() },
             { self.take(self.settings(0), "settings-general") },
             { self.take(self.settings(1), "settings-reminders") },
@@ -72,21 +74,29 @@ final class Snapshots {
         NSApp.windows.first { $0.isVisible && $0 is FloatingPanel && $0.ignoresMouseEvents == clickThrough }
     }
 
-    private func take(_ window: NSWindow?, _ name: String) {
-        guard let window else {
+    /// Draws the window after `wait` seconds (a tab just selected resizes its window first).
+    private func take(_ window: NSWindow?, _ name: String, wait: TimeInterval = 0.6) {
+        guard let number = window?.windowNumber else {
             FileHandle.standardError.write(Data("snapshot: no window for \(name)\n".utf8))
             return
         }
-        // Drawn after a short wait: a tab just selected resizes its window first
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber),
-                                                      [.boundsIgnoreFraming, .bestResolution]),
-                  let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
-            else {
-                FileHandle.standardError.write(Data("snapshot: \(name) couldn't be drawn\n".utf8))
-                return
+        if wait > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                MainActor.assumeIsolated { self.draw(number, name) }
             }
-            try? png.write(to: self.folder.appendingPathComponent("\(name).png"))
+        } else {
+            draw(number, name)
         }
+    }
+
+    private func draw(_ number: Int, _ name: String) {
+        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number),
+                                                  [.boundsIgnoreFraming, .bestResolution]),
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+        else {
+            FileHandle.standardError.write(Data("snapshot: \(name) couldn't be drawn\n".utf8))
+            return
+        }
+        try? png.write(to: folder.appendingPathComponent("\(name).png"))
     }
 }

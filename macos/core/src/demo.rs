@@ -24,7 +24,7 @@ pub fn folder() -> PathBuf {
 }
 
 /// The demo's settings and state, written into an empty folder: two pinned devices (one away, one with its own
-/// levels), a keyboard without reminders, one device hidden, two remembered from before.
+/// levels), a keyboard without reminders, one device hidden, two remembered from before; the login banner answered.
 pub fn prepare(folder: &Path) {
     let _ = std::fs::remove_dir_all(folder);
     let mut settings = AppSettings::default();
@@ -34,6 +34,8 @@ pub fn prepare(folder: &Path) {
     settings.device_mut(XBOX).pinned = true;
     settings.device_mut(RAINY).alerts = false;
     settings.device_mut(AIRPODS).hidden = true;
+    // The pictures show the devices, not the login banner
+    settings.autostart_banner_dismissed = true;
     settings.last_run_version = Some(env!("CARGO_PKG_VERSION").into());
     settings.save_to(&folder.join("settings.json"));
 

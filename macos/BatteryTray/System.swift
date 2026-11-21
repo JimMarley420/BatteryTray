@@ -26,7 +26,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             return
         }
         asked = true
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            DispatchQueue.main.async {
+                Core.log("notifications: \(granted ? "allowed" : "not allowed")\(error.map { " (\($0.localizedDescription))" } ?? "")")
+            }
             if granted { send() }
         }
     }
