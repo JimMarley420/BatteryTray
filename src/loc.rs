@@ -221,15 +221,9 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
 
     // Low battery reminder
     ("alert.title", "Пора зарядить", "Time to charge", "该充电了"),
-    ("alert.title.many", "Пора зарядить устройства", "Time to charge your devices", "设备该充电了"),
-    ("alert.title.critical", "Почти разрядилось!", "Almost empty!", "电量即将耗尽！"),
     ("alert.snooze", "Напомнить через {0} мин", "Remind me in {0} min", "{0} 分钟后提醒"),
     ("alert.snooze.tip", "Напомнить позже", "Remind me later", "稍后提醒"),
     ("alert.mute", "Не напоминать до зарядки", "Don't remind me until it's charged", "充电前不再提醒"),
-    ("alert.hint.critical", "Осталось совсем немного — поставьте на зарядку, чтобы не отключилось в самый неподходящий момент.",
-        "Very little left: plug it in before it dies at the worst moment.", "电量所剩无几，请及时充电，以免在关键时刻断电。"),
-    ("alert.hint", "Окно не закроется само, пока вы не выберете, когда напомнить снова.",
-        "This window stays until you choose when to be reminded again.", "在您选择下次提醒时间之前，此窗口不会自动关闭。"),
 
     // Updates
     ("upd.err.size", "размер файла {0} вместо {1}", "file size {0} instead of {1}", "文件大小为 {0}，应为 {1}"),

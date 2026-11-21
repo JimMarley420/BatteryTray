@@ -270,9 +270,7 @@ pub fn main() {
         AlertRow { glyph: "\u{E962}".into(), name: "Attack Shark R3".into(), level: "9%".into(), critical: true },
     ]))));
     alert.set_critical(true);
-    alert.set_title_text(loc::t("alert.title.critical").into());
     alert.set_snooze_text("Напомнить через 10 мин".into());
-    alert.set_hint_text(loc::t("alert.hint.critical").into());
     let height = alert.window().size().height as f32 / alert.window().scale_factor();
     render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert.png"));
 

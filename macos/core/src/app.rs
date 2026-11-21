@@ -539,13 +539,6 @@ fn notice(title: &str, text: &str) -> Value {
 /// The reminder with these devices; `test`: the sample, which a click only closes.
 fn alert(due: &[AlertItem], repeat_minutes: i32, test: bool) -> Value {
     let critical = due.iter().any(|d| d.critical);
-    let title = if critical {
-        "alert.title.critical"
-    } else if due.len() == 1 {
-        "alert.title"
-    } else {
-        "alert.title.many"
-    };
     let items: Vec<Value> = due
         .iter()
         .map(|d| json!({ "id": d.id, "name": d.name, "kind": kind(d.kind), "level": format!("{}%", d.level), "critical": d.critical }))
@@ -554,8 +547,6 @@ fn alert(due: &[AlertItem], repeat_minutes: i32, test: bool) -> Value {
         "type": "alert",
         "test": test,
         "critical": critical,
-        "title": t(title),
-        "hint": t(if critical { "alert.hint.critical" } else { "alert.hint" }),
         "snooze": tf("alert.snooze", &[&repeat_minutes]),
         "items": items,
     })

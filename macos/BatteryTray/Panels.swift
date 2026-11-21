@@ -115,38 +115,34 @@ struct ReminderView: View {
         let items = state.effect["items"] as? [[String: Any]] ?? []
         HStack(spacing: 0) {
             Rectangle().fill(accent).frame(width: 4)
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: "battery.25").font(.system(size: 18, weight: .semibold)).foregroundStyle(accent)
-                    Text(state.effect["title"] as? String ?? "").font(.system(size: 15, weight: .semibold))
-                    Spacer()
+            VStack(alignment: .leading, spacing: 12) {
+                // Only what is due and the answers: each device with its level, the two buttons, and the cross (which
+                // snoozes)
+                HStack(alignment: .top, spacing: 6) {
+                    VStack(spacing: 6) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                            HStack(spacing: 10) {
+                                Image(systemName: symbol(item["kind"] as? String ?? ""))
+                                    .font(.system(size: 15))
+                                    .frame(width: 24)
+                                Text(item["name"] as? String ?? "").lineLimit(1).truncationMode(.tail)
+                                Spacer()
+                                Text(item["level"] as? String ?? "")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(item["critical"] as? Bool == true
+                                        ? Color(red: 1, green: 0x6B / 255, blue: 0x6B / 255)
+                                        : Color(red: 0xF7 / 255, green: 0xC0 / 255, blue: 0x4A / 255))
+                            }
+                        }
+                    }
                     Button { answer(true) } label: {
                         Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).frame(width: 20, height: 20)
                     }
                     .buttonStyle(.borderless)
                     .help(AppModel.shared.t("alert.snooze.tip"))
+                    .accessibilityLabel(AppModel.shared.t("alert.snooze.tip"))
                 }
-                VStack(spacing: 6) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                        HStack(spacing: 10) {
-                            Image(systemName: symbol(item["kind"] as? String ?? ""))
-                                .font(.system(size: 15))
-                                .frame(width: 24)
-                            Text(item["name"] as? String ?? "").lineLimit(1).truncationMode(.tail)
-                            Spacer()
-                            Text(item["level"] as? String ?? "")
-                                .font(.system(size: 18, weight: .semibold))
-                                .monospacedDigit()
-                                .foregroundStyle(item["critical"] as? Bool == true
-                                    ? Color(red: 1, green: 0x6B / 255, blue: 0x6B / 255)
-                                    : Color(red: 0xF7 / 255, green: 0xC0 / 255, blue: 0x4A / 255))
-                        }
-                    }
-                }
-                Text(state.effect["hint"] as? String ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 6) {
                     Button { answer(true) } label: {
                         Text(state.effect["snooze"] as? String ?? "").frame(maxWidth: .infinity)

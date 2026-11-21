@@ -5,7 +5,7 @@
 //! then), and gets its real one a moment later.
 
 use crate::gui::{self, AlertRow, AlertWindow, Kind};
-use crate::loc::{t, tf};
+use crate::loc::tf;
 use crate::overlay::Rect;
 use crate::rows::AlertItem;
 use slint::winit_030::WinitWindowAccessor;
@@ -78,18 +78,7 @@ impl AlertView {
     pub fn set_items(&mut self, due: Vec<AlertItem>, repeat_minutes: i32) {
         let critical = due.iter().any(|d| d.critical);
         self.ui.set_critical(critical);
-        self.ui.set_title_text(
-            t(if critical {
-                "alert.title.critical"
-            } else if due.len() == 1 {
-                "alert.title"
-            } else {
-                "alert.title.many"
-            })
-            .into(),
-        );
         self.ui.set_snooze_text(tf("alert.snooze", &[&repeat_minutes]).into());
-        self.ui.set_hint_text(t(if critical { "alert.hint.critical" } else { "alert.hint" }).into());
         self.rows.set_vec(
             due.iter()
                 .map(|d| AlertRow {
