@@ -6,7 +6,7 @@ import AppKit
 //   --update       install the latest release over this app; exit 0 = updated, 2 = up to date, 1 = failed
 //   --dump [file]  poll every device once and write what was read
 //   --demo         the devices of the README's pictures instead of the real ones, with settings of their own
-//   --snapshot <folder> [ru|en|zh]   with the demo's devices, draw each window to a PNG file and quit
+//   --snapshot <folder> [ru|en|zh] [light|dark]   with the demo's devices, draw each window to a PNG file and quit
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
@@ -50,6 +50,9 @@ MainActor.assumeIsolated {
     let delegate = AppDelegate(background: background || snapshot != nil, demo: arguments.contains("--demo") || snapshot != nil)
     delegate.snapshot = snapshot
     app.delegate = delegate
+    if snapshot != nil, let at = arguments.firstIndex(of: "--snapshot"), arguments.indices.contains(at + 3) {
+        app.appearance = NSAppearance(named: arguments[at + 3] == "light" ? .aqua : .darkAqua)
+    }
     app.setActivationPolicy(.accessory)
     app.run()
 }

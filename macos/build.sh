@@ -2,7 +2,8 @@
 # Builds BatteryTray.app for macOS 13 and later, signed ad hoc, and the zip a release carries:
 #   macos/build.sh [native|universal]     (default: universal, Apple Silicon and Intel in one app)
 # Out: target/macos/BatteryTray.app and target/macos/BatteryTray-macOS.zip. Needs Rust with the
-# aarch64-apple-darwin and x86_64-apple-darwin targets, and the Xcode command line tools.
+# aarch64-apple-darwin and x86_64-apple-darwin targets, the Xcode command line tools, and cargo-about for the crates'
+# licenses in the app (`cargo install cargo-about --locked --features cli`; without it the app is built without them).
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/target/macos"
@@ -46,6 +47,14 @@ echo "== bundle $VERSION"
 sed "s/@VERSION@/$VERSION/g" "$ROOT/macos/Info.plist" > "$APP/Contents/Info.plist"
 swift "$ROOT/macos/make-icon.swift" "$WORK/AppIcon.iconset"
 iconutil -c icns -o "$APP/Contents/Resources/AppIcon.icns" "$WORK/AppIcon.iconset"
+# The licenses that come with the code: the app's own, its sources', the crates' in it
+cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/"
+if cargo about --version >/dev/null 2>&1; then
+  cargo about generate --locked --manifest-path "$ROOT/macos/core/Cargo.toml" -c "$ROOT/macos/about.toml" \
+    "$ROOT/macos/about.hbs" -o "$APP/Contents/Resources/THIRD_PARTY_LICENSES.md"
+else
+  echo "warning: cargo-about isn't installed: the app has no THIRD_PARTY_LICENSES.md, a release must not go out so" >&2
+fi
 # Ad hoc: no Developer ID. macOS asks once whether to open an app downloaded from the internet
 codesign --force --sign - "$APP"
 codesign --verify --strict "$APP"

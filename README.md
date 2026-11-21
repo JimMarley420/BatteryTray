@@ -1,15 +1,16 @@
-# BatteryTray — wireless headset, mouse, keyboard and gamepad battery level in the Windows tray
+# BatteryTray — wireless headset, mouse, keyboard and gamepad battery level in the Windows tray and the Mac menu bar
 
 [![Latest release](https://img.shields.io/github/v/release/qu1ncky/BatteryTray)](https://github.com/qu1ncky/BatteryTray/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/qu1ncky/BatteryTray/total)](https://github.com/qu1ncky/BatteryTray/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Windows 10 / 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6)
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B%20·%20Apple%20Silicon%20%7C%20Intel-000000)
 
 **English** · [Русский](README.ru.md) · [中文](README.zh-CN.md)
 
-See how much battery your wireless headset, mouse, keyboard and controller have left — right next to the clock — and get a reminder **before** they die mid-game or mid-call. One small app for all your devices instead of Razer Synapse, Logitech G HUB, SteelSeries GG, HyperX NGENUITY, Corsair iCUE or ASUS Armoury Crate: no account, no vendor software, it only reads the battery.
+See how much battery your wireless headset, mouse, keyboard and controller have left — next to the clock on Windows, in the menu bar on a Mac — and get a reminder **before** they die mid-game or mid-call. One small app for all your devices instead of Razer Synapse, Logitech G HUB, SteelSeries GG, HyperX NGENUITY, Corsair iCUE or ASUS Armoury Crate: no account, no vendor software, it only reads the battery. On a Mac it also shows your AirPods (each earbud and the case), Magic Mouse, Magic Keyboard and other Bluetooth devices in one place.
 
-<img src="docs/screenshot-en.png" alt="BatteryTray window: battery levels of a wireless headset, mouse, keyboard and Xbox controller" width="420">
+<img src="docs/screenshot-en.png" alt="BatteryTray on Windows: battery levels of a wireless headset, mouse, keyboard and Xbox controller" width="400"> <img src="docs/macos-en.png" alt="BatteryTray on macOS: battery levels of a wireless headset, mouse, keyboard and Xbox controller in a Mac window" width="400">
 
 ## Features
 
@@ -20,10 +21,26 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 - **A level for every device** — the headset that drains fastest can remind you at 40% while the mouse waits for 15%: each device can have its own reminder and critical levels (in its **⋯** menu), and follows the global ones until you set them.
 - **Charging complete notification** — when a device that can tell finishes charging with the cable still in.
 - **No made-up percentages** — when a device can't report its level while charging, you see a charging sign instead of a stale number; estimates are marked with "≈".
-- **English, Russian and Chinese** — follows the Windows language, switch any time in Settings → General.
+- **English, Russian and Chinese** — follows the system's language, switch any time in Settings → General.
 - **Updates itself** from GitHub releases (SHA-256 checked), quietly, while its windows are closed.
 - **Light** — one ~10 MB exe that needs about 8 MB of memory in the tray; nothing else to install.
-- Starts with Windows, lives in the tray, never changes anything on your devices.
+- Starts with Windows (or at login on a Mac), lives in the tray or the menu bar, never changes anything on your devices.
+
+## On a Mac
+
+BatteryTray for macOS is a native menu bar app (SwiftUI) around the same device core as the Windows app, so it reads the same devices the same way, and does the same things the way a Mac app does them:
+
+<img src="docs/macos-menu-en.png" alt="BatteryTray in the macOS menu bar: the menu with each device's battery level" width="363">
+
+- **The level in the menu bar** — the number of the device that most needs charging, in the same colors. Click it for every device's level and the commands; the device window and **Settings… (⌘,)** open from there.
+- **Settings** in their own window with General, Reminders and Overlay tabs, as Mac apps have them.
+- **The overlay** comes up with **⌃⌥V** (any shortcut with ⌘, ⌃ or ⌥ can be recorded) above every window and full-screen app, on the display you are working on.
+- **The low battery reminder** is a floating panel in the top right corner that never takes the focus; "Charging complete" and "a new version" are macOS notifications.
+- **Bluetooth**: everything macOS shows in its Bluetooth menu — AirPods with both earbuds and the case, Magic Mouse, Magic Keyboard, Magic Trackpad, Logitech MX over Bluetooth, Xbox and other controllers (through the GameController framework).
+- **Open at login** puts a login item in System Settings → General → Login Items.
+- **One app for Apple Silicon and Intel**, macOS 13 Ventura or later, about 11 MB.
+
+<img src="docs/macos-settings-en.png" alt="BatteryTray settings on macOS: the Overlay tab with the ⌃⌥V shortcut" width="500">
 
 ## Supported devices
 
@@ -83,9 +100,12 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 | **Steam Controller** (2026) on its Puck, Steam Controller (2015) on its wireless adapter | receiver | ⚠️ untested |
 | **8BitDo** Ultimate 2 Wireless, **Flydigi** Vader 5 Pro / Apex 5 / Apex 6, **GameSir** Nova 2 / Nova 2 Lite / Super Nova / Tarantula Pro, BEITONG KP40D | 2.4 GHz receiver | ⚠️ untested; Flydigi reports in steps |
 | NVIDIA SHIELD Controller (2017) | cable | ⚠️ untested |
-| **Xbox controllers** via the Xbox Wireless Adapter (XInput) | adapter | ⚠️ untested; XInput only knows 4 levels |
-| **Any Bluetooth device** whose battery Windows shows (Xbox controller, many mice, keyboards and headsets) | Bluetooth | ✅ tested (Xbox controller) |
+| **Xbox controllers** via the Xbox Wireless Adapter (XInput, Windows only: macOS has no driver for the adapter) | adapter | ⚠️ untested; XInput only knows 4 levels |
+| **Any Bluetooth device** whose battery Windows or macOS shows (Xbox controller, AirPods with each earbud and the case, Magic Mouse / Keyboard / Trackpad, many mice, keyboards and headsets) | Bluetooth | ✅ tested on Windows (Xbox controller) |
+| **Game controllers** macOS knows: Xbox, Switch Pro, MFi and others | Bluetooth (macOS) | ⚠️ untested |
 | Any USB device that reports the standard HID "Battery Strength" | receiver or cable | ⚠️ untested |
+
+Every device in the table is read on macOS too, through the same protocols (macOS 13 or later, Apple Silicon or Intel).
 
 "Untested" means it follows the protocol as documented by the open source projects listed in [How it works](#how-it-works), but nobody has confirmed it on the real device yet — if you have one, please report how it went in [Issues](https://github.com/qu1ncky/BatteryTray/issues).
 
@@ -101,9 +121,12 @@ Notes on specific devices:
 - **ASUS ROG Omni Receiver**: a mouse and a keyboard on one receiver are listed separately.
 - **ASTRO A50** base stations must have their switch on PC, and can't be read while ASTRO Command Center is open.
 - **Sony PULSE 3D** and **Incott** mice only report when something changes, so they appear a little after they are switched on or moved.
-- **Bluetooth** devices are listed only while connected: Windows keeps a stale percentage after they disconnect.
+- **Bluetooth** devices are listed only while connected: Windows keeps a stale percentage after they disconnect. On a Mac a Bluetooth device appears once it is connected and macOS has its level.
+- **On a Mac, keyboards and mice with keyboard keys** can only be read with the **Input Monitoring** permission (macOS asks it of every app that opens such a device). Such a device says "needs the Input Monitoring permission" until you allow it: click "Allow" on the banner above the list, or turn BatteryTray on in System Settings → Privacy & Security → Input Monitoring. BatteryTray reads only the battery level, never what you type.
 
 ## Download and install
+
+### Windows
 
 1. Download `BatteryTray-…-win-x64.zip` from [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest) and unzip it.
 2. Run `install.cmd` and confirm the administrator prompt.
@@ -115,6 +138,14 @@ It installs to `C:\Program Files\BatteryTray` and starts at sign-in through a Ta
 
 **Portable use:** you can also just run `BatteryTray.exe` from anywhere; start with Windows can be turned on in Settings → General (with normal rights), or with "Enable" on the "BatteryTray doesn't start with Windows" banner at the top of the device list (shown until you dismiss it or turn autostart off in Settings).
 
+### macOS
+
+1. Download `BatteryTray-macOS.zip` from [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest), open it and drag **BatteryTray.app** to **Applications**.
+2. Open it. The app isn't notarized by Apple, so the first time macOS refuses to open it: go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** (on macOS 13 and 14 you can also Control-click the app and choose **Open**).
+3. The number appears in the menu bar. Turn on **Open at login** in Settings → General, or with "Enable" on the banner above the device list.
+
+Settings and the log are in `~/Library/Application Support/BatteryTray`, the login item is `~/Library/LaunchAgents/io.github.qu1ncky.BatteryTray.plist`. To remove the app, turn **Open at login** off, quit it from its menu and move it to the Trash. The app is signed ad hoc, not with an Apple Developer ID, so after an update macOS may ask for the Input Monitoring permission again.
+
 ## FAQ
 
 **How do I see my Razer Barracuda X battery on PC without Razer Synapse?**
@@ -124,9 +155,21 @@ Install BatteryTray: it reads the headset through its USB-C 2.4 GHz dongle, no B
 BatteryTray asks the device over Logitech's HID++ protocol through the Unifying, Bolt or Lightspeed receiver.
 
 **Can it show my Bluetooth headphones' battery?**
-Yes, if Windows itself knows it (Settings → Bluetooth & devices shows a percentage), BatteryTray shows it in the tray too.
+Yes, if the system itself knows it: on Windows, when Settings → Bluetooth & devices shows a percentage; on a Mac, when the Bluetooth menu does. BatteryTray shows it in the tray or the menu bar too.
 
-**Why does it ask for administrator rights?**
+**How do I see my AirPods, Magic Mouse or Magic Keyboard battery in the Mac menu bar?**
+Install BatteryTray for macOS: it lists every Bluetooth device whose level macOS knows, AirPods with each earbud and the case, next to your gaming headset, mouse and keyboard.
+
+**Does it work on a Mac with Apple Silicon (M1, M2, M3, M4) and on Intel Macs?**
+Yes, the macOS app is one universal app for both, macOS 13 Ventura or later.
+
+**How do I check my Razer, Logitech, SteelSeries or Corsair battery on a Mac without their software?**
+The same way as on Windows: BatteryTray talks to the device's receiver over USB (IOKit on a Mac) with the device's own protocol.
+
+**Why does the Mac app ask for Input Monitoring?**
+macOS lets an app open a keyboard, or a mouse that also has keyboard keys, only with that permission, even to read its battery. BatteryTray asks for it only when such a device is connected, and only reads the battery.
+
+**Why does it ask for administrator rights (Windows)?**
 On some PCs third-party drivers lock a receiver's service channel to administrators — for example the G-SPY driver (`vkbms.inf`) that comes with some cheap keyboards takes every HID collection with usage `FF00:0001`, the Razer dongle included. The installed app therefore starts through a scheduled task with highest privileges (no UAC prompt at each sign-in) and lives in Program Files, where its exe can't be swapped without admin rights. Without that driver, normal rights are enough.
 
 **Why is there no percentage while my device charges?**
@@ -141,9 +184,11 @@ Get-PnpDevice -PresentOnly | ? InstanceId -match '^USB\\VID_\w{4}&PID_\w{4}\\' |
 
 A diagnostic poll helps too: `"C:\Program Files\BatteryTray\BatteryTray.exe" --dump "%USERPROFILE%\Desktop\battery.txt"`, plus the log in `%LOCALAPPDATA%\BatteryTray\log.txt`.
 
+On a Mac: `system_profiler SPUSBDataType` lists the USB devices with their IDs, `/Applications/BatteryTray.app/Contents/MacOS/BatteryTray --dump ~/Desktop/battery.txt` polls every device once, and the log is `~/Library/Application Support/BatteryTray/log.txt`.
+
 ## Languages
 
-English, Russian and Chinese. The app follows the Windows display language (Russian on a Russian Windows, Chinese on a Chinese one, English otherwise); pick another one any time in Settings → General → Language — it switches at once, no restart. Translations live in [`src/loc.rs`](src/loc.rs); corrections and new languages are welcome.
+English, Russian and Chinese. The app follows the system's language (the Windows display language, the first of the Mac's preferred languages: Russian, Chinese, or English otherwise); pick another one any time in Settings → General → Language — it switches at once, no restart. Translations live in [`src/loc.rs`](src/loc.rs); corrections and new languages are welcome.
 
 ## Updates
 
@@ -151,6 +196,8 @@ Half a minute after start and then every 6 hours the app looks at the latest rel
 
 - **with automatic updates** (the default) it downloads `BatteryTray.exe` from the release, checks its SHA-256 against the digest GitHub publishes and the version inside the file, swaps its own exe and restarts — only while its windows are closed;
 - **without them**, or when writing to Program Files needs admin rights, it tells you once, and the "Update" button installs it (with a UAC prompt in the second case).
+
+On a Mac it does the same with `BatteryTray-macOS.zip`: the SHA-256 is checked, the version in the app's Info.plist must be the release's, and the new BatteryTray.app takes the place of the running one. When the app's folder belongs to an administrator (Applications of a standard account), the "Update" button asks for an administrator's password.
 
 Everything is in Settings → General → Updates: status, what's new, "Check now" and the automatic updates switch.
 
@@ -184,16 +231,18 @@ Everything is in Settings → General → Updates: status, what's new, "Check no
 | `devices/controllers.rs` | Windows shows these 2.4 GHz receivers as a wired Xbox controller without a battery, so the level is asked for on the receiver's vendor collection with the status request the maker's software sends. The Steam Controller sends its level by itself and is only listened to. Nothing that changes a controller's mode is sent. After [SDL](https://github.com/libsdl-org/SDL), the Linux drivers `hid-steam` and `hid-nvidia-shield`, [HaloBattery](https://github.com/HeyOkay/HaloBattery) and [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor). |
 | `providers/standard_hid.rs` | Reads the Generic Device Controls / Battery Strength field (`06:20`) from the feature reports of any USB HID device. |
 | `providers/playstation.rs` | Sends nothing: reads one input report and its status byte (DualSense `data[53]` USB / `data[54]` Bluetooth, DualShock 4 `data[30]` / `data[32]`), like Linux's `hid-playstation`. |
-| `providers/xinput.rs` | `XInputGetBatteryInformation`: 4 levels → approximate percentage. Skips Bluetooth controllers, whose exact level comes from Windows. |
-| `providers/bluetooth.rs` | The `DEVPKEY_Bluetooth_Battery` device property (what Settings → Bluetooth shows), only while `ConnectionStatus = Connected`. |
+| `providers/xinput.rs` | Windows: `XInputGetBatteryInformation`: 4 levels → approximate percentage. Skips Bluetooth controllers, whose exact level comes from Windows. |
+| `providers/bluetooth/` | Windows: the `DEVPKEY_Bluetooth_Battery` device property (what Settings → Bluetooth shows), only while `ConnectionStatus = Connected`. macOS: what `system_profiler SPBluetoothDataType` reports for the connected devices (what the Bluetooth menu shows), the earbuds and the case of AirPods included. |
+| `src/hid/` | The HID layer every provider is built on: Win32 (`windows.rs`) or IOKit (`macos.rs`). On a Mac each device's report descriptor is split into the collections Windows would list (`descriptor.rs`), named in Windows' path form, so every provider works there unchanged. |
+| `macos/` | The Mac app: SwiftUI and AppKit around the core, which `macos/core` builds as a static library. Game controllers are read through Apple's GameController framework. |
 
-Files in `%LOCALAPPDATA%\BatteryTray`: `settings.json` (reminder levels, names, pinned and hidden devices, their order, language), `state.json` (last known levels), `log.txt` (connections, level changes, reminders). If a hand edit leaves a mistake in `settings.json`, the app keeps the file as it was in `settings.json.bak`: a value of the wrong type just goes back to its default, while a file that is no longer valid JSON (a missing comma, a stray quote) starts over from the defaults.
+Files in `%LOCALAPPDATA%\BatteryTray` (on a Mac `~/Library/Application Support/BatteryTray`): `settings.json` (reminder levels, names, pinned and hidden devices, their order, language), `state.json` (last known levels), `log.txt` (connections, level changes, reminders). If a hand edit leaves a mistake in `settings.json`, the app keeps the file as it was in `settings.json.bak`: a value of the wrong type just goes back to its default, while a file that is no longer valid JSON (a missing comma, a stray quote) starts over from the defaults.
 
 A device that answers one request on one HID collection is a row in a table of [`src/providers/devices/`](src/providers/devices): its IDs, the collection and a function that asks and reads the reply. A family that doesn't fit a row is a module in [`src/providers/`](src/providers) implementing the `Provider` trait: poll the hardware, say when to poll again. More on the code in [docs/development.md](docs/development.md).
 
 ## Build from source
 
-Needs [Rust](https://rustup.rs) and the MSVC build tools with a Windows SDK (the "Desktop development with C++" workload of the Visual Studio Build Tools).
+**Windows:** needs [Rust](https://rustup.rs) and the MSVC build tools with a Windows SDK (the "Desktop development with C++" workload of the Visual Studio Build Tools).
 
 ```
 cargo build --release               # target\release\BatteryTray.exe
@@ -202,18 +251,27 @@ install.cmd                         # build and install
 powershell -File build-release.ps1  # release exe and zip in dist\
 ```
 
+**macOS:** needs [Rust](https://rustup.rs) with the `aarch64-apple-darwin` and `x86_64-apple-darwin` targets and the Xcode command line tools (`xcode-select --install`).
+
+```
+macos/build.sh                      # target/macos/BatteryTray.app and BatteryTray-macOS.zip (Apple Silicon and Intel)
+macos/build.sh native               # only for this Mac's processor, faster
+cargo test --workspace              # tests (no hardware polling or access to your saved settings)
+```
+
 ### Releasing a version
 
 1. Raise `version` in `Cargo.toml`.
 2. `powershell -File build-release.ps1`.
-3. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe --title "BatteryTray X.Y.Z" --notes "what's new"`.
+3. Take `BatteryTray-macOS.zip` from the `BatteryTray-macOS` artifact of the macOS workflow on that commit (or build it with `macos/build.sh` on a Mac).
+4. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe BatteryTray-macOS.zip --title "BatteryTray X.Y.Z" --notes "what's new"`.
 
-The updater takes the asset named exactly `BatteryTray.exe` from the latest release, and the tag must match the version inside the exe. Drafts and pre-releases are ignored by the updater, handy for testing a build.
+The updaters take the asset named exactly `BatteryTray.exe` (Windows) or `BatteryTray-macOS.zip` (macOS) from the latest release, and the tag must match the version inside the exe or the app. Drafts and pre-releases are ignored by the updater, handy for testing a build.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Third-party code and protocol sources: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The windows are built with [Slint](https://slint.dev) under its Royalty-free license:
+MIT — see [LICENSE](LICENSE). Third-party code and protocol sources: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Mac app's windows are SwiftUI and AppKit; the Windows app's are built with [Slint](https://slint.dev) under its Royalty-free license:
 
 [![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
 
-Not affiliated with Razer, Logitech, SteelSeries, HyperX, Corsair, ASUS, Sony, Microsoft, Valve, ATTACK SHARK or any other maker named here; product names are trademarks of their owners.
+Not affiliated with Apple, Razer, Logitech, SteelSeries, HyperX, Corsair, ASUS, Sony, Microsoft, Valve, ATTACK SHARK or any other maker named here; product names are trademarks of their owners.

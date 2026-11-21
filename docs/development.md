@@ -1,6 +1,11 @@
 # Working on BatteryTray
 
-The app is written in Rust, with the windows in [Slint](https://slint.dev). Up to 1.8.8 it was a C# (WPF) app; that
+BatteryTray runs on Windows and macOS. Both are one Rust core - the HID layer, every device protocol, the polling, the
+settings, the reminders' and updates' decisions - and an app around it: on Windows in Rust too, with the windows in
+[Slint](https://slint.dev); on macOS in Swift (SwiftUI and AppKit, `macos/`), which calls the core through a static
+library (`macos/core`).
+
+The Windows app is written in Rust, with the windows in [Slint](https://slint.dev). Up to 1.8.8 it was a C# (WPF) app; that
 code is kept in the [`csharp`](https://github.com/qu1ncky/BatteryTray/tree/csharp) branch. Installed copies of it
 update themselves to this app in place (see "What installed copies rely on" below).
 
@@ -26,19 +31,42 @@ release's, and `build.rs` writes it into the exe. `build-release.ps1` builds the
 version and writes the crates' licenses with [cargo-about](https://github.com/EmbarkStudios/cargo-about)
 (`about.toml`, `about.hbs`).
 
+### macOS
+
+Needs Rust with the `aarch64-apple-darwin` and `x86_64-apple-darwin` targets and the Xcode command line tools. Xcode
+itself isn't needed: the Swift sources avoid `@State`, which the macOS 26 SDK makes a macro whose plugin only Xcode
+has. For the crates' licenses in the app, cargo-about (`cargo install cargo-about --locked --features cli`).
+
+```
+macos/build.sh               # target/macos/BatteryTray.app and BatteryTray-macOS.zip, Apple Silicon and Intel
+macos/build.sh native        # this Mac's processor only
+cargo test --workspace       # the core's tests, natively (HID, Bluetooth and update tests on this Mac included)
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+`build.sh` builds the core for each processor, compiles the Swift sources against it (`swiftc`, no Xcode project),
+joins the two into one app, draws the icon (`macos/make-icon.swift`), writes the version from `Cargo.toml` into
+Info.plist, signs the app ad hoc and zips it. Windows' build dependencies (Slint's compiler, the resource compiler) are
+built on a Mac too - Cargo picks a build dependency by the machine that builds, not by the target - but `build.rs`
+does nothing for a target other than Windows.
+
 ## Layout
 
 | | |
 |---|---|
-| `src/hid.rs`, `src/win.rs` | HID enumeration and I/O over hand-declared Win32 calls: overlapped reads with a timeout that cancel what they started, so a late reply is never read as the answer to the next request |
+| `src/hid/` | HID enumeration and I/O. `windows.rs`: hand-declared Win32 calls, overlapped reads with a timeout that cancel what they started, so a late reply is never read as the answer to the next request. `macos.rs`: IOKit, declared by hand too; each device's report descriptor is split into the top-level collections Windows would list (`descriptor.rs`), named by paths of Windows' form, with input reports queued per collection as the Windows driver keeps them - so the providers, which group collections and tell USB from Bluetooth by the path, run unchanged |
+| `src/sys.rs`, `src/win.rs`, `src/mac.rs` | What the core asks of the system (errors, the data folder, the language, admin rights) and the Win32 and CoreFoundation helpers behind it |
 | `src/providers/` | one module per device family; each says where its protocol facts come from |
 | `src/providers/devices/` | devices that answer one request on one HID collection, as rows of tables: `mod.rs` is the engine (`Spec`, `State`, `Io`, `TableProvider`), the other modules are tables by vendor or platform, some with a provider of their own for what doesn't fit a row (several devices behind one receiver, devices that are only listened to) |
 | `src/monitor.rs` | polls every provider on its own thread and schedule; providers whose devices push changes cut their wait short |
-| `src/state.rs`, `src/settings.rs` | `state.json` and `settings.json` in `%LOCALAPPDATA%\BatteryTray` |
-| `src/app.rs` | startup, single instance, the tray, reminders, the overlay and updates; everything UI runs in Slint's event loop |
-| `src/gui.rs`, `ui/*.slint` | the windows (Slint, software renderer), and the Win32 parts Slint has no API for |
-| `src/updater.rs`, `src/update_service.rs`, `src/http.rs` | self-update from GitHub Releases over WinHTTP |
-| `src/autostart.rs` | the logon task (elevated when installed in Program Files) |
+| `src/state.rs`, `src/settings.rs` | `state.json` and `settings.json` in `%LOCALAPPDATA%\BatteryTray` (`~/Library/Application Support/BatteryTray` on macOS) |
+| `src/view.rs` | What the windows show, worked out the same for both apps: a device's card or row, the update card, the tray number and tooltip, the overlay's entries |
+| `src/app.rs` | Windows: startup, single instance, the tray, reminders, the overlay and updates; everything UI runs in Slint's event loop |
+| `src/gui.rs`, `ui/*.slint` | Windows: the windows (Slint, software renderer), and the Win32 parts Slint has no API for |
+| `src/updater/`, `src/update_service.rs`, `src/http/` | self-update from GitHub Releases: the exe over WinHTTP on Windows, the app bundle from a zip over NSURLSession on macOS |
+| `src/autostart/` | the logon task on Windows (elevated when installed in Program Files), a LaunchAgent on macOS |
+| `macos/core` | the core for the macOS app as a static library: one C call (`bt_call`) takes a command as JSON and answers with the state to show or the effects to carry out, and makes the decisions `src/app.rs` makes on Windows (reminders, "charged" notices, settings, the list's order, updates); `keys.rs` maps the overlay's shortcut between Win32 keys, which settings.json keeps, and the Mac's key codes; `demo.rs` the demo's devices |
+| `macos/BatteryTray` | the macOS app: the menu bar item and its menu, the device window, Settings (toolbar tabs), the reminder and the overlay as non-activating panels, the shortcut through Carbon, notifications, game controllers through GameController |
 
 ## Tools
 
@@ -46,12 +74,17 @@ version and writes the crates' licenses with [cargo-about](https://github.com/Em
   prints what `BatteryTray.exe --dump` writes, `watch` polls as the app does and prints every change, `list` prints
   every HID collection. It reads the app's `state.json` but never writes it, and logs to
   `%LOCALAPPDATA%\BatteryTray\rust-core`.
-- `cargo run --example snapshot -- <folder> [ru|en|zh] [scale]` - renders the windows with sample data to PNG files,
+- `BatteryTray.app/Contents/MacOS/BatteryTray --snapshot <folder> [ru|en|zh] [light|dark]` - the macOS app draws each of its
+  windows with the demo's devices to PNG files and quits: the device list, a device's menu, a name being edited, the
+  menu bar item's menu, each settings tab, the reminder and the overlay (an app may take pictures of its own windows,
+  no Screen Recording permission needed). `--demo` runs the app with those devices, with settings of its own in the
+  temporary folder. The README's Mac pictures (`docs/macos-*.png`) come from `--snapshot`.
+- `cargo run --example snapshot -- <folder> [ru|en|zh] [scale]` (Windows) - renders the windows with sample data to PNG files,
   off screen, to check a layout without running the app: the device list (with the update banner, and without it for
   the README; a device's menu, a smaller one, a name being edited, the hidden devices shown, and the empty list with
   the autostart banner), each settings tab (and the update card with a newer version), the reminder and the overlay. A
   drag, a tooltip and an open dropdown need a real pointer and are not drawn.
-- `cargo run --example popup_probe` - opens the reminder and the overlay as the app does and prints where their windows
+- `cargo run --example popup_probe` (Windows) - opens the reminder and the overlay as the app does and prints where their windows
   are every 5 ms, with their extended styles: for catching a popup that jumps, can be clicked, takes focus or doesn't
   follow its contents' size.
 
@@ -65,6 +98,10 @@ The binaries are not changed for it: `api.github.com` is pointed at a server on 
 made of the exe under test. Each run keeps that exe as an artifact (`BatteryTray-windows-2022`, `-2025`), for trying a
 build before it is released.
 
+The `macOS` workflow lints and tests the core on a Mac, builds the app for Apple Silicon and Intel and draws its windows
+in each language; it keeps `BatteryTray-macOS.zip` as an artifact (`BatteryTray-macOS`), which is what a release
+carries for Macs.
+
 ## What installed copies rely on
 
 An installed copy updates itself by taking the "BatteryTray.exe" asset of the latest (non-prerelease) release when its
@@ -72,15 +109,24 @@ size and SHA-256 match what GitHub publishes and its FileVersion equals the rele
 of the C# app move to this one, so a release has to keep what they and their settings depend on: the asset's name and
 version resource, the `BatteryTray.SingleInstance` mutex, the `BatteryTray.Activator` window a second launch signals,
 the `BatteryTray` logon task, the `--background`, `--update`, `--register-task`, `--unregister-task` and `--dump`
-switches, and the format of `settings.json` and `state.json` (values the app doesn't know are kept). On its first
+switches, and the format of `settings.json` and `state.json` (values the app doesn't know are kept).
+
+Copies on a Mac update themselves from the "BatteryTray-macOS.zip" asset in the same way (size, SHA-256, and the
+CFBundleShortVersionString of the BatteryTray.app inside it, which must equal the release's version). They rely on the
+bundle identifier `io.github.qu1ncky.BatteryTray` (one copy at a time, and the name of the login item
+`~/Library/LaunchAgents/io.github.qu1ncky.BatteryTray.plist`), the `--background`, `--update` and `--dump` switches,
+and the same `settings.json` and `state.json`. The overlay's shortcut is kept as on Windows (a Win32 virtual key and
+MOD_* flags, ⌘ being MOD_WIN). On its first
 start after the C# app, this one removes what that left behind (`BatteryTray.old.exe` and the .NET single-file
 extraction folder in `%TEMP%`).
 
 ## Licenses
 
 MIT, as the rest of the project. The licenses of the crates in the exe go into `THIRD_PARTY_LICENSES.md` in the release
-zip (see above). The UI is built with [Slint](https://slint.dev) under its Royalty-free license 2.0,
-which asks for an attribution: the Slint badge on a public page the app is downloaded from - the main README, which the
-releases link to. Without it the app may not be distributed.
+zip (see above); those of the crates in the Mac app into the bundle's `Contents/Resources` (`macos/build.sh`, with
+`macos/about.toml` and `macos/about.hbs`), next to `LICENSE` and `THIRD_PARTY_NOTICES.md`. The Windows UI is built with
+[Slint](https://slint.dev) under its Royalty-free license 2.0, which asks for an attribution: the Slint badge on a
+public page the app is downloaded from - the main README, which the releases link to. Without it the app may not be
+distributed.
 
 [![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
