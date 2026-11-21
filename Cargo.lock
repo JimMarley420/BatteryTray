@@ -464,6 +464,8 @@ name = "batterytray-macos"
 version = "2.2.0"
 dependencies = [
  "batterytray",
+ "chrono",
+ "serde_json",
 ]
 
 [[package]]

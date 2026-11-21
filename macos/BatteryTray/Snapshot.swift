@@ -1,0 +1,92 @@
+import AppKit
+
+/// `--snapshot <folder> [ru|en|zh]`: the app with the demo's devices draws each of its windows to a PNG file and quits
+/// - the device list, a device's menu, a name being edited, each settings tab, the reminder and the overlay - for the
+/// README's pictures and for checking a layout. An app may always take pictures of its own windows, so no Screen
+/// Recording permission is needed.
+@MainActor
+final class Snapshots {
+    private let folder: URL
+    private let language: String?
+    private weak var app: AppDelegate?
+    private var steps: [() -> Void] = []
+
+    init(folder: String, language: String?, app: AppDelegate) {
+        self.folder = URL(fileURLWithPath: folder)
+        self.language = language
+        self.app = app
+    }
+
+    func run() {
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let model = AppModel.shared
+        steps = [
+            { if let language = self.language { model.send(["cmd": "language", "value": language]) } },
+            { self.app?.openMain() },
+            { self.take(self.window(titled: model.t("app.title")), "main") },
+            { model.menuID = model.snapshot?.devices.pinned.first?.id },
+            { self.take(self.popover(), "menu") },
+            { model.menuID = nil },
+            { model.renamingID = model.snapshot?.devices.connected.first?.id },
+            { self.take(self.window(titled: model.t("app.title")), "rename") },
+            { model.renamingID = nil },
+            { self.app?.openSettings() },
+            { self.take(self.settings(0), "settings-general") },
+            { self.take(self.settings(1), "settings-reminders") },
+            { self.take(self.settings(2), "settings-overlay") },
+            { model.send(["cmd": "test_alert"]) },
+            { self.take(self.floating(clickThrough: false), "reminder") },
+            { self.app?.overlay.preview() },
+            { self.take(self.floating(clickThrough: true), "overlay") },
+            { NSApp.terminate(nil) },
+        ]
+        next()
+    }
+
+    /// One step, then the next one once the windows have drawn.
+    private func next() {
+        guard !steps.isEmpty else { return }
+        let step = steps.removeFirst()
+        step()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self.next() }
+    }
+
+    private func window(titled title: String) -> NSWindow? {
+        NSApp.windows.first { $0.isVisible && $0.title == title }
+    }
+
+    private func popover() -> NSWindow? {
+        NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+    }
+
+    private func settings(_ tab: Int) -> NSWindow? {
+        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentViewController is NSTabViewController }),
+              let tabs = window.contentViewController as? NSTabViewController
+        else { return nil }
+        tabs.selectedTabViewItemIndex = tab
+        window.displayIfNeeded()
+        return window
+    }
+
+    private func floating(clickThrough: Bool) -> NSWindow? {
+        NSApp.windows.first { $0.isVisible && $0 is FloatingPanel && $0.ignoresMouseEvents == clickThrough }
+    }
+
+    private func take(_ window: NSWindow?, _ name: String) {
+        guard let window else {
+            FileHandle.standardError.write(Data("snapshot: no window for \(name)\n".utf8))
+            return
+        }
+        // Drawn after a short wait: a tab just selected resizes its window first
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber),
+                                                      [.boundsIgnoreFraming, .bestResolution]),
+                  let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+            else {
+                FileHandle.standardError.write(Data("snapshot: \(name) couldn't be drawn\n".utf8))
+                return
+            }
+            try? png.write(to: self.folder.appendingPathComponent("\(name).png"))
+        }
+    }
+}
