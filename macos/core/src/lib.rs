@@ -126,6 +126,10 @@ fn call(command: &Value) -> Value {
             app.refresh_now();
             Vec::new()
         }
+        "devices_changed" => {
+            app.devices_changed();
+            Vec::new()
+        }
         "windows" => {
             app.set_windows(bool_of(command, "main_open"), bool_of(command, "overlay_timed"));
             Vec::new()

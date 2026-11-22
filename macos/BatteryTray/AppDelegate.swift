@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var testReminder: ReminderController?
     let overlay = OverlayController()
     private let gameControllers = GameControllers()
+    private let deviceWatch = DeviceWatch()
     private var language = ""
     private var alertTimer: Timer?
     private var saveTimer: Timer?
@@ -45,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlay.apply(model.snapshot)
         Notifier.shared.setUp()
         gameControllers.start()
+        deviceWatch.start()
         perform(started["effects"] as? [[String: Any]] ?? [])
 
         // Snoozes run out between polls

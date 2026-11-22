@@ -340,6 +340,13 @@ impl MacApp {
         }
     }
 
+    /// The system says a device came or went: the devices are asked again right away (see Monitor::devices_changed).
+    pub fn devices_changed(&self) {
+        if let Some(m) = &self.monitor {
+            m.devices_changed();
+        }
+    }
+
     pub fn set_language(&mut self, setting: &str) -> Effects {
         self.settings.language = setting.to_string();
         loc::set(loc::resolve(Some(setting)));

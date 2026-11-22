@@ -34,8 +34,8 @@ use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex};
 use windows::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, ChangeWindowMessageFilterEx, CreateWindowExW, DefWindowProcW, DestroyWindow,
     FindWindowExW, PostMessageW, RegisterClassExW, RegisterWindowMessageW, ASFW_ANY, HWND_MESSAGE, MSGFLT_ALLOW,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CONTEXTMENU, WM_ENDSESSION, WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP,
-    WNDCLASSEXW,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CONTEXTMENU, WM_DEVICECHANGE, WM_ENDSESSION, WM_HOTKEY, WM_LBUTTONUP,
+    WM_RBUTTONUP, WNDCLASSEXW,
 };
 
 const WM_APP_TRAY: u32 = WM_APP + 2;
@@ -792,8 +792,8 @@ fn remove_dotnet_leftovers() {
     }
 }
 
-/// A hidden top-level window for the tray and the overlay's shortcut (Explorer broadcasts TaskbarCreated only to
-/// top-level windows), and a message-only one a second launch finds by its title.
+/// A hidden top-level window for the tray and the overlay's shortcut (Explorer broadcasts TaskbarCreated, and Windows
+/// device changes, only to top-level windows), and a message-only one a second launch finds by its title.
 fn create_windows() -> windows::core::Result<(HWND, HWND)> {
     unsafe {
         let instance = GetModuleHandleW(None)?;
@@ -862,6 +862,17 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         WM_HOTKEY => {
             let id = wparam.0 as i32;
             later(move |app| app.on_hotkey(id));
+        }
+        // Windows tells every top-level window when a device comes or goes (DBT_DEVNODES_CHANGED, also for a Bluetooth
+        // headset that connects): the devices are asked again right away rather than on their schedules
+        WM_DEVICECHANGE => {
+            later(|app| {
+                if let Some(m) = &app.monitor {
+                    m.devices_changed();
+                }
+            });
+            // Answered as Windows would: nothing here is a reason to refuse a device's removal
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
         WM_ENDSESSION if wparam.0 != 0 => {
             // Windows is shutting down or signing out: what a normal exit saves, now, before this returns
