@@ -108,10 +108,13 @@ struct ReminderView: View {
     @ObservedObject var state: ReminderState
     let test: Bool
     let answer: (Bool) -> Void
+    /// The levels' colors, as the Windows app has them
+    static let warn = Color(red: 0xF7 / 255, green: 0xC0 / 255, blue: 0x4A / 255)
+    static let bad = Color(red: 1, green: 0x6B / 255, blue: 0x6B / 255)
 
     var body: some View {
         let critical = state.effect["critical"] as? Bool ?? false
-        let accent = critical ? Color(red: 1, green: 0x6B / 255, blue: 0x6B / 255) : Color(red: 0xF7 / 255, green: 0xC0 / 255, blue: 0x4A / 255)
+        let accent: Color = critical ? Self.bad : Self.warn
         let items = state.effect["items"] as? [[String: Any]] ?? []
         HStack(spacing: 0) {
             Rectangle().fill(accent).frame(width: 4)
@@ -130,9 +133,7 @@ struct ReminderView: View {
                                 Text(item["level"] as? String ?? "")
                                     .font(.system(size: 18, weight: .semibold))
                                     .monospacedDigit()
-                                    .foregroundStyle(item["critical"] as? Bool == true
-                                        ? Color(red: 1, green: 0x6B / 255, blue: 0x6B / 255)
-                                        : Color(red: 0xF7 / 255, green: 0xC0 / 255, blue: 0x4A / 255))
+                                    .foregroundStyle(item["critical"] as? Bool == true ? Self.bad : Self.warn)
                             }
                         }
                     }

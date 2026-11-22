@@ -3,34 +3,54 @@ import GameController
 import UserNotifications
 
 /// macOS notifications: "charging complete", "updated", "a new version". Allowed by the user the first time one is
-/// shown; shown as banners also while the app is in front.
+/// shown; shown as banners also while the app is in front. macOS gives UNUserNotificationCenter only to apps signed
+/// with a Developer ID, and BatteryTray is signed ad hoc: when it is refused, the notices go through the older
+/// NSUserNotificationCenter, which still shows them.
 @MainActor
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Notifier()
-    private var asked = false
+    private enum Route { case unknown, asking, modern, legacy }
+    private var route = Route.unknown
+    /// Notices that came while the answer was awaited
+    private var waiting: [(String, String)] = []
+    private let legacy: LegacyPosting = LegacyNotices()
 
     func setUp() {
         UNUserNotificationCenter.current().delegate = self
+        // A click on a notice opens the device window
+        legacy.setUp { AppDelegate.shared?.openMain() }
     }
 
     func post(title: String, text: String) {
-        let center = UNUserNotificationCenter.current()
-        let send = {
+        switch route {
+        case .modern:
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = text
-            center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
-        }
-        if asked {
-            send()
-            return
-        }
-        asked = true
-        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
-            DispatchQueue.main.async {
-                Core.log("notifications: \(granted ? "allowed" : "not allowed")\(error.map { " (\($0.localizedDescription))" } ?? "")")
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content,
+                                                                         trigger: nil))
+        case .legacy:
+            legacy.post(title: title, text: text)
+        case .asking:
+            waiting.append((title, text))
+        case .unknown:
+            route = .asking
+            waiting.append((title, text))
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { Notifier.shared.answered(granted, error?.localizedDescription) }
+                }
             }
-            if granted { send() }
+        }
+    }
+
+    private func answered(_ granted: Bool, _ error: String?) {
+        route = granted ? .modern : .legacy
+        Core.log("notifications: \(granted ? "allowed" : "through NSUserNotificationCenter")\(error.map { " (\($0))" } ?? "")")
+        let notices = waiting
+        waiting = []
+        for (title, text) in notices {
+            post(title: title, text: text)
         }
     }
 
@@ -43,9 +63,55 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler done: @escaping () -> Void) {
         DispatchQueue.main.async {
-            AppDelegate.shared?.openMain()
+            MainActor.assumeIsolated { AppDelegate.shared?.openMain() }
             done()
         }
+    }
+}
+
+/// The older notification center. Its calls are deprecated; reached through this protocol, their deprecation stays
+/// inside `LegacyNotices`.
+@MainActor
+protocol LegacyPosting {
+    func setUp(clicked: @escaping () -> Void)
+    func post(title: String, text: String)
+}
+
+@MainActor
+struct LegacyNotices: LegacyPosting {
+    /// The center's delegate, which it doesn't keep itself
+    private static var delegate: AnyObject?
+
+    @available(macOS, deprecated: 11.0)
+    func setUp(clicked: @escaping () -> Void) {
+        /// Shown also while the app is in front; a click opens the device window.
+        final class Delegate: NSObject, NSUserNotificationCenterDelegate {
+            let clicked: () -> Void
+
+            init(clicked: @escaping () -> Void) {
+                self.clicked = clicked
+            }
+
+            func userNotificationCenter(_ center: NSUserNotificationCenter, shouldPresent notification: NSUserNotification)
+                -> Bool {
+                true
+            }
+
+            func userNotificationCenter(_ center: NSUserNotificationCenter, didActivate notification: NSUserNotification) {
+                clicked()
+            }
+        }
+        let delegate = Delegate(clicked: clicked)
+        Self.delegate = delegate
+        NSUserNotificationCenter.default.delegate = delegate
+    }
+
+    @available(macOS, deprecated: 11.0)
+    func post(title: String, text: String) {
+        let note = NSUserNotification()
+        note.title = title
+        note.informativeText = text
+        NSUserNotificationCenter.default.deliver(note)
     }
 }
 
