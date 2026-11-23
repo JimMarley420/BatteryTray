@@ -270,10 +270,24 @@ pub fn main() {
         AlertRow { glyph: "\u{E962}".into(), name: "Attack Shark R3".into(), level: "9%".into(), critical: true },
     ]))));
     alert.set_critical(true);
-    alert.set_snooze_text("Напомнить через 10 мин".into());
+    alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
     // As tall as its contents, as the app sizes it (the window has no size of its own before it is shown)
     let height = alert.get_content_height();
     render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert.png"));
+
+    // The other kind: every device below its reminder level, none below its critical one
+    let alert = AlertWindow::new().unwrap();
+    let window = last();
+    gui::setup_texts(&alert.global::<gui::T>());
+    alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![AlertRow {
+        glyph: "\u{E7F6}".into(),
+        name: "Razer Barracuda X".into(),
+        level: "18%".into(),
+        critical: false,
+    }]))));
+    alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
+    let height = alert.get_content_height();
+    render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert-low.png"));
 
     let overlay = OverlayWindow::new().unwrap();
     let window = last();

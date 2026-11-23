@@ -38,54 +38,53 @@ export component AlertWindow inherits Window {
         width: 4px;
         background: root.accent;
     }
-    // Only what is due and the answers: each device with its level, the two buttons, and the cross (which snoozes)
+    // Only what is due and the answers: a header with the cross (which snoozes) over the levels, the devices with
+    // their levels, the two buttons. The cross's glyph and the levels end at the same edge: the button is 34px wide
+    // with a 12px glyph in its middle, so everything under it keeps 11px further in.
     content := VerticalLayout {
         padding-left: 22px;
-        padding-right: 14px;
-        padding-top: 12px;
+        padding-right: 11px;
+        padding-top: 8px;
         padding-bottom: 16px;
         HorizontalLayout {
-            spacing: 6px;
-            VerticalLayout {
-                horizontal-stretch: 1;
-                for item in root.items: HorizontalLayout {
-                    padding-top: 5px;
-                    padding-bottom: 5px;
-                    Glyph {
-                        width: 30px;
-                        text: item.glyph;
-                        font-size: 17px;
-                    }
-                    Text {
-                        text: item.name;
-                        font-size: 14px;
-                        color: Palette.text;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        horizontal-stretch: 1;
-                    }
-                    Text {
-                        text: item.level;
-                        font-size: 20px;
-                        font-weight: 600;
-                        color: item.critical ? Palette.bad : Palette.warn;
-                        vertical-alignment: center;
-                    }
-                }
+            alignment: end;
+            IconButton {
+                glyph: "\u{E711}";
+                glyph-size: 12px;
+                tip: T.t("alert.snooze.tip");
+                clicked => { root.snooze(); }
             }
-            VerticalLayout {
-                alignment: start;
-                IconButton {
-                    glyph: "\u{E711}";
-                    glyph-size: 12px;
-                    tip: T.t("alert.snooze.tip");
-                    clicked => { root.snooze(); }
+        }
+        VerticalLayout {
+            padding-right: 11px;
+            for item in root.items: HorizontalLayout {
+                padding-top: 5px;
+                padding-bottom: 5px;
+                Glyph {
+                    width: 30px;
+                    text: item.glyph;
+                    font-size: 17px;
+                }
+                Text {
+                    text: item.name;
+                    font-size: 14px;
+                    color: Palette.text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: item.level;
+                    font-size: 20px;
+                    font-weight: 600;
+                    color: item.critical ? Palette.bad : Palette.warn;
+                    vertical-alignment: center;
                 }
             }
         }
         VerticalLayout {
-            padding-top: 12px;
-            padding-right: 8px;
+            padding-top: 16px;
+            padding-right: 11px;
             spacing: 8px;
             Btn {
                 accent: true;

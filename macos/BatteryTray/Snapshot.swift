@@ -38,11 +38,24 @@ final class Snapshots {
             { self.take(self.settings(2), "settings-overlay") },
             { model.send(["cmd": "test_alert"]) },
             { self.take(self.floating(clickThrough: false), "reminder") },
+            // The other kind: every device below its reminder level, none below its critical one
+            { self.app?.perform([self.lowReminder(model)]) },
+            { self.take(self.floating(clickThrough: false), "reminder-low") },
             { self.app?.overlay.preview() },
             { self.take(self.floating(clickThrough: true), "overlay") },
             { NSApp.terminate(nil) },
         ]
         next()
+    }
+
+    /// A reminder that isn't critical: the demo's connected devices that have a level, each just below its own
+    /// reminder level, as the sample reminder in the settings has them.
+    private func lowReminder(_ model: AppModel) -> [String: Any] {
+        let devices = (model.snapshot?.devices.pinned ?? []) + (model.snapshot?.devices.connected ?? [])
+        let items: [[String: Any]] = devices.filter { $0.connected && !$0.levelText.isEmpty }.map {
+            ["id": $0.id, "name": $0.name, "kind": $0.kind, "level": "\($0.low - 2)%", "critical": false]
+        }
+        return ["type": "alert", "test": true, "critical": false, "snooze": model.tf("alert.snooze", 10), "items": items]
     }
 
     /// One step, then the next one once the windows have drawn.
