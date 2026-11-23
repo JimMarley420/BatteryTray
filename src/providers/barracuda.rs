@@ -26,7 +26,6 @@ const SETTLE_MAX: Duration = secs(5 * 60);
 pub struct RazerBarracudaProvider {
     state: Arc<StateStore>,
     push: Pusher,
-    shown_percent: i32,
     charging_sticky: bool,
     not_charging_streak: i32,
     resting_mv: Option<i32>, // median voltage of the last poll on battery; unknown after the headset was away
@@ -48,11 +47,9 @@ pub struct RazerBarracudaProvider {
 
 impl RazerBarracudaProvider {
     pub fn new(state: Arc<StateStore>) -> Self {
-        let shown_percent = state.get(ID).and_then(|r| r.level).unwrap_or(-1);
         Self {
             state,
             push: no_push(),
-            shown_percent,
             charging_sticky: false,
             not_charging_streak: 0,
             resting_mv: None,
@@ -71,17 +68,10 @@ impl RazerBarracudaProvider {
         }
     }
 
-    fn reading(
-        level: Option<i32>,
-        estimate: bool,
-        charging: bool,
-        full: bool,
-        detail: Option<String>,
-    ) -> DeviceReading {
+    fn reading(level: Option<i32>, charging: bool, full: bool, detail: Option<String>) -> DeviceReading {
         DeviceReading {
             online: true,
             level,
-            estimate,
             charging,
             full_on_charger: full,
             detail,
@@ -123,19 +113,20 @@ impl RazerBarracudaProvider {
 
         if self.full {
             self.level_before_cable = Some(100); // a top-up from here starts full
-            return Self::reading(Some(100), false, false, true, Some(t("d.unplugOk")));
+            return Self::reading(Some(100), false, true, Some(t("d.unplugOk")));
         }
         let stage = t(if hold { "d.almostFull" } else { "d.cableHidden" });
         let detail = match self.level_before_cable {
             Some(before) => format!("{stage} · {}", tf("d.wasBefore", &[&before])),
             None => stage,
         };
-        Self::reading(None, false, true, false, Some(detail))
+        Self::reading(None, true, false, Some(detail))
     }
 
     /// On battery: the headset's own number, which it sends whenever it moves. Right after the cable comes out that
     /// number slides down 1% per 20 s check while the voltage settles (92, 91, 90, 89, then quiet), so it is held
-    /// back until it has been still for a while.
+    /// back until it has been still for a while. Until the headset has sent a number the level is unknown: the
+    /// voltage gives none worth showing (a curve of our own was off by 20-30%).
     fn on_battery(&mut self, r: &BatteryReading, ev: &Snapshot) -> DeviceReading {
         if self.cable_since.take().is_some() {
             // The headset says "not charging" both when the cable comes out and when its charger stops at full with
@@ -153,7 +144,7 @@ impl RazerBarracudaProvider {
             if !self.completed_shown || ev.percent.unwrap_or(100) >= 100 {
                 self.completed_shown = true;
                 self.last_level = Some(100);
-                return Self::reading(Some(100), false, false, true, Some(t("d.unplugOk")));
+                return Self::reading(Some(100), false, true, Some(t("d.unplugOk")));
             }
             self.completed = false;
         }
@@ -165,18 +156,17 @@ impl RazerBarracudaProvider {
             None => false,
         };
         if self.settling {
-            return Self::reading(None, false, false, false, Some(t("d.settling")));
+            return Self::reading(None, false, false, Some(t("d.settling")));
         }
         self.unplugged_at = None;
 
-        if let Some(own) = ev.percent {
-            self.shown_percent = own; // a later voltage estimate starts from the headset's number
-            self.last_level = Some(own);
-            return Self::reading(Some(own), false, false, false, None);
+        match ev.percent {
+            Some(own) => {
+                self.last_level = Some(own);
+                Self::reading(Some(own), false, false, None)
+            }
+            None => Self::reading(None, false, false, Some(t("d.levelUnknown"))),
         }
-        let level = self.step(r.percent);
-        self.last_level = Some(level);
-        Self::reading(Some(level), true, false, false, Some(t("d.estimate")))
     }
 
     /// Fallback until the headset has reported the charger itself. Charging starts when the samples swing and the
@@ -214,15 +204,6 @@ impl RazerBarracudaProvider {
         }
         charging
     }
-
-    /// Rounds to 5% steps. Hysteresis: the shown step only changes once the estimate is 4+ points away from it,
-    /// so voltage noise doesn't make it flicker.
-    fn step(&mut self, percent: i32) -> i32 {
-        if self.shown_percent < 0 || (percent - self.shown_percent).abs() >= 4 {
-            self.shown_percent = (percent + 2) / 5 * 5;
-        }
-        self.shown_percent
-    }
 }
 
 impl Provider for RazerBarracudaProvider {
@@ -252,7 +233,7 @@ impl Provider for RazerBarracudaProvider {
             self.events = None;
             let events = HeadsetEvents::start(candidates[0].clone(), self.push.clone());
             // The headset only sends its level when it changes. After a quick restart of the app (an update) the
-            // number it sent just before is still right, and better than the voltage estimate.
+            // number it sent just before is still right, and better than no level until the next change.
             if !self.seeded {
                 if let Some(before) = self.state.get(ID) {
                     if let (false, false, Some(last)) = (before.estimate, before.charging, before.level) {
@@ -374,7 +355,7 @@ struct EventsShared {
 /// after it 0x2A charging (01 charging, 00 not: the cable came out, or the charger stopped at full with the cable
 /// in). The headset checks about every 20 s and sends the pair when the level differs from the one it sent last;
 /// switched off and on it stays quiet if the level is unchanged, so the last level heard stays right across a
-/// power cycle. Its number beats the voltage estimate and keeps counting while charging. Passive: it only reads,
+/// power cycle. It is the only level shown, and keeps counting while charging. Passive: it only reads,
 /// on its own handle.
 struct HeadsetEvents {
     info: HidInfo,
@@ -452,7 +433,6 @@ impl Drop for HeadsetEvents {
 pub struct BatteryReading {
     /// Lowest sample: a charger lifts every sample, so the minimum is closest to the resting voltage.
     pub millivolts: i32,
-    pub percent: i32,
     /// The samples swing like on a charger, or the voltage is above any resting voltage.
     pub charging: bool,
     pub median: i32,
@@ -479,10 +459,6 @@ const RACE_GET_BATTERY: u8 = 0x31;
 pub const CHARGE_SAMPLES: usize = 7; // spread over ~2 s: consecutive samples can match while charging
 const CHARGE_JITTER_MV: i32 = 12; // spread across samples: ~3 mV on battery, 30-45 mV while charging
 pub const CHARGE_VOLTAGE_MV: i32 = 4180; // above any resting voltage, so the charger must be connected
-
-/// Battery voltage (mV) for 0%, 10%, ... 100%: typical Li-ion discharge curve, checked against the Razer mobile app
-/// (3975 mV = 70%) and against the headset at the top (4113 mV = 87%; full at rest 4155 mV).
-const CURVE: [i32; 11] = [3300, 3680, 3750, 3790, 3830, 3870, 3910, 3960, 4050, 4122, 4160];
 
 static SEQUENCE: AtomicU8 = AtomicU8::new(0);
 
@@ -598,7 +574,6 @@ pub fn evaluate(samples: Vec<i32>) -> BatteryReading {
     let high = sorted[sorted.len() - 1 - trim];
     BatteryReading {
         millivolts: low,
-        percent: to_percent(low),
         charging: high - low >= CHARGE_JITTER_MV || low >= CHARGE_VOLTAGE_MV,
         median: sorted[sorted.len() / 2],
         samples,
@@ -767,19 +742,6 @@ fn read_until(dev: &HidDevice, extract: &dyn Fn(&[u8]) -> Option<Vec<u8>>) -> sy
     Ok(None)
 }
 
-/// Linear interpolation on the Li-ion discharge curve.
-pub fn to_percent(mv: i32) -> i32 {
-    if mv <= CURVE[0] {
-        return 0;
-    }
-    for i in 1..CURVE.len() {
-        if mv < CURVE[i] {
-            return (i as i32 - 1) * 10 + (mv - CURVE[i - 1]) * 10 / (CURVE[i] - CURVE[i - 1]);
-        }
-    }
-    100
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -823,15 +785,6 @@ mod tests {
         assert!(s.handle(LINK_EVENT, 1));
         assert_eq!((s.percent, s.charger), (Some(80), None));
         assert!(!s.handle(0x55, 1));
-    }
-
-    #[test]
-    fn voltage_curve() {
-        assert_eq!(to_percent(3300), 0);
-        assert_eq!(to_percent(3975), 71);
-        assert_eq!(to_percent(4113), 88);
-        assert_eq!(to_percent(4160), 100);
-        assert_eq!(to_percent(3715), 15);
     }
 
     #[test]
