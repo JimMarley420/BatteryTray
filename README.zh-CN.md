@@ -78,6 +78,8 @@ BatteryTray 会像 iPhone 一样从 AirPods 自身的蓝牙消息中读取左右
 2. 程序未进行代码签名，Windows 可能会提示未知应用：点击“更多信息”→“仍要运行”。
 3. 图标会出现在时钟旁边。Windows 11 会把新图标收进 **^** 箭头里，可以把它拖到任务栏上常驻显示。点击设备列表上方横幅中的“启用”即可随 Windows 启动。
 
+**使用包管理器**：`winget install qu1ncky.BatteryTray`，或使用 [Scoop](https://scoop.sh)：`scoop bucket add batterytray https://github.com/qu1ncky/BatteryTray` 和 `scoop install batterytray`。
+
 如果 Windows 不允许程序读取某个设备（某些第三方驱动只对管理员开放接收器），设备列表上方会出现提示。点击“授予权限”即可安装本程序，只需确认一次 UAC。
 
 **完整安装**：从 [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest) 下载 `BatteryTray-…-win-x64.zip`，解压后运行 `install.cmd`。程序安装到 `C:\Program Files\BatteryTray`，通过名为“BatteryTray”的计划任务在登录时启动。卸载请运行压缩包中的 `uninstall.cmd`。

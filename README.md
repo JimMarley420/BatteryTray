@@ -168,6 +168,8 @@ Notes on specific devices:
 2. **Windows may warn about an unknown app** because the exe isn't code-signed: click "More info" → "Run anyway".
 3. The number appears next to the clock. Windows 11 hides new icons behind the **^** arrow — drag it onto the taskbar to keep it in sight. "Enable" on the banner above the device list makes it start with Windows.
 
+**With a package manager:** `winget install qu1ncky.BatteryTray`, or with [Scoop](https://scoop.sh): `scoop bucket add batterytray https://github.com/qu1ncky/BatteryTray` and `scoop install batterytray`.
+
 That's all it takes. If Windows keeps a device from the app (some third-party drivers lock a receiver to administrators), a line above the device list offers "Grant rights": it installs the app properly, with one UAC prompt.
 
 **Full install:** download `BatteryTray-…-win-x64.zip` from [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest), unzip it and run `install.cmd`. It installs to `C:\Program Files\BatteryTray` and starts at sign-in through a Task Scheduler task named "BatteryTray", with the rights such drivers need. To remove it, run `uninstall.cmd` from the zip.
@@ -344,6 +346,8 @@ cargo test --workspace              # tests (no hardware polling or access to yo
 4. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe BatteryTray-macOS.zip BatteryTray-macOS.dmg --title "BatteryTray X.Y.Z" --notes "what's new"`.
 
 The download buttons at the top of the README take `BatteryTray.exe` and `BatteryTray-macOS.dmg` from the latest release, so both must be in every release.
+
+Package managers: set the new version and the exe's SHA-256 in `bucket/batterytray.json` (Scoop), and send the version to winget with `komac update qu1ncky.BatteryTray --version X.Y.Z --urls https://github.com/qu1ncky/BatteryTray/releases/download/vX.Y.Z/BatteryTray.exe --submit`.
 
 The updaters take the asset named exactly `BatteryTray.exe` (Windows) or `BatteryTray-macOS.zip` (macOS) from the latest release, and the tag must match the version inside the exe or the app. Drafts and pre-releases are ignored by the updater, handy for testing a build.
 

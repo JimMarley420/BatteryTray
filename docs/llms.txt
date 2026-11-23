@@ -13,7 +13,7 @@ What it does:
 
 Devices: Razer (Barracuda X, BlackShark, Kraken, Viper, DeathAdder, Basilisk and ~45 mice, keyboards), Logitech HID++ devices (MX Master, MX Keys, MX Ergo, G Lightspeed mice, G headsets), SteelSeries (Arctis, Aerox, Prime), HyperX (Cloud III/Alpha/Stinger, Pulsefire), Corsair (HS80, Void, Virtuoso, SLIPSTREAM devices), ASUS ROG, Attack Shark, VXE/VGN, ATK, Lamzu, Pulsar, Glorious, WLmouse, MCHOSE, AULA, Keychron, Rapoo, JBL Quantum, Audeze, Jabra, Sony INZONE and PULSE 3D, DualSense / DualShock 4, Xbox controllers, Switch Pro Controller, Steam Controller, 8BitDo, AirPods and Beats (each earbud and the case), Apple Magic Keyboard / Mouse / Trackpad, any Bluetooth device the system knows a level for, Bluetooth LE devices with the standard Battery Service, iPhone and iPad on a cable (Mac), Android phones on a cable (Windows), UPS units (Windows).
 
-Install: Windows — download BatteryTray.exe from the latest release and run it (unsigned: "More info" → "Run anyway"). macOS — download BatteryTray-macOS.dmg, drag the app to Applications, then "Open Anyway" once in System Settings → Privacy & Security.
+Install: Windows — download BatteryTray.exe from the latest release and run it (unsigned: "More info" → "Run anyway"), or `winget install qu1ncky.BatteryTray`, or Scoop: `scoop bucket add batterytray https://github.com/qu1ncky/BatteryTray` then `scoop install batterytray`. macOS — download BatteryTray-macOS.dmg, drag the app to Applications, then "Open Anyway" once in System Settings → Privacy & Security.
 
 ## Links
 
