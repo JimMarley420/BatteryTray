@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var testReminder: ReminderController?
     let overlay = OverlayController()
     private let gameControllers = GameControllers()
+    let bleBatteries = BleBatteries()
     private let deviceWatch = DeviceWatch()
     private var language = ""
     private var alertTimer: Timer?
@@ -46,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlay.apply(model.snapshot)
         Notifier.shared.setUp()
         gameControllers.start()
+        // The demo's pictures need no Bluetooth: it would ask for the permission
+        if !demo {
+            bleBatteries.start()
+        }
         deviceWatch.start()
         perform(started["effects"] as? [[String: Any]] ?? [])
 

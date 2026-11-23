@@ -37,11 +37,15 @@ impl Provider for BluetoothProvider {
 pub fn kind_by_name(name: &str) -> DeviceKind {
     let n = name.to_lowercase();
     let any = |words: &[&str]| words.iter().any(|w| n.contains(w));
-    if any(&["mouse", "мыш"]) {
+    if any(&["iphone"]) {
+        DeviceKind::Phone
+    } else if any(&["ipad"]) {
+        DeviceKind::Tablet
+    } else if any(&["mouse", "мыш", "trackball", "mx ergo", "mx master", "mx anywhere", "trackpad"]) {
         DeviceKind::Mouse
     } else if any(&["controller", "gamepad", "xbox", "dualsense", "dualshock", "joy"]) {
         DeviceKind::Gamepad
-    } else if any(&["keyboard", "клав", "rainy", "keychron"]) {
+    } else if any(&["keyboard", "клав", "rainy", "keychron", "mx keys"]) {
         DeviceKind::Keyboard
     } else if any(&["headset", "headphone", "buds", "barracuda", "kraken", "arctis", "airpods", "наушн"]) {
         DeviceKind::Headset
@@ -60,5 +64,7 @@ mod tests {
         assert_eq!(kind_by_name("Беспроводная мышь"), DeviceKind::Mouse);
         assert_eq!(kind_by_name("Xbox Wireless Controller"), DeviceKind::Gamepad);
         assert_eq!(kind_by_name("Keychron K2"), DeviceKind::Keyboard);
+        assert_eq!(kind_by_name("MX Ergo"), DeviceKind::Mouse);
+        assert_eq!(kind_by_name("iPhone (Никита)"), DeviceKind::Phone);
     }
 }

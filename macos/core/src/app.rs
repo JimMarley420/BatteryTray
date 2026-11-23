@@ -30,16 +30,17 @@ pub type Notify = Arc<dyn Fn() + Send + Sync>;
 
 static DEVICES_PENDING: AtomicBool = AtomicBool::new(false);
 
-/// Readings the Swift app reports (the game controllers macOS knows), polled like any provider's.
+/// Readings the Swift app reports, polled like any provider's, by source: "controllers" (the game controllers macOS
+/// knows) and "ble" (the Battery Service of the Bluetooth LE devices connected to the Mac).
 #[derive(Clone, Default)]
 pub struct External {
-    readings: Arc<Mutex<Vec<DeviceReading>>>,
+    readings: Arc<Mutex<std::collections::BTreeMap<String, Vec<DeviceReading>>>>,
     push: Arc<Mutex<Option<Pusher>>>,
 }
 
 impl External {
-    fn set(&self, readings: Vec<DeviceReading>) {
-        *self.readings.lock().unwrap_or_else(|e| e.into_inner()) = readings;
+    fn set(&self, source: &str, readings: Vec<DeviceReading>) {
+        self.readings.lock().unwrap_or_else(|e| e.into_inner()).insert(source.to_string(), readings);
         if let Some(push) = self.push.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             push();
         }
@@ -50,11 +51,11 @@ struct ExternalProvider(External);
 
 impl Provider for ExternalProvider {
     fn name(&self) -> &'static str {
-        "GameController"
+        "GameController/Bluetooth LE"
     }
 
     fn poll(&mut self) -> Vec<DeviceReading> {
-        self.0.readings.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.0.readings.lock().unwrap_or_else(|e| e.into_inner()).values().flatten().cloned().collect()
     }
 
     fn delay(&self, _last: &[DeviceReading]) -> Duration {
@@ -399,18 +400,25 @@ impl MacApp {
         Vec::new()
     }
 
-    pub fn set_external(&self, readings: Vec<DeviceReading>) {
-        // A controller the Bluetooth provider already lists by its own level is not listed twice
-        let bluetooth: Vec<String> = self
+    /// What the Swift app reports from one source. A device another provider already lists with a level is not
+    /// listed twice (the Bluetooth provider has AirPods, the Logitech one an MX mouse, the iPhone one the phone); a
+    /// Bluetooth LE device that is also a game controller is the controller's.
+    pub fn set_external(&self, source: &str, readings: Vec<DeviceReading>) {
+        let external = |id: &str| id.starts_with("gc:") || id.starts_with("ble:");
+        let mut known: Vec<String> = self
             .monitor
             .as_ref()
             .map(|m| m.current())
             .unwrap_or_default()
             .into_iter()
-            .filter(|r| r.id.starts_with("bt:") && r.level.is_some())
+            .filter(|r| !external(&r.id) && r.level.is_some())
             .map(|r| r.name.to_lowercase())
             .collect();
-        self.external.set(readings.into_iter().filter(|r| !bluetooth.contains(&r.name.to_lowercase())).collect());
+        if source == "ble" {
+            let ours = self.external.readings.lock().unwrap_or_else(|e| e.into_inner());
+            known.extend(ours.get("controllers").into_iter().flatten().map(|r| r.name.to_lowercase()));
+        }
+        self.external.set(source, readings.into_iter().filter(|r| !known.contains(&r.name.to_lowercase())).collect());
     }
 
     pub fn updates_install(&self) {

@@ -47,6 +47,11 @@ echo "== bundle $VERSION"
 sed "s/@VERSION@/$VERSION/g" "$ROOT/macos/Info.plist" > "$APP/Contents/Info.plist"
 swift "$ROOT/macos/make-icon.swift" "$WORK/AppIcon.iconset"
 iconutil -c icns -o "$APP/Contents/Resources/AppIcon.icns" "$WORK/AppIcon.iconset"
+# The reasons macOS shows when it asks for Bluetooth or the local network, in each language of the app
+for lproj in "$ROOT"/macos/*.lproj; do
+  mkdir -p "$APP/Contents/Resources/$(basename "$lproj")"
+  cp "$lproj/InfoPlist.strings" "$APP/Contents/Resources/$(basename "$lproj")/"
+done
 # The licenses that come with the code: the app's own, its sources', the crates' in it
 cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/"
 if cargo about --version >/dev/null 2>&1; then

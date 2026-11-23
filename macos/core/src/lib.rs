@@ -188,8 +188,9 @@ fn call(command: &Value) -> Value {
             Vec::new()
         }
         "external" => {
+            let source = command.get("source").and_then(Value::as_str).unwrap_or("controllers");
             let readings = command.get("readings").and_then(Value::as_array).cloned().unwrap_or_default();
-            app.set_external(readings.iter().filter_map(external_reading).collect());
+            app.set_external(source, readings.iter().filter_map(external_reading).collect());
             Vec::new()
         }
         "quit" => {
@@ -207,12 +208,17 @@ fn external_reading(value: &Value) -> Option<DeviceReading> {
     let id = value.get("id")?.as_str()?;
     let name = value.get("name").and_then(Value::as_str).unwrap_or(id);
     let level = value.get("level").and_then(Value::as_i64).map(|l| l.clamp(0, 100) as i32);
+    // A controller is a gamepad; a Bluetooth LE device is what its name says
+    let kind = match value.get("kind").and_then(Value::as_str) {
+        Some("gamepad") | None => DeviceKind::Gamepad,
+        Some(_) => batterytray::providers::bluetooth::kind_by_name(name),
+    };
     Some(DeviceReading {
         online: true,
         level,
         charging: value.get("charging").and_then(Value::as_bool).unwrap_or(false),
         full_on_charger: value.get("full").and_then(Value::as_bool).unwrap_or(false),
-        ..DeviceReading::new(id, name, DeviceKind::Gamepad, "Bluetooth")
+        ..DeviceReading::new(id, name, kind, "Bluetooth")
     })
 }
 

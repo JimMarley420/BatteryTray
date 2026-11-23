@@ -36,6 +36,10 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>BatteryTray reads the battery level of your Bluetooth devices that macOS doesn't show.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>BatteryTray reads the battery level of your iPhone and iPad over Wi-Fi.</string>
     <key>NSHumanReadableCopyright</key>
     <string>MIT License</string>
 </dict>

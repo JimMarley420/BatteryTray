@@ -1,8 +1,9 @@
-//! iPhones and iPads on a cable, as Finder sees them. MobileDevice, the private framework Finder, Xcode and
-//! coconutBattery use, reports the devices usbmuxd has; one that already trusts this Mac answers lockdownd's battery
-//! domain in a session. Read only over USB: a device on Wi-Fi is reached over the network, which macOS 15 puts behind
-//! the Local Network permission. A device that doesn't trust this Mac is left alone: pairing would ask on the phone.
-//! The framework is looked up when the app runs, so a macOS without it only goes without these devices.
+//! iPhones and iPads, as Finder sees them: on a cable, and on Wi-Fi when "Show this iPhone when on Wi-Fi" is on.
+//! MobileDevice, the private framework Finder, Xcode and coconutBattery use, reports the devices usbmuxd has; one
+//! that already trusts this Mac answers lockdownd's battery domain in a session. A device on Wi-Fi is reached over the
+//! network, which macOS 15 puts behind the Local Network permission (asked once, with the reason in Info.plist); a
+//! device on both is read on the cable. A device that doesn't trust this Mac is left alone: pairing would ask on the
+//! phone. The framework is looked up when the app runs, so a macOS without it only goes without these devices.
 
 use super::Provider;
 use crate::loc::t;
@@ -26,7 +27,20 @@ impl Provider for AppleMobileProvider {
         let Some(api) = api() else { return Vec::new() };
         subscribe(api);
         let devices: Vec<Device> = DEVICES.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        devices.iter().filter_map(|d| read(api, d.0)).collect()
+        // One device on the cable and on Wi-Fi is reported twice: the cable is the faster and surer way
+        let mut by_udid: Vec<(String, Device, bool)> = Vec::new();
+        for d in devices {
+            let Some(udid) = (unsafe { Cf::new((api.copy_identifier)(d.0)) }).and_then(|v| string_of(v.0)) else {
+                continue;
+            };
+            let usb = unsafe { (api.interface_type)(d.0) } == USB;
+            match by_udid.iter_mut().find(|(u, _, _)| *u == udid) {
+                Some(entry) if usb && !entry.2 => *entry = (udid, d, usb),
+                Some(_) => {}
+                None => by_udid.push((udid, d, usb)),
+            }
+        }
+        by_udid.iter().filter_map(|(_, d, usb)| read(api, d.0, *usb)).collect()
     }
 
     fn delay(&self, _last: &[DeviceReading]) -> Duration {
@@ -56,6 +70,7 @@ static NOTED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 const ATTACHED: u32 = 1;
 const DETACHED: u32 = 2;
 const USB: i32 = 1;
+const WIFI: i32 = 2;
 
 #[repr(C)]
 struct Note {
@@ -69,6 +84,7 @@ type Callback = extern "C" fn(note: *const Note, context: *mut c_void);
 type Subscribe = unsafe extern "C" fn(Callback, u32, u32, *mut c_void, *mut *mut c_void) -> i32;
 type DeviceCall = unsafe extern "C" fn(CFTypeRef) -> i32;
 type CopyValue = unsafe extern "C" fn(CFTypeRef, CFTypeRef, CFTypeRef) -> CFTypeRef;
+type CopyIdentifier = unsafe extern "C" fn(CFTypeRef) -> CFTypeRef;
 
 struct Api {
     subscribe: Subscribe,
@@ -80,6 +96,7 @@ struct Api {
     stop_session: DeviceCall,
     interface_type: DeviceCall,
     copy_value: CopyValue,
+    copy_identifier: CopyIdentifier,
 }
 
 /// The framework's calls; None when it isn't there.
@@ -125,6 +142,7 @@ fn api() -> Option<&'static Api> {
             stop_session: load!("AMDeviceStopSession", DeviceCall),
             interface_type: load!("AMDeviceGetInterfaceType", DeviceCall),
             copy_value: load!("AMDeviceCopyValue", CopyValue),
+            copy_identifier: load!("AMDeviceCopyDeviceIdentifier", CopyIdentifier),
         })
     })
     .as_ref()
@@ -156,7 +174,7 @@ fn subscribe(api: &'static Api) {
     });
 }
 
-/// A device came or went. Only USB ones are kept: a Wi-Fi one would be reached over the network.
+/// A device came or went, on the cable or on Wi-Fi.
 extern "C" fn on_note(note: *const Note, _context: *mut c_void) {
     let Some(api) = api() else { return };
     let Some(note) = (unsafe { note.as_ref() }) else { return };
@@ -165,7 +183,7 @@ extern "C" fn on_note(note: *const Note, _context: *mut c_void) {
     }
     let mut devices = DEVICES.lock().unwrap_or_else(|e| e.into_inner());
     match note.message {
-        ATTACHED if unsafe { (api.interface_type)(note.device) } == USB => {
+        ATTACHED if matches!(unsafe { (api.interface_type)(note.device) }, USB | WIFI) => {
             if !devices.contains(&Device(note.device)) {
                 devices.push(Device(unsafe { CFRetain(note.device) }));
             }
@@ -189,18 +207,18 @@ extern "C" fn on_note(note: *const Note, _context: *mut c_void) {
 }
 
 /// One device's level, read in a lockdown session; None when it can't be read (not trusted, locked, gone).
-fn read(api: &Api, device: CFTypeRef) -> Option<DeviceReading> {
+fn read(api: &Api, device: CFTypeRef, usb: bool) -> Option<DeviceReading> {
     unsafe {
         if (api.connect)(device) != 0 {
             return None;
         }
-        let reading = session(api, device);
+        let reading = session(api, device, usb);
         (api.disconnect)(device);
         reading
     }
 }
 
-unsafe fn session(api: &Api, device: CFTypeRef) -> Option<DeviceReading> {
+unsafe fn session(api: &Api, device: CFTypeRef, usb: bool) -> Option<DeviceReading> {
     let value = |domain: Option<&str>, key: Option<&str>| {
         let domain = domain.map(Cf::string);
         let key = key.map(Cf::string);
@@ -240,7 +258,7 @@ unsafe fn session(api: &Api, device: CFTypeRef) -> Option<DeviceReading> {
         level: Some(level),
         charging: charging && !full,
         full_on_charger: plugged && full,
-        ..DeviceReading::new(format!("ios:{udid}"), name, kind, t("via.cable"))
+        ..DeviceReading::new(format!("ios:{udid}"), name, kind, if usb { t("via.cable") } else { "Wi-Fi".to_string() })
     })
 }
 

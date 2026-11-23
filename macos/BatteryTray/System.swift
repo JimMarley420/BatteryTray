@@ -171,6 +171,6 @@ final class GameControllers {
             }
             readings.append(reading)
         }
-        Core.call(["cmd": "external", "readings": readings])
+        Core.call(["cmd": "external", "source": "controllers", "readings": readings])
     }
 }
