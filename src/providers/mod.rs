@@ -11,12 +11,16 @@ pub mod headset;
 pub mod logitech;
 pub mod oem_mouse;
 pub mod playstation;
+#[cfg(windows)]
+pub mod portable_devices;
 pub mod razer_peripheral;
 pub mod receiver_name;
 pub mod rongyuan;
 pub mod sonix_keyboard;
 pub mod standard_hid;
 pub mod steelseries;
+#[cfg(windows)]
+pub mod ups;
 pub mod xenta;
 #[cfg(windows)]
 pub mod xinput;
@@ -82,6 +86,10 @@ pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
     providers.push(Box::new(bluetooth::BluetoothProvider));
     #[cfg(target_os = "macos")]
     providers.push(Box::new(apple_mobile::AppleMobileProvider));
+    #[cfg(windows)]
+    providers.push(Box::new(portable_devices::PortableDevicesProvider::default()));
+    #[cfg(windows)]
+    providers.push(Box::new(ups::UpsProvider::default()));
     providers.push(Box::new(standard_hid::StandardHidBatteryProvider));
     providers
 }
