@@ -1,4 +1,4 @@
-# BatteryTray — 在 Windows 托盘和 Mac 菜单栏显示无线耳机、鼠标、键盘和手柄的电量
+# BatteryTray — 在 Windows 和 macOS 上查看无线耳机、鼠标、键盘和手柄的电量
 
 [![最新版本](https://img.shields.io/github/v/release/qu1ncky/BatteryTray)](https://github.com/qu1ncky/BatteryTray/releases/latest)
 ![Windows 10 / 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6)
@@ -6,16 +6,30 @@
 
 [English](README.md) · [Русский](README.ru.md) · **中文**
 
-在 Windows 任务栏时钟旁边或 Mac 菜单栏中查看无线耳机、鼠标、键盘和手柄还剩多少电量，并在它们没电**之前**提醒你。一个小程序管理所有设备，无需 Razer Synapse、Logitech G HUB、SteelSeries GG 等厂商软件，无需账号，只读取电量。在 Mac 上还会一并显示 AirPods（左右耳机和充电盒）、妙控鼠标、妙控键盘等蓝牙设备的电量。
+在 Windows 任务栏时钟旁边或 Mac 菜单栏中查看无线耳机、鼠标、键盘和手柄还剩多少电量，并在它们没电**之前**提醒你。一个免费的小程序管理所有设备，无需 Razer Synapse、Logitech G HUB、SteelSeries GG 等厂商软件，无需账号，只读取电量。在 Mac 上还会一并显示 AirPods（左右耳机和充电盒）、妙控鼠标、妙控键盘、蓝牙耳机，以及通过数据线连接的 iPhone 和 iPad。
 
-<img src="docs/screenshot-zh.png" alt="Windows 上的 BatteryTray：无线耳机、鼠标、键盘和 Xbox 手柄的电量" width="400"> <img src="docs/macos-zh.png" alt="macOS 上的 BatteryTray：Mac 窗口中无线耳机、鼠标、键盘和 Xbox 手柄的电量" width="400">
+<p align="center">
+  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray.exe"><img src="docs/download-windows-zh.svg" alt="下载 Windows 版 BatteryTray" height="64"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.zip"><img src="docs/download-macos-zh.svg" alt="下载 macOS 版 BatteryTray" height="64"></a>
+</p>
+<p align="center"><sub>Windows 10 和 11 · macOS 13 Ventura 或更高版本，Apple 芯片和 Intel · 免费开源（MIT）<br><a href="https://github.com/qu1ncky/BatteryTray/releases">所有版本和更新说明</a></sub></p>
+
+<p align="center">
+  <img src="docs/screenshot-zh.png" alt="Windows 上的 BatteryTray：无线耳机、鼠标、键盘和 Xbox 手柄的电量" width="400">
+  <img src="docs/macos-zh.png" alt="macOS 上的 BatteryTray：Mac 窗口中无线耳机、鼠标、键盘和 Xbox 手柄的电量" width="400">
+</p>
 
 ## 功能
 
 - **托盘电量图标**：显示最需要充电的设备；绿色正常，低于其提醒值为黄色，低于其严重值为红色，充电时为蓝色。鼠标悬停可查看全部设备。
 - **一个窗口查看所有设备**：已连接的设备显示电量，未连接的显示上次电量和时间。通过设备的 **⋯** 菜单可以重命名、置顶或隐藏到“已隐藏”中；按住卡片左侧的拖动柄可调整顺序（悬浮窗和托盘提示也按此顺序）。
 - **悬浮窗**：在 **设置（齿轮）→ 悬浮窗** 中启用快捷键后，按 **Ctrl+Alt+V** 即可在当前应用所在的屏幕上查看已连接且未隐藏的设备，持续五秒。再次按下可重新计时，也可选择切换模式，用同一快捷键显示或隐藏。可更改快捷键、选择屏幕角落，并在启用前预览。同类型设备会自动显示名称，也可选择始终显示所有名称。支持桌面应用和无边框游戏，不抢占焦点或鼠标操作。
+- **新设备自动出现**：插入接收器或连接蓝牙耳机后，几秒内就会出现在列表中。如果需要，可以在“设置 → 常规”中关闭 **自动查找新设备**：之后点击“刷新电量”查找新设备，已找到设备的电量照常更新。
 - **不会错过的低电量提醒**：屏幕角落的置顶小窗口，不受“勿扰模式”影响，不会自动消失，也不会抢走游戏焦点。
+
+  <img src="docs/reminder-zh.png" alt="BatteryTray 低电量提醒：AirPods Pro 18%、Razer Barracuda X 严重低电量 14%，以及“10 分钟后提醒”和“充电前不再提醒”按钮" width="340">
+
 - **每个设备单独的提醒值**：耗电快的耳机可以在 40% 时提醒，而鼠标可以等到 15%；每个设备都可以在其 **⋯** 菜单中设置自己的提醒值和严重值，未设置时使用全局值。
 - **充电完成通知**：支持报告充电完成的设备在充满时发出 Windows 通知。
 - **不显示虚构的电量**：设备充电时无法报告电量时，显示充电状态而不是过时的数字；估算值以“≈”标记。
@@ -33,7 +47,8 @@ BatteryTray for macOS 是原生的菜单栏应用（SwiftUI），与 Windows 版
 - **设置**在独立窗口中，包含“常规”“提醒”“悬浮窗”标签页。
 - **悬浮窗**通过 **⌃⌥V** 调出（可录制任何包含 ⌘、⌃ 或 ⌥ 的快捷键），显示在所有窗口和全屏应用之上。
 - **低电量提醒**是右上角不抢焦点的浮动面板；“充电完成”和“新版本可用”使用 macOS 通知。
-- **蓝牙**：macOS 蓝牙菜单中显示的所有设备，包括 AirPods 的左右耳机和充电盒、妙控鼠标、妙控键盘、妙控板、Xbox 等手柄（通过 GameController 框架）。
+- **蓝牙**：macOS 知道电量的所有设备，包括 AirPods 的左右耳机和充电盒、妙控鼠标、妙控键盘、妙控板、通过蓝牙报告电量的耳机（例如蓝牙模式下的 Razer Barracuda X）、Xbox 等手柄（通过 GameController 框架）。
+- **通过数据线连接的 iPhone 和 iPad**：显示电量和充电状态，前提是设备已信任这台 Mac（与 Finder 相同）。不通过 Wi-Fi 读取，因此无需“本地网络”权限。
 - **一个应用同时支持 Apple 芯片和 Intel**，需要 macOS 13 Ventura 或更高版本，约 11 MB。
 
 在 Mac 上，键盘以及带键盘按键的鼠标需要“输入监控”权限才能读取（macOS 对所有打开此类设备的应用都有此要求）。点击设备列表上方横幅中的“允许”，或在“系统设置 → 隐私与安全性 → 输入监控”中打开 BatteryTray。BatteryTray 只读取电量，从不读取你的输入。
@@ -48,17 +63,17 @@ Razer Barracuda X（2.4 GHz 接收器，已测试）、Attack Shark R3 及其他
 
 ### Windows
 
-1. 从 [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest) 下载 `BatteryTray-…-win-x64.zip` 并解压。
-2. 运行 `install.cmd`，确认管理员权限提示。
-3. 图标会出现在时钟旁边。Windows 11 会把新图标收进 **^** 箭头里，可以把它拖到任务栏上常驻显示。
+1. 点击上方的 **下载 Windows 版**（即[最新版本](https://github.com/qu1ncky/BatteryTray/releases/latest)中的 `BatteryTray.exe`）并运行。
+2. 程序未进行代码签名，Windows 可能会提示未知应用：点击“更多信息”→“仍要运行”。
+3. 图标会出现在时钟旁边。Windows 11 会把新图标收进 **^** 箭头里，可以把它拖到任务栏上常驻显示。点击设备列表上方横幅中的“启用”即可随 Windows 启动。
 
-程序安装到 `C:\Program Files\BatteryTray`，通过名为“BatteryTray”的计划任务在登录时启动。卸载请运行压缩包中的 `uninstall.cmd`。程序未进行代码签名，Windows 可能会提示未知应用：点击“更多信息”→“仍要运行”。
+如果 Windows 不允许程序读取某个设备（某些第三方驱动只对管理员开放接收器），设备列表上方会出现提示。点击“授予权限”即可安装本程序，只需确认一次 UAC。
 
-如果直接运行 `BatteryTray.exe` 且没有管理员权限，而 Windows 不允许它读取某个设备，设备列表上方会出现提示。点击“授予权限”即可像 `install.cmd` 一样安装本程序，只需确认一次 UAC，无需下载压缩包。
+**完整安装**：从 [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest) 下载 `BatteryTray-…-win-x64.zip`，解压后运行 `install.cmd`。程序安装到 `C:\Program Files\BatteryTray`，通过名为“BatteryTray”的计划任务在登录时启动。卸载请运行压缩包中的 `uninstall.cmd`。
 
 ### macOS
 
-1. 从 [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest) 下载 `BatteryTray-macOS.zip`，打开后将 **BatteryTray.app** 拖到“应用程序”文件夹。
+1. 点击上方的 **下载 macOS 版**（即[最新版本](https://github.com/qu1ncky/BatteryTray/releases/latest)中的 `BatteryTray-macOS.zip`），打开后将 **BatteryTray.app** 拖到“应用程序”文件夹。
 2. 打开应用。该应用未经 Apple 公证，第一次打开时 macOS 会阻止：前往 **系统设置 → 隐私与安全性**，向下滚动并点击 **仍要打开**（macOS 13 和 14 也可以按住 Control 点按应用并选择“打开”）。
 3. 电量数字会出现在菜单栏中。可在“设置 → 常规”中打开 **登录时打开**。
 

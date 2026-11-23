@@ -1,4 +1,4 @@
-# BatteryTray — wireless headset, mouse, keyboard and gamepad battery level in the Windows tray and the Mac menu bar
+# BatteryTray — battery level of wireless headsets, mice, keyboards and controllers on Windows and macOS
 
 [![Latest release](https://img.shields.io/github/v/release/qu1ncky/BatteryTray)](https://github.com/qu1ncky/BatteryTray/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/qu1ncky/BatteryTray/total)](https://github.com/qu1ncky/BatteryTray/releases)
@@ -8,37 +8,62 @@
 
 **English** · [Русский](README.ru.md) · [中文](README.zh-CN.md)
 
-See how much battery your wireless headset, mouse, keyboard and controller have left — next to the clock on Windows, in the menu bar on a Mac — and get a reminder **before** they die mid-game or mid-call. One small app for all your devices instead of Razer Synapse, Logitech G HUB, SteelSeries GG, HyperX NGENUITY, Corsair iCUE or ASUS Armoury Crate: no account, no vendor software, it only reads the battery. On a Mac it also shows your AirPods (each earbud and the case), Magic Mouse, Magic Keyboard and other Bluetooth devices in one place.
+See how much battery your wireless headset, mouse, keyboard and controller have left — next to the clock on Windows, in the menu bar on a Mac — and get a reminder **before** they die mid-game or mid-call. One small free app for all your devices instead of Razer Synapse, Logitech G HUB, SteelSeries GG, HyperX NGENUITY, Corsair iCUE or ASUS Armoury Crate: no account, no vendor software, it only reads the battery. On a Mac it also shows your AirPods (each earbud and the case), Magic Mouse and Keyboard, Bluetooth headsets, and an iPhone or iPad on a cable.
 
-<img src="docs/screenshot-en.png" alt="BatteryTray on Windows: battery levels of a wireless headset, mouse, keyboard and Xbox controller" width="400"> <img src="docs/macos-en.png" alt="BatteryTray on macOS: battery levels of a wireless headset, mouse, keyboard and Xbox controller in a Mac window" width="400">
+<p align="center">
+  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray.exe"><img src="docs/download-windows-en.svg" alt="Download BatteryTray for Windows" height="64"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.zip"><img src="docs/download-macos-en.svg" alt="Download BatteryTray for macOS" height="64"></a>
+</p>
+<p align="center"><sub>Windows 10 and 11 · macOS 13 Ventura or later, Apple Silicon and Intel · free and open source (MIT)<br><a href="#download-and-install">How to install</a> · <a href="https://github.com/qu1ncky/BatteryTray/releases">All versions and release notes</a></sub></p>
+
+<p align="center">
+  <img src="docs/screenshot-en.png" alt="BatteryTray on Windows: battery levels of a wireless headset, mouse, keyboard and Xbox controller" width="400">
+  <img src="docs/macos-en.png" alt="BatteryTray on macOS: battery levels of a wireless headset, mouse, keyboard and Xbox controller in a Mac window" width="400">
+</p>
 
 ## Features
 
-- **Battery level in the tray** — the icon shows the device that most needs charging: green, yellow below its reminder level, red below its critical level, blue while charging. Hover it to see every device.
-- **All devices in one window** — connected ones as cards with their percentage, the rest with the last known level and when it was seen. Each device's **⋯** menu renames it, pins it to the top of the list or hides it under "Hidden"; drag a card by its grip to change the order (the overlay and the tray tooltip follow it).
-- **Battery overlay** — enable the shortcut in **Settings (gear) → Overlay**, then press **Ctrl+Alt+V** to see connected, visible devices for five seconds on the active app's monitor. Press again to restart the timer, or choose toggle mode to show and hide it with the same shortcut. You can change the shortcut, choose a corner, and preview the overlay before enabling it. Names appear automatically for devices of the same type, and you can always show them. Supports desktop apps and borderless games without taking focus or mouse input.
+- **The level always in sight** — in the Windows tray or the Mac menu bar, the number of the device that most needs charging: green, yellow below its reminder level, red below its critical level, blue while charging. Hover it (Windows) or click it (Mac) to see every device.
+- **All devices in one window** — connected ones as cards with their percentage, the rest with the last known level and when it was seen. Each device's **⋯** menu renames it, pins it to the top or hides it under "Hidden"; drag a card to change the order (the overlay and the tray follow it).
+- **New devices show up by themselves** — plug in a receiver or connect a Bluetooth headset and it appears within seconds. If that ever gets in the way, turn off **Look for new devices automatically** in Settings → General: new devices then wait for the refresh button, the levels of the ones already found keep updating.
 - **Low battery reminder that can't be missed** — its own always-on-top window in the corner, not a toast: Do Not Disturb doesn't hide it, it doesn't time out and it doesn't steal focus from a game. "Remind me in N min" or "Don't remind me until it's charged"; at the critical level it comes back even if snoozed.
+
+  <img src="docs/reminder-en.png" alt="BatteryTray's low battery reminder: AirPods Pro at 18% and a Razer Barracuda X at a critical 14%, with Remind me in 10 min and Don't remind me until it's charged" width="340">
+
 - **A level for every device** — the headset that drains fastest can remind you at 40% while the mouse waits for 15%: each device can have its own reminder and critical levels (in its **⋯** menu), and follows the global ones until you set them.
+- **Battery overlay** — a shortcut (**Ctrl+Alt+V** on Windows, **⌃⌥V** on a Mac, set it in **Settings → Overlay**) shows the connected devices for five seconds on the screen you work on, over games and full-screen apps, without taking focus. Press again to restart the timer, or choose toggle mode; pick a corner and preview it before enabling.
 - **Charging complete notification** — when a device that can tell finishes charging with the cable still in.
 - **No made-up percentages** — when a device can't report its level while charging, you see a charging sign instead of a stale number; estimates are marked with "≈".
 - **English, Russian and Chinese** — follows the system's language, switch any time in Settings → General.
 - **Updates itself** from GitHub releases (SHA-256 checked), quietly, while its windows are closed.
-- **Light** — one ~10 MB exe that needs about 8 MB of memory in the tray; nothing else to install.
-- Starts with Windows (or at login on a Mac), lives in the tray or the menu bar, never changes anything on your devices.
+- **Light** — one ~10 MB exe or an ~11 MB Mac app, about 8 MB of memory; nothing else to install, never changes anything on your devices.
 
-## On a Mac
+## Windows and macOS
 
-BatteryTray for macOS is a native menu bar app (SwiftUI) around the same device core as the Windows app, so it reads the same devices the same way, and does the same things the way a Mac app does them:
+The same app on both: the device list, the reminders, the overlay and every supported device come from one shared core, and each platform gets the windows its users expect.
+
+| | Windows | macOS |
+|---|---|---|
+| The level | number in the tray, next to the clock | number in the menu bar, with a menu of every device |
+| Settings | in the main window (gear) | their own window, **Settings… (⌘,)**: General, Reminders, Overlay |
+| Low battery reminder | always-on-top window, bottom right | floating panel, top right, never takes focus |
+| Overlay shortcut | **Ctrl+Alt+V** | **⌃⌥V** (any shortcut with ⌘, ⌃ or ⌥) |
+| Starts at sign-in | Task Scheduler task (installed) or the Startup setting | login item, **Open at login** |
+| Bluetooth devices | the level Windows shows in Settings → Bluetooth & devices | the levels macOS knows: AirPods with each earbud and the case, Magic devices, headsets, controllers |
+| Phones and tablets | — | iPhone and iPad on a cable |
+| Xbox Wireless Adapter | yes (XInput) | no: macOS has no driver for it |
+| Permissions | admin rights only when a third-party driver locks a receiver | Input Monitoring, only for keyboards (macOS asks it of every app that opens one) |
+| Processor | x64 | one app for Apple Silicon and Intel |
+
+### On a Mac
 
 <img src="docs/macos-menu-en.png" alt="BatteryTray in the macOS menu bar: the menu with each device's battery level" width="363">
 
-- **The level in the menu bar** — the number of the device that most needs charging, in the same colors. Click it for every device's level and the commands; the device window and **Settings… (⌘,)** open from there.
-- **Settings** in their own window with General, Reminders and Overlay tabs, as Mac apps have them.
-- **The overlay** comes up with **⌃⌥V** (any shortcut with ⌘, ⌃ or ⌥ can be recorded) above every window and full-screen app, on the display you are working on.
-- **The low battery reminder** is a floating panel in the top right corner that never takes the focus; "Charging complete" and "a new version" are macOS notifications.
-- **Bluetooth**: everything macOS shows in its Bluetooth menu — AirPods with both earbuds and the case, Magic Mouse, Magic Keyboard, Magic Trackpad, Logitech MX over Bluetooth, Xbox and other controllers (through the GameController framework).
-- **Open at login** puts a login item in System Settings → General → Login Items.
-- **One app for Apple Silicon and Intel**, macOS 13 Ventura or later, about 11 MB.
+- **The level in the menu bar** — click it for every device's level and the commands; the device window and **Settings… (⌘,)** open from there.
+- **Bluetooth** — everything macOS shows a level for: AirPods with both earbuds and the case, Magic Mouse, Magic Keyboard, Magic Trackpad, headsets that report their level over Bluetooth (the Razer Barracuda X in its Bluetooth mode, for one), Xbox and other controllers (through the GameController framework).
+- **iPhone and iPad on a cable** — with their level and charging, once the device trusts this Mac (as Finder asks). Over Wi-Fi they aren't read, so the app needs no Local Network permission.
+- **The reminder** is a floating panel in the top right corner; "Charging complete" and "a new version" are macOS notifications.
 
 <img src="docs/macos-settings-en.png" alt="BatteryTray settings on macOS: the Overlay tab with the ⌃⌥V shortcut" width="500">
 
@@ -101,7 +126,8 @@ BatteryTray for macOS is a native menu bar app (SwiftUI) around the same device 
 | **8BitDo** Ultimate 2 Wireless, **Flydigi** Vader 5 Pro / Apex 5 / Apex 6, **GameSir** Nova 2 / Nova 2 Lite / Super Nova / Tarantula Pro, BEITONG KP40D | 2.4 GHz receiver | ⚠️ untested; Flydigi reports in steps |
 | NVIDIA SHIELD Controller (2017) | cable | ⚠️ untested |
 | **Xbox controllers** via the Xbox Wireless Adapter (XInput, Windows only: macOS has no driver for the adapter) | adapter | ⚠️ untested; XInput only knows 4 levels |
-| **Any Bluetooth device** whose battery Windows or macOS shows (Xbox controller, AirPods with each earbud and the case, Magic Mouse / Keyboard / Trackpad, many mice, keyboards and headsets) | Bluetooth | ✅ tested on Windows (Xbox controller) |
+| **Any Bluetooth device** whose battery Windows or macOS shows (Xbox controller, AirPods with each earbud and the case, Magic Mouse / Keyboard / Trackpad, many mice, keyboards and headsets) | Bluetooth | ✅ tested on Windows (Xbox controller) and macOS (Razer Barracuda X in Bluetooth mode, AirPods) |
+| **iPhone, iPad** (macOS) | USB cable; the device must trust the Mac | ✅ tested (iPhone, iOS 26) |
 | **Game controllers** macOS knows: Xbox, Switch Pro, MFi and others | Bluetooth (macOS) | ⚠️ untested |
 | Any USB device that reports the standard HID "Battery Strength" | receiver or cable | ⚠️ untested |
 
@@ -122,25 +148,24 @@ Notes on specific devices:
 - **ASTRO A50** base stations must have their switch on PC, and can't be read while ASTRO Command Center is open.
 - **Sony PULSE 3D** and **Incott** mice only report when something changes, so they appear a little after they are switched on or moved.
 - **Bluetooth** devices are listed only while connected: Windows keeps a stale percentage after they disconnect. On a Mac a Bluetooth device appears once it is connected and macOS has its level.
+- **iPhone and iPad** (Mac) are read on the cable only, and only once they trust this Mac — BatteryTray never asks to pair, so if yours isn't listed, connect it once in Finder and tap "Trust".
 - **On a Mac, keyboards and mice with keyboard keys** can only be read with the **Input Monitoring** permission (macOS asks it of every app that opens such a device). Such a device says "needs the Input Monitoring permission" until you allow it: click "Allow" on the banner above the list, or turn BatteryTray on in System Settings → Privacy & Security → Input Monitoring. BatteryTray reads only the battery level, never what you type.
 
 ## Download and install
 
 ### Windows
 
-1. Download `BatteryTray-…-win-x64.zip` from [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest) and unzip it.
-2. Run `install.cmd` and confirm the administrator prompt.
-3. The icon appears next to the clock. Windows 11 hides new icons behind the **^** arrow — drag it onto the taskbar to keep the number in sight.
+1. Click **Download for Windows** above (it is `BatteryTray.exe` from the [latest release](https://github.com/qu1ncky/BatteryTray/releases/latest)) and run it.
+2. **Windows may warn about an unknown app** because the exe isn't code-signed: click "More info" → "Run anyway".
+3. The number appears next to the clock. Windows 11 hides new icons behind the **^** arrow — drag it onto the taskbar to keep it in sight. "Enable" on the banner above the device list makes it start with Windows.
 
-It installs to `C:\Program Files\BatteryTray` and starts at sign-in through a Task Scheduler task named "BatteryTray". To remove it, run `uninstall.cmd` from the zip.
+That's all it takes. If Windows keeps a device from the app (some third-party drivers lock a receiver to administrators), a line above the device list offers "Grant rights": it installs the app properly, with one UAC prompt.
 
-**Windows may warn about an unknown app** because the exe isn't code-signed: click "More info" → "Run anyway".
-
-**Portable use:** you can also just run `BatteryTray.exe` from anywhere; start with Windows can be turned on in Settings → General (with normal rights), or with "Enable" on the "BatteryTray doesn't start with Windows" banner at the top of the device list (shown until you dismiss it or turn autostart off in Settings).
+**Full install:** download `BatteryTray-…-win-x64.zip` from [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest), unzip it and run `install.cmd`. It installs to `C:\Program Files\BatteryTray` and starts at sign-in through a Task Scheduler task named "BatteryTray", with the rights such drivers need. To remove it, run `uninstall.cmd` from the zip.
 
 ### macOS
 
-1. Download `BatteryTray-macOS.zip` from [Releases](https://github.com/qu1ncky/BatteryTray/releases/latest), open it and drag **BatteryTray.app** to **Applications**.
+1. Click **Download for macOS** above (it is `BatteryTray-macOS.zip` from the [latest release](https://github.com/qu1ncky/BatteryTray/releases/latest)), open it and drag **BatteryTray.app** to **Applications**.
 2. Open it. The app isn't notarized by Apple, so the first time macOS refuses to open it: go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** (on macOS 13 and 14 you can also Control-click the app and choose **Open**).
 3. The number appears in the menu bar. Turn on **Open at login** in Settings → General, or with "Enable" on the banner above the device list.
 
@@ -159,6 +184,12 @@ Yes, if the system itself knows it: on Windows, when Settings → Bluetooth & de
 
 **How do I see my AirPods, Magic Mouse or Magic Keyboard battery in the Mac menu bar?**
 Install BatteryTray for macOS: it lists every Bluetooth device whose level macOS knows, AirPods with each earbud and the case, next to your gaming headset, mouse and keyboard.
+
+**Can it show my iPhone or iPad battery on a Mac?**
+Yes, while it is on a cable and trusts the Mac (Finder asks for that the first time you connect it): its level and whether it charges, in the list and the menu bar.
+
+**A new device doesn't show up / I'd rather the app didn't look for devices by itself.**
+Devices appear within seconds of connecting. Press "Refresh battery levels" to look right away; to turn the automatic search off, uncheck **Look for new devices automatically** in Settings → General (the levels of the devices already found keep updating).
 
 **Does it work on a Mac with Apple Silicon (M1, M2, M3, M4) and on Intel Macs?**
 Yes, the macOS app is one universal app for both, macOS 13 Ventura or later.
@@ -233,7 +264,8 @@ Everything is in Settings → General → Updates: status, what's new, "Check no
 | `providers/standard_hid.rs` | Reads the Generic Device Controls / Battery Strength field (`06:20`) from the feature reports of any USB HID device. |
 | `providers/playstation.rs` | Sends nothing: reads one input report and its status byte (DualSense `data[53]` USB / `data[54]` Bluetooth, DualShock 4 `data[30]` / `data[32]`), like Linux's `hid-playstation`. |
 | `providers/xinput.rs` | Windows: `XInputGetBatteryInformation`: 4 levels → approximate percentage. Skips Bluetooth controllers, whose exact level comes from Windows. |
-| `providers/bluetooth/` | Windows: the `DEVPKEY_Bluetooth_Battery` device property (what Settings → Bluetooth shows), only while `ConnectionStatus = Connected`. macOS: what `system_profiler SPBluetoothDataType` reports for the connected devices (what the Bluetooth menu shows), the earbuds and the case of AirPods included. |
+| `providers/bluetooth/` | Windows: the `DEVPKEY_Bluetooth_Battery` device property (what Settings → Bluetooth shows), only while `ConnectionStatus = Connected`. macOS: what `system_profiler SPBluetoothDataType` reports for the connected devices (what the Bluetooth menu shows), the earbuds and the case of AirPods included, and for a headset that reports its level over the hands-free profile, the level macOS keeps among its power sources (`IOPSCopyPowerSourcesByType`, what the battery widget and `pmset -g accps` show). |
+| `providers/apple_mobile.rs` | macOS: iPhones and iPads on a cable through MobileDevice, the framework Finder uses: a session with `lockdownd` reads the `com.apple.mobile.battery` domain of a device that already trusts the Mac. Never pairs, never reaches a device over the network. |
 | `src/hid/` | The HID layer every provider is built on: Win32 (`windows.rs`) or IOKit (`macos.rs`). On a Mac each device's report descriptor is split into the collections Windows would list (`descriptor.rs`), named in Windows' path form, so every provider works there unchanged. |
 | `macos/` | The Mac app: SwiftUI and AppKit around the core, which `macos/core` builds as a static library. Game controllers are read through Apple's GameController framework. |
 
