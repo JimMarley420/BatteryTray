@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BatteryTray — battery level of wireless mice, headsets, keyboards and AirPods in the Windows tray and the Mac menu bar</title>
+<meta name="description" content="Free, open-source app for Windows 10/11 and macOS that shows the battery level of wireless headsets, mice, keyboards, game controllers and AirPods next to the clock or in the menu bar, with low battery reminders. Razer, Logitech, SteelSeries, HyperX, Corsair and Bluetooth devices, no vendor software.">
+<link rel="canonical" href="https://qu1ncky.github.io/BatteryTray/">
+<link rel="alternate" hreflang="en" href="https://qu1ncky.github.io/BatteryTray/">
+<link rel="alternate" hreflang="ru" href="https://qu1ncky.github.io/BatteryTray/ru/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="BatteryTray — battery level of all your wireless devices">
+<meta property="og:description" content="Wireless headset, mouse, keyboard, controller and AirPods battery in the Windows tray and the Mac menu bar. Free and open source.">
+<meta property="og:url" content="https://qu1ncky.github.io/BatteryTray/">
+<meta property="og:image" content="https://qu1ncky.github.io/BatteryTray/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "BatteryTray",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Windows 10, Windows 11, macOS 13 or later",
+  "description": "Shows the battery level of wireless headsets, mice, keyboards, game controllers, AirPods and other Bluetooth devices in the Windows tray or the Mac menu bar, with low battery reminders. Reads Razer, Logitech, SteelSeries, HyperX, Corsair, ASUS and many other devices through their receivers without vendor software.",
+  "url": "https://qu1ncky.github.io/BatteryTray/",
+  "sameAs": "https://github.com/qu1ncky/BatteryTray",
+  "downloadUrl": [
+    "https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray.exe",
+    "https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.dmg"
+  ],
+  "screenshot": [
+    "https://qu1ncky.github.io/BatteryTray/screenshot-en.png",
+    "https://qu1ncky.github.io/BatteryTray/macos-en.png"
+  ],
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "inLanguage": ["en", "ru", "zh"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Is there an app that shows the battery level of my wireless mouse, keyboard or headset in the taskbar or the menu bar?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes: BatteryTray, free and open source, for Windows 10/11 and macOS 13+. It shows the level of the device that most needs charging next to the clock or in the menu bar, every device in one window, and reminds you before a battery runs out, with no vendor software." } },
+    { "@type": "Question", "name": "How do I see the battery of my Bluetooth devices on Windows 11 without opening Settings?",
+      "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray shows every Bluetooth device whose level Windows knows in the tray, read fresh from Bluetooth LE devices, with AirPods' earbuds and case each on their own." } },
+    { "@type": "Question", "name": "How do I get a low battery warning for my wireless mouse or headset?",
+      "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray shows a reminder that stays on screen, not hidden by Do Not Disturb, when a device drops below its level (20% by default, or a level of its own per device), and again at the critical level." } },
+    { "@type": "Question", "name": "How do I see my AirPods battery on Windows?",
+      "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray reads the level of each earbud and of the case from the AirPods' own Bluetooth messages and shows it in the Windows tray." } },
+    { "@type": "Question", "name": "How do I check my Razer or Logitech mouse battery without Synapse or G HUB?",
+      "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray talks to the device through its receiver with the device's own protocol (Razer, Logitech HID++, SteelSeries, HyperX, Corsair and others) and shows the level in the tray or the menu bar." } },
+    { "@type": "Question", "name": "Is there a Mac menu bar app that shows the battery of all my devices?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes: BatteryTray for macOS lists AirPods (each earbud and the case), Magic Mouse and Keyboard, Bluetooth headsets and mice, game controllers, an iPhone or iPad on a cable, and gaming mice, keyboards and headsets on their receivers." } }
+  ]
+}
+</script>
+<style>
+  :root { --bg: #ffffff; --fg: #1d1d1f; --muted: #5f6368; --card: #f5f5f7; --line: #e3e3e8; --accent: #0a6cdf; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111214; --fg: #f2f2f4; --muted: #a1a1a8; --card: #1c1d20; --line: #2c2d31; --accent: #5aa8ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 20px 64px; }
+  nav { display: flex; justify-content: space-between; align-items: center; font-size: 15px; margin-bottom: 40px; }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 16px; }
+  nav a:hover { color: var(--fg); }
+  h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.12; margin: 0 0 16px; letter-spacing: -0.02em; }
+  .lead { font-size: 19px; color: var(--muted); max-width: 760px; margin: 0 0 28px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; }
+  .buttons img { height: 64px; display: block; }
+  .small { font-size: 14px; color: var(--muted); }
+  .small a { color: var(--accent); }
+  .shots { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; margin: 44px 0; }
+  .shots img { height: 520px; max-width: 100%; object-fit: contain; border-radius: 12px; }
+  h2 { font-size: 26px; margin: 56px 0 18px; letter-spacing: -0.01em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .reminder { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+  .reminder img { width: 340px; max-width: 100%; border-radius: 12px; }
+  .reminder p { flex: 1 1 280px; color: var(--muted); margin: 0; }
+  details { border-top: 1px solid var(--line); padding: 14px 0; }
+  details:last-of-type { border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--muted); margin: 10px 0 0; }
+  .brands { color: var(--muted); font-size: 15px; }
+  footer { margin-top: 56px; font-size: 14px; color: var(--muted); }
+  footer a { color: var(--accent); }
+  @media (max-width: 600px) { .shots img { height: auto; width: 100%; } }
+</style>
+</head>
+<body>
+<main>
+  <nav>
+    <strong>BatteryTray</strong>
+    <span><a href="ru/" hreflang="ru">Русский</a><a href="https://github.com/qu1ncky/BatteryTray">GitHub</a></span>
+  </nav>
+
+  <h1>The battery level of every wireless device, in the Windows tray and the Mac menu bar</h1>
+  <p class="lead">BatteryTray shows how much charge your wireless headset, mouse, keyboard, controller and AirPods have left, and reminds you before they die mid-game or mid-call. Free and open source, no account, no vendor software: it only reads the battery.</p>
+  <div class="buttons">
+    <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray.exe"><img src="download-windows-en.svg" alt="Download BatteryTray for Windows"></a>
+    <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.dmg"><img src="download-macos-en.svg" alt="Download BatteryTray for macOS"></a>
+  </div>
+  <p class="small">Windows 10 and 11 · macOS 13 Ventura or later, Apple Silicon and Intel · MIT license · <a href="https://github.com/qu1ncky/BatteryTray#download-and-install">How to install</a> · <a href="https://github.com/qu1ncky/BatteryTray/releases">All versions</a></p>
+
+  <div class="shots">
+    <img src="screenshot-en.png" alt="BatteryTray on Windows: battery levels of a wireless headset, mouse, keyboard and Xbox controller">
+    <img src="macos-en.png" alt="BatteryTray on macOS: battery levels of a wireless headset, mouse, keyboard and Xbox controller">
+  </div>
+
+  <h2>What it does</h2>
+  <div class="grid">
+    <div class="card"><h3>The level always in sight</h3><p>The device that most needs charging, as a colored number next to the clock or in the menu bar; every device in one window.</p></div>
+    <div class="card"><h3>Reminders you can't miss</h3><p>A window that stays on screen when a battery runs low, not a toast; a level of its own for each device.</p></div>
+    <div class="card"><h3>No vendor software</h3><p>Talks to Razer, Logitech, SteelSeries, HyperX, Corsair and many more devices through their receivers, the way their own apps do.</p></div>
+    <div class="card"><h3>Bluetooth too</h3><p>AirPods with each earbud and the case, Magic devices, headsets, controllers, any Bluetooth device the system knows a level for.</p></div>
+    <div class="card"><h3>Overlay in games</h3><p>A shortcut shows your devices' levels for five seconds over games and full-screen apps, without taking focus.</p></div>
+    <div class="card"><h3>New devices by themselves</h3><p>Plug in a receiver or connect a headset and it shows up within seconds. Updates itself from GitHub.</p></div>
+  </div>
+
+  <h2>A reminder before it dies</h2>
+  <div class="reminder">
+    <img src="reminder-en.png" alt="BatteryTray's low battery reminder: AirPods Pro at 18% and a Razer Barracuda X at a critical 14%">
+    <p>When a device drops below its level, BatteryTray shows its own window in the corner: Do Not Disturb doesn't hide it, it doesn't time out and it doesn't steal focus from a game. Snooze it for a few minutes or until the device is charged; at the critical level it comes back anyway.</p>
+  </div>
+
+  <h2>Devices</h2>
+  <p class="brands">Razer (Barracuda X, BlackShark, Kraken, Viper, DeathAdder, Basilisk and about 45 mice and keyboards) · Logitech (MX Master, MX Keys, MX Ergo, G Lightspeed mice, G and ASTRO headsets) · SteelSeries (Arctis, Aerox, Prime) · HyperX (Cloud, Pulsefire) · Corsair (HS80, Void, Virtuoso, SLIPSTREAM) · ASUS ROG · Attack Shark · VXE / VGN · ATK · Lamzu · Pulsar · Glorious · WLmouse · MCHOSE · AULA · Keychron · Rapoo · JBL Quantum · Audeze · Jabra · Sony INZONE · DualSense and DualShock 4 · Xbox and Switch controllers · Steam Controller · 8BitDo · AirPods and Beats · Apple Magic Keyboard, Mouse and Trackpad · iPhone and iPad (Mac) · Android phones (Windows) · any Bluetooth device the system knows a level for. <a href="https://github.com/qu1ncky/BatteryTray#supported-devices">The full list</a>.</p>
+
+  <h2>Questions</h2>
+  <details><summary>Is there an app that shows the battery level of my wireless mouse, keyboard or headset in the taskbar?</summary><p>Yes — BatteryTray, for Windows 10/11 and macOS 13+. It shows the level as a number next to the clock or in the menu bar and reminds you before the battery runs out.</p></details>
+  <details><summary>How do I see the battery of my Bluetooth devices on Windows 11 without opening Settings?</summary><p>BatteryTray puts every Bluetooth device whose level Windows knows in the tray, read fresh from Bluetooth LE devices.</p></details>
+  <details><summary>How do I get a low battery warning for my wireless mouse or headset?</summary><p>Set a level (20% by default, or one per device): BatteryTray shows a reminder that stays on screen, and again at the critical level.</p></details>
+  <details><summary>How do I see my AirPods battery on Windows?</summary><p>BatteryTray reads each earbud's and the case's level from the AirPods' own Bluetooth messages.</p></details>
+  <details><summary>How do I check my Razer or Logitech mouse battery without Synapse or G HUB?</summary><p>BatteryTray asks the device through its receiver with its own protocol, as the vendor's app would, and shows the level in the tray.</p></details>
+  <details><summary>Is there a Mac menu bar app that shows the battery of all my devices?</summary><p>Yes: BatteryTray for macOS lists AirPods, Magic devices, Bluetooth headsets and mice, controllers, an iPhone or iPad on a cable, and gaming peripherals on their receivers.</p></details>
+
+  <footer>BatteryTray is open source under the MIT license — <a href="https://github.com/qu1ncky/BatteryTray">source code, issues and releases on GitHub</a>. Not affiliated with Apple, Razer, Logitech, SteelSeries, HyperX, Corsair, ASUS, Sony or Microsoft; product names are trademarks of their owners.</footer>
+</main>
+</body>
+</html>

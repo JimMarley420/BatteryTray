@@ -48,7 +48,7 @@ BatteryTray for macOS 是原生的菜单栏应用（SwiftUI），与 Windows 版
 - **悬浮窗**通过 **⌃⌥V** 调出（可录制任何包含 ⌘、⌃ 或 ⌥ 的快捷键），显示在所有窗口和全屏应用之上。
 - **低电量提醒**是右上角不抢焦点的浮动面板；“充电完成”和“新版本可用”使用 macOS 通知。
 - **蓝牙**：macOS 知道电量的所有设备，包括 AirPods 的左右耳机和充电盒、妙控鼠标、妙控键盘、妙控板、通过蓝牙报告电量的耳机（例如蓝牙模式下的 Razer Barracuda X）、Xbox 等手柄（通过 GameController 框架）。
-- **通过数据线连接的 iPhone 和 iPad**：显示电量和充电状态，前提是设备已信任这台 Mac（与 Finder 相同）。不通过 Wi-Fi 读取，因此无需“本地网络”权限。
+- **通过数据线连接的 iPhone 和 iPad**：显示电量和充电状态，前提是设备已信任这台 Mac（与 Finder 相同）。
 - **一个应用同时支持 Apple 芯片和 Intel**，需要 macOS 13 Ventura 或更高版本，约 11 MB。
 
 在 Mac 上，键盘以及带键盘按键的鼠标需要“输入监控”权限才能读取（macOS 对所有打开此类设备的应用都有此要求）。点击设备列表上方横幅中的“允许”，或在“系统设置 → 隐私与安全性 → 输入监控”中打开 BatteryTray。BatteryTray 只读取电量，从不读取你的输入。
@@ -58,6 +58,17 @@ BatteryTray for macOS 是原生的菜单栏应用（SwiftUI），与 Windows 版
 Razer Barracuda X（2.4 GHz 接收器，已测试）、Attack Shark R3 及其他 Rongyuan 平台鼠标键盘、Xenta 接收器（`1D57:FA60`）上的 Attack Shark、FURYCUBE、Delux、Inphic 鼠标（Attack Shark V3 Pro 已由用户测试，以及 X11、X3 Max、X6 / R1、FURYCUBE F1、G3、G9 PRO、G11 等）、约 45 款 Razer 无线鼠标、HyperSpeed 键盘和 BlackShark / Kraken 耳机、Logitech HID++ 设备（MX Master、MX Keys、G Lightspeed 系列等）、Logitech G / ASTRO / SteelSeries Arctis / HyperX Cloud / Corsair / Audeze / JBL Quantum / Jabra / Sony INZONE 等无线耳机、SteelSeries 和 HyperX 无线鼠标、ASUS ROG 鼠标键盘（含 Omni 接收器）、Corsair SLIPSTREAM 鼠标键盘、ATK / VXE / VGN、Lamzu、Pulsar、Scyrox、G-Wolves、Glorious、WLmouse、MCHOSE、Keychron、Rapoo VT、Incott、VAXEE、Ninjutso、Endgame Gear、ZOWIE 等鼠标、MCHOSE / AULA / VGN / AJAZZ / CHERRY / Attack Shark 等 2.4 GHz 键盘、Steam Controller、8BitDo、Flydigi、GameSir 手柄、Sony DualSense / DualShock 4、Nintendo Switch Pro 手柄和 Joy-Con、Xbox 手柄，以及 Windows 或 macOS 能显示电量的任何蓝牙设备（在 Mac 上包括 AirPods 和妙控系列，在 Windows 上包括妙控键盘）。以上设备在 macOS 上同样支持（Xbox 无线适配器除外，macOS 没有其驱动）。完整列表见 [英文说明](README.md#supported-devices)。
 
 标记为“未测试”的设备是按照公开的开源协议实现的，尚未在真机上验证；如果你有这些设备，欢迎在 [Issues](https://github.com/qu1ncky/BatteryTray/issues) 反馈。
+
+## 常见问题
+
+**有没有能在任务栏或菜单栏显示无线鼠标、键盘、耳机电量的软件？**
+有：BatteryTray，免费开源，支持 Windows 10/11 和 macOS 13+。它在时钟旁边（Windows）或菜单栏（Mac）显示最需要充电的设备电量，在一个窗口中列出所有设备，并在电池耗尽前提醒你。通过接收器读取雷蛇、罗技、赛睿、HyperX、海盗船、华硕、Attack Shark 等游戏外设以及蓝牙设备，无需厂商软件。
+
+**如何在 Windows 上查看 AirPods 电量？**
+BatteryTray 会像 iPhone 一样从 AirPods 自身的蓝牙消息中读取左右耳机和充电盒的电量，并显示在托盘中。
+
+**有没有在 Mac 菜单栏显示所有设备电量的应用？**
+有：BatteryTray for macOS 会在菜单栏和一个窗口中显示 AirPods（左右耳机和充电盒）、妙控鼠标、妙控键盘、蓝牙耳机和鼠标、手柄、通过数据线连接的 iPhone 和 iPad，以及接收器上的游戏鼠标、键盘和耳机。
 
 ## 下载和安装
 
