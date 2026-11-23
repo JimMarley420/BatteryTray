@@ -50,8 +50,9 @@ The same app on both: the device list, the reminders, the overlay and every supp
 | Low battery reminder | always-on-top window, bottom right | floating panel, top right, never takes focus |
 | Overlay shortcut | **Ctrl+Alt+V** | **⌃⌥V** (any shortcut with ⌘, ⌃ or ⌥) |
 | Starts at sign-in | Task Scheduler task (installed) or the Startup setting | login item, **Open at login** |
-| Bluetooth devices | the level Windows shows in Settings → Bluetooth & devices | the levels macOS knows: AirPods with each earbud and the case, Magic devices, headsets, controllers |
-| Phones and tablets | — | iPhone and iPad on a cable |
+| Bluetooth devices | the level Windows shows in Settings → Bluetooth & devices, read fresh from a Bluetooth LE device's Battery Service; AirPods with each earbud and the case; Magic Keyboard; Xbox and Switch controllers | the levels macOS knows: AirPods with each earbud and the case, Magic devices, headsets, controllers; any Bluetooth LE device with a Battery Service; Logitech MX over Bluetooth |
+| Phones and tablets | Android on a cable, in File transfer mode | iPhone and iPad on a cable or on Wi-Fi |
+| UPS | a UPS on USB (what Windows shows as a battery) | — |
 | Xbox Wireless Adapter | yes (XInput) | no: macOS has no driver for it |
 | Permissions | admin rights only when a third-party driver locks a receiver | Input Monitoring, only for keyboards (macOS asks it of every app that opens one) |
 | Processor | x64 | one app for Apple Silicon and Intel |
@@ -130,7 +131,12 @@ The same app on both: the device list, the reminders, the overlay and every supp
 | **Nintendo Switch** Pro Controller, Joy-Con (Windows only) | Bluetooth, once a game or Steam has switched the controller to full reports | ⚠️ untested; 5 levels |
 | **Apple Magic Keyboard** (2015, 2021, USB-C; with Touch ID and with Numeric Keypad) (Windows only) | Bluetooth | ⚠️ untested |
 | **Any Bluetooth device** whose battery Windows or macOS shows (Xbox controller, AirPods with each earbud and the case, Magic Mouse / Keyboard / Trackpad, many mice, keyboards and headsets) | Bluetooth | ✅ tested on Windows (Xbox controller) and macOS (Razer Barracuda X in Bluetooth mode, AirPods) |
-| **iPhone, iPad** (macOS) | USB cable; the device must trust the Mac | ✅ tested (iPhone, iOS 26) |
+| **iPhone, iPad** (macOS) | USB cable, or Wi-Fi with "Show this iPhone when on Wi-Fi"; the device must trust the Mac | ✅ tested on the cable (iPhone, iOS 26) |
+| **Bluetooth LE devices** with the standard Battery Service: many mice and keyboards (Logitech MX, keyboards with ZMK and both halves of a split one), trackers | Bluetooth LE | ⚠️ untested; on Windows read fresh from the device, on a Mac with the Bluetooth permission |
+| **Logitech MX** mice and keyboards connected directly over Bluetooth (macOS; Windows shows them itself) | Bluetooth LE | ⚠️ untested |
+| **AirPods and Beats** with each earbud and the case on Windows | Bluetooth | ⚠️ untested |
+| **Android phones and tablets** (Windows) | USB cable in "File transfer" mode | ⚠️ untested |
+| **UPS** (Windows): the ones Windows shows as a battery | USB | ⚠️ untested |
 | **Game controllers** macOS knows: Xbox, Switch Pro, MFi and others | Bluetooth (macOS) | ⚠️ untested |
 | Any USB device that reports the standard HID "Battery Strength" | receiver or cable | ⚠️ untested |
 
@@ -204,7 +210,10 @@ Yes, if the system itself knows it: on Windows, when Settings → Bluetooth & de
 Install BatteryTray for macOS: it lists every Bluetooth device whose level macOS knows, AirPods with each earbud and the case, next to your gaming headset, mouse and keyboard.
 
 **Can it show my iPhone or iPad battery on a Mac?**
-Yes, while it is on a cable and trusts the Mac (Finder asks for that the first time you connect it): its level and whether it charges, in the list and the menu bar.
+Yes, on a cable, or on Wi-Fi when "Show this iPhone when on Wi-Fi" is on in Finder, once it trusts the Mac (Finder asks for that the first time you connect it): its level and whether it charges, in the list and the menu bar.
+
+**And my Android phone on Windows?**
+Yes, while it is on the cable in "File transfer" mode (in "Charging only" Windows doesn't see it as a device).
 
 **A new device doesn't show up / I'd rather the app didn't look for devices by itself.**
 Devices appear within seconds of connecting. Press "Refresh battery levels" to look right away; to turn the automatic search off, uncheck **Look for new devices automatically** in Settings → General (the levels of the devices already found keep updating).
