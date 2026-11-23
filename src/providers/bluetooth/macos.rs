@@ -21,9 +21,18 @@ use std::time::{Duration, Instant};
 /// The devices this session has had a level from.
 static SEEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
+/// The connected devices macOS had a level for at the last look, and when that look began: for the providers that
+/// could read one of them themselves and leave it to this one (`level_shown`).
+static SHOWN: Mutex<Option<(Instant, Vec<Shown>)>> = Mutex::new(None);
+
 pub fn poll() -> Vec<DeviceReading> {
+    // Held while system_profiler runs, so a provider asking meanwhile waits for this look instead of making its own
+    let mut shown = SHOWN.lock().unwrap_or_else(|e| e.into_inner());
+    let began = Instant::now();
     let Some(report) = system_profiler() else { return Vec::new() };
     let accessories = accessories();
+    *shown = Some((began, levels_shown(&report, &accessories)));
+    drop(shown);
     let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
     let seen = seen.get_or_insert_with(HashSet::new);
     let readings = readings(&report, &accessories, seen);
@@ -33,6 +42,51 @@ pub fn poll() -> Vec<DeviceReading> {
         }
     }
     readings
+}
+
+/// Whether macOS shows a level for the connected device with these IDs or this name, so that this provider lists it.
+/// The last look is taken if it began at `since` or later (this provider looks every minute), else one is made now.
+pub fn level_shown(vendor_id: u16, product_id: u16, name: Option<&str>, since: Instant) -> bool {
+    let mut shown = SHOWN.lock().unwrap_or_else(|e| e.into_inner());
+    if !shown.as_ref().is_some_and(|(began, _)| *began >= since) {
+        let began = Instant::now();
+        *shown = system_profiler().map(|report| (began, levels_shown(&report, &accessories())));
+    }
+    shown.as_ref().is_some_and(|(_, list)| list.iter().any(|s| s.is(vendor_id, product_id, name)))
+}
+
+/// A connected device macOS has a level for: the vendor and product IDs it reports for it, and its name.
+#[derive(Debug, PartialEq)]
+struct Shown {
+    ids: Option<(u16, u16)>,
+    name: String,
+}
+
+impl Shown {
+    fn is(&self, vendor_id: u16, product_id: u16, name: Option<&str>) -> bool {
+        self.ids == Some((vendor_id, product_id)) || name.is_some_and(|n| n.eq_ignore_ascii_case(&self.name))
+    }
+}
+
+/// The connected devices of the report that have a level, as `readings` lists them.
+fn levels_shown(report: &Value, accessories: &[Accessory]) -> Vec<Shown> {
+    let controllers = report.get("SPBluetoothDataType").and_then(Value::as_array).into_iter().flatten();
+    let devices = controllers.flat_map(|c| c.get("device_connected").and_then(Value::as_array).into_iter().flatten());
+    let id = |device: &Value, key: &str| {
+        let text = device.get(key).and_then(Value::as_str)?;
+        u16::from_str_radix(text.trim().trim_start_matches("0x").trim_start_matches("0X"), 16).ok()
+    };
+    devices
+        .filter_map(Value::as_object)
+        .flat_map(|o| o.iter())
+        .filter(|(name, device)| {
+            Battery::of(device).level().or_else(|| Battery::among(accessories, name).0.level()).is_some()
+        })
+        .map(|(name, device)| Shown {
+            ids: id(device, "device_vendorID").zip(id(device, "device_productID")),
+            name: name.clone(),
+        })
+        .collect()
 }
 
 /// What system_profiler reports, as JSON; None when it couldn't be run or said nothing in 20 seconds.
@@ -297,6 +351,27 @@ mod tests {
         assert_eq!(all[1].detail.as_deref(), Some("left 100%, right 90%, case 45%"));
         assert_eq!(all[0].detail, None);
         assert!(all.iter().all(|r| r.via == "Bluetooth"));
+    }
+
+    /// The devices other providers leave to this one: connected, with a level of macOS's own or among its power
+    /// sources, known by their IDs or their name.
+    #[test]
+    fn the_levels_macos_shows() {
+        let mut report = report();
+        report["SPBluetoothDataType"][0]["device_connected"][0]["MX Ergo"]["device_vendorID"] = "0x046D".into();
+        report["SPBluetoothDataType"][0]["device_connected"][0]["MX Ergo"]["device_productID"] = "0xB01D".into();
+        let accessories = [accessory("Razer Barracuda X (BT)", "Single", 40, true)];
+        let shown = levels_shown(&report, &accessories);
+        let names: Vec<_> = shown.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["MX Ergo", "AirPods Pro", "Razer Barracuda X (BT)"]);
+        assert_eq!(shown[0].ids, Some((0x046D, 0xB01D)));
+        assert!(shown[0].is(0x046D, 0xB01D, None), "by its IDs, also when its name is unknown");
+        assert!(shown[0].is(0x046D, 0xB023, Some("mx ergo")), "by its name");
+        assert!(!shown[0].is(0x046D, 0xB023, Some("MX Master 3S")));
+        assert!(shown[2].is(0x1532, 0x0544, Some("Razer Barracuda X (BT)")));
+        assert!(!shown[2].is(0x1532, 0x0544, None));
+        // Not connected, or connected without a level: not shown
+        assert!(!shown.iter().any(|s| s.name == "Keychron K6" || s.name == "iPhone"));
     }
 
     #[test]

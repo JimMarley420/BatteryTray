@@ -11,6 +11,8 @@ use macos as imp;
 #[cfg(windows)]
 use windows as imp;
 
+#[cfg(target_os = "macos")]
+pub use macos::level_shown;
 #[cfg(windows)]
 pub use windows::parse_address;
 

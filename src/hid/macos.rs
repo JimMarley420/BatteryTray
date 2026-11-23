@@ -6,7 +6,8 @@
 //!
 //! Input reports arrive by callback on a run loop: every open device has a thread running one, and the reports go
 //! into a queue of 32, as the Windows HID driver keeps them, which `read` waits on and `flush` empties. Writes are
-//! asynchronous with a timeout, so a device that never takes an output report costs its timeout and no more.
+//! asynchronous with a timeout, so a device that never takes an output report costs its timeout and no more - except
+//! on Bluetooth LE, where an output report is sent as an element's value (see `Handle::set_value`).
 //!
 //! A device with a keyboard collection can only be opened with the user's "Input Monitoring" permission. Without it
 //! its collections are listed as access denied, and nothing tries to open them: that would only bring up the
@@ -34,7 +35,7 @@ const IO_RETURN_ABORTED: i32 = 0xE000_02EB_u32 as i32;
 const USB_TRANSACTION_TIMEOUT: i32 = 0xE000_4051_u32 as i32;
 const IO_RETURN_UNSUPPORTED: i32 = 0xE000_02C7_u32 as i32;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
     Usb,
     BluetoothClassic,
@@ -59,16 +60,8 @@ impl Device {
         let number = |key: &str| property(service, key).and_then(|v| mac::number_of(v.0));
         let vendor_id = number("VendorID")? as u16;
         let product_id = number("ProductID").unwrap_or(0) as u16;
-        let transport_name = property(service, "Transport").and_then(|v| mac::string_of(v.0)).unwrap_or_default();
-        let transport = if transport_name.contains("Bluetooth") {
-            if transport_name.contains("Low Energy") || transport_name.contains("LE") {
-                Transport::BluetoothLe
-            } else {
-                Transport::BluetoothClassic
-            }
-        } else {
-            Transport::Usb
-        };
+        let transport =
+            transport_of(&property(service, "Transport").and_then(|v| mac::string_of(v.0)).unwrap_or_default());
         let mut entry_id = 0u64;
         unsafe { IORegistryEntryGetRegistryEntryID(service, &mut entry_id) };
         let raw = property(service, "ReportDescriptor").and_then(|v| mac::data_of(v.0)).unwrap_or_default();
@@ -129,6 +122,20 @@ impl Device {
             info.output_report_id = c.output_report_id;
         }
         info
+    }
+}
+
+/// The transport a device's "Transport" property names. Bluetooth LE is written "Bluetooth Low Energy" by some
+/// macOS versions and "BluetoothLowEnergy" by others (the SDK's kIOHIDTransportBluetoothLowEnergyValue): both are LE.
+fn transport_of(name: &str) -> Transport {
+    if !name.contains("Bluetooth") {
+        return Transport::Usb;
+    }
+    let compact = name.replace(' ', "");
+    if compact.contains("LowEnergy") || compact.contains("LE") {
+        Transport::BluetoothLe
+    } else {
+        Transport::BluetoothClassic
     }
 }
 
@@ -314,6 +321,26 @@ impl Handle {
     fn set(&self, kind: u32, report: &[u8]) -> bool {
         let (id, data) = split_id(report);
         unsafe { IOHIDDeviceSetReport(self.device, kind, id as isize, data.as_ptr(), data.len() as isize) == 0 }
+    }
+
+    /// Sends an output report (its first byte the report ID, 0 when the device has none) as the value of the one
+    /// output element that spans its data; None when no element does. This is how a report reaches a Bluetooth LE
+    /// device: there IOHIDDeviceSetReport answers success and sends nothing, while a value set on an output element
+    /// has the HID system build the report and send it (found on Logitech mice, whose HID++ report is one element of
+    /// 19 bytes, by Lazy Mouse: github.com/RRY/lazy-mouse, Sources/HIDPPKit/HIDPPTransport.swift). It is sent
+    /// synchronously, as that project does: the call with a timeout is not known to work there.
+    fn set_value(&self, report: &[u8]) -> Option<Result<bool>> {
+        let (&id, data) = report.split_first()?;
+        let elements = Cf::new(unsafe { IOHIDDeviceCopyMatchingElements(self.device, std::ptr::null(), 0) })?;
+        let element = mac::items_of(elements.0).into_iter().find(|&e| unsafe {
+            IOHIDElementGetType(e) == ELEMENT_OUTPUT
+                && IOHIDElementGetReportID(e) == id as u32
+                && IOHIDElementGetReportSize(e) as usize * IOHIDElementGetReportCount(e) as usize == data.len() * 8
+        })?;
+        let value = Cf::new(unsafe {
+            IOHIDValueCreateWithBytes(std::ptr::null(), element, 0, data.as_ptr(), data.len() as isize)
+        })?;
+        Some(taken(unsafe { IOHIDDeviceSetValue(self.device, element, value.0) }))
     }
 
     /// Reads a report into a buffer of `length` bytes, its first byte the report ID as on Windows.
@@ -565,6 +592,11 @@ impl HidDevice {
         let mut buf = vec![0u8; self.info.output_length];
         let n = report.len().min(buf.len());
         buf[..n].copy_from_slice(&report[..n]);
+        if self.info.path.contains(BLUETOOTH_LE) {
+            if let Some(sent) = self.handle.set_value(&buf) {
+                return sent;
+            }
+        }
         let (id, data) = split_id(&buf);
         let sent = Arc::new(Sent::default());
         // The callback's reference: given back by the callback, or kept for good if it never comes
@@ -599,12 +631,7 @@ impl HidDevice {
             }
             result = sent.done.wait_timeout(result, left).unwrap_or_else(|e| e.into_inner()).0;
         }
-        // A report not taken in time comes back timed out, or aborted by the timeout on some transports
-        match result.unwrap_or(IO_RETURN_TIMEOUT) {
-            IO_RETURN_SUCCESS => Ok(true),
-            IO_RETURN_TIMEOUT | IO_RETURN_ABORTED | USB_TRANSACTION_TIMEOUT => Ok(false),
-            code => Err(Error::os(code as u32)),
-        }
+        taken(result.unwrap_or(IO_RETURN_TIMEOUT))
     }
 
     /// The next input report, or None on timeout.
@@ -631,6 +658,16 @@ impl Drop for HidDevice {
     fn drop(&mut self) {
         // No more callbacks into the buffers before they go: the run loop stops, then the device closes
         self.run_loop = None;
+    }
+}
+
+/// Whether a written output report was taken: one not taken in time comes back timed out, or aborted by the timeout
+/// on some transports.
+fn taken(status: i32) -> Result<bool> {
+    match status {
+        IO_RETURN_SUCCESS => Ok(true),
+        IO_RETURN_TIMEOUT | IO_RETURN_ABORTED | USB_TRANSACTION_TIMEOUT => Ok(false),
+        code => Err(Error::os(code as u32)),
     }
 }
 
@@ -687,6 +724,8 @@ pub fn feature_value(info: &HidInfo, usage_page: u16, usage: u16) -> Option<Usag
 const INPUT: u32 = 0;
 const OUTPUT: u32 = 1;
 const FEATURE: u32 = 2;
+/// kIOHIDElementTypeOutput
+const ELEMENT_OUTPUT: u32 = 129;
 
 type ReportCallback = extern "C" fn(*mut c_void, i32, *mut c_void, u32, u32, *mut u8, isize);
 
@@ -727,6 +766,19 @@ extern "C" {
         callback: ReportCallback,
         context: *mut c_void,
     ) -> i32;
+    fn IOHIDDeviceCopyMatchingElements(device: CFTypeRef, matching: CFTypeRef, options: u32) -> CFTypeRef;
+    fn IOHIDElementGetType(element: CFTypeRef) -> u32;
+    fn IOHIDElementGetReportID(element: CFTypeRef) -> u32;
+    fn IOHIDElementGetReportSize(element: CFTypeRef) -> u32;
+    fn IOHIDElementGetReportCount(element: CFTypeRef) -> u32;
+    fn IOHIDValueCreateWithBytes(
+        allocator: CFTypeRef,
+        element: CFTypeRef,
+        timestamp: u64,
+        bytes: *const u8,
+        length: isize,
+    ) -> CFTypeRef;
+    fn IOHIDDeviceSetValue(device: CFTypeRef, element: CFTypeRef, value: CFTypeRef) -> i32;
     fn IOHIDDeviceRegisterInputReportCallback(
         device: CFTypeRef,
         report: *mut u8,
@@ -800,6 +852,43 @@ mod tests {
             assert_eq!(parse_path(p).map(|p| p.0), Some(0x1000_052a1), "{p}");
         }
         assert!(!HidInfo { path, ..Default::default() }.is_bluetooth());
+    }
+
+    #[test]
+    fn transports_by_the_names_macos_gives_them() {
+        assert_eq!(transport_of("USB"), Transport::Usb);
+        assert_eq!(transport_of("SPI"), Transport::Usb);
+        assert_eq!(transport_of("Bluetooth"), Transport::BluetoothClassic);
+        assert_eq!(transport_of("Bluetooth Low Energy"), Transport::BluetoothLe);
+        assert_eq!(transport_of("BluetoothLowEnergy"), Transport::BluetoothLe);
+    }
+
+    /// A Logitech mouse on Bluetooth LE is one device: its mouse and, in a collection of page 0xFF43, HID++ - only
+    /// the long report 0x11, in and out. Split as Windows would, the HID++ collection is what the Logitech provider
+    /// looks for, on the same channel as the mouse.
+    #[test]
+    fn a_logitech_mouse_on_bluetooth_le() {
+        #[rustfmt::skip]
+        let raw = [
+            0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x02, 0x09, 0x01, 0xA1, 0x00, // mouse, report 2
+            0x05, 0x09, 0x19, 0x01, 0x29, 0x10, 0x15, 0x00, 0x25, 0x01, 0x95, 0x10, 0x75, 0x01, 0x81, 0x02,
+            0x05, 0x01, 0x16, 0x01, 0xF8, 0x26, 0xFF, 0x07, 0x75, 0x0C, 0x95, 0x02, 0x09, 0x30, 0x09, 0x31, 0x81, 0x06,
+            0xC0, 0xC0,
+            0x06, 0x43, 0xFF, 0x0A, 0x02, 0x02, 0xA1, 0x01, 0x85, 0x11, 0x75, 0x08, 0x95, 0x13, // HID++, report 0x11
+            0x15, 0x00, 0x26, 0xFF, 0x00, 0x09, 0x02, 0x81, 0x00, 0x09, 0x02, 0x91, 0x00, 0xC0,
+        ];
+        let mouse = Device {
+            product_id: 0xB01D,
+            descriptor: descriptor::parse(&raw),
+            ..device(Transport::BluetoothLe, None, 0)
+        };
+        let infos: Vec<HidInfo> = (0..2).map(|i| mouse.info(i, false)).collect();
+        let hidpp = &infos[1];
+        assert_eq!((hidpp.usage_page, hidpp.input_length, hidpp.output_length), (0xFF43, 20, 20));
+        assert!(hidpp.path.contains(BLUETOOTH_LE) && hidpp.is_bluetooth(), "{}", hidpp.path);
+        assert_eq!(mouse.descriptor.collections[1].input_ids, [0x11]);
+        let key = crate::providers::logitech::channel_key;
+        assert_eq!(key(&infos[0].path), key(&hidpp.path));
     }
 
     #[test]
