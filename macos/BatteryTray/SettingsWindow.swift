@@ -77,10 +77,16 @@ struct Hint: View {
     }
 }
 
-/// General: the login item, the Input Monitoring permission when a device waits for it, the language, the updates,
-/// the folder of the log and settings, a suggestion.
+/// General: the login item and the polls when a device connects, the Input Monitoring permission when a device waits
+/// for it, the language, the updates, the folder of the log and settings, a suggestion.
 struct GeneralSettings: View {
     @EnvironmentObject var model: AppModel
+
+    /// "Checked at 15:41" after a "·" reads "checked at 15:41".
+    static func lowerFirst(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return first.lowercased() + text.dropFirst()
+    }
 
     var body: some View {
         if let s = model.snapshot {
@@ -88,6 +94,17 @@ struct GeneralSettings: View {
                 Section {
                     Toggle(isOn: Binding(get: { s.autostart }, set: { model.send(["cmd": "autostart", "on": $0]) })) {
                         Label(model.t("autostart"), systemImage: "power")
+                    }
+                    Toggle(isOn: Binding(get: { s.settings.refreshOnConnect },
+                                         set: { model.set("refresh_on_connect", $0) })) {
+                        Label {
+                            HStack(spacing: 6) {
+                                Text(model.t("refresh.onConnect"))
+                                Hint(text: model.t("refresh.onConnect.hint"))
+                            }
+                        } icon: {
+                            Image(systemName: "cable.connector")
+                        }
                     }
                 }
                 if s.needsPermission {
@@ -117,10 +134,12 @@ struct GeneralSettings: View {
                 }
                 Section(model.t("updates.header")) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(s.update.status).fixedSize(horizontal: false, vertical: true)
-                        if !s.update.checked.isEmpty {
-                            Text(s.update.checked).font(.caption).foregroundStyle(.secondary)
-                        }
+                        // The version and when it was asked, one line: "You have the latest version 2.2.1 · checked
+                        // at 15:41"
+                        (Text(s.update.status)
+                            + Text(s.update.checked.isEmpty ? "" : " · " + Self.lowerFirst(s.update.checked))
+                            .foregroundColor(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
                         if !s.update.notes.isEmpty {
                             Text(s.update.notes)
                                 .font(.caption)

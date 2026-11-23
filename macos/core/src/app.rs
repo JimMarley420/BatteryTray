@@ -340,9 +340,10 @@ impl MacApp {
         }
     }
 
-    /// The system says a device came or went: the devices are asked again right away (see Monitor::devices_changed).
+    /// The system says a device came or went: the devices are asked again right away (see Monitor::devices_changed),
+    /// unless the settings say to wait for their schedules.
     pub fn devices_changed(&self) {
-        if let Some(m) = &self.monitor {
+        if let Some(m) = self.monitor.as_ref().filter(|_| self.settings.refresh_on_connect) {
             m.devices_changed();
         }
     }
@@ -494,6 +495,7 @@ impl MacApp {
             "settings": {
                 "low": s.low_percent, "critical": s.critical_percent, "repeat": s.repeat_minutes, "sound": s.sound,
                 "notify_charged": s.notify_charged, "auto_update": s.auto_update,
+                "refresh_on_connect": s.refresh_on_connect,
                 "overlay_enabled": s.overlay_enabled, "overlay_mode": s.overlay_mode,
                 "overlay_corner": s.overlay_corner, "overlay_names": s.overlay_show_names,
                 "language": s.language, "autostart_banner_dismissed": s.autostart_banner_dismissed,

@@ -144,6 +144,7 @@ fn call(command: &Value) -> Value {
                 "sound" => app.edit(|s| s.sound = on),
                 "notify_charged" => app.edit(|s| s.notify_charged = on),
                 "auto_update" => app.edit(|s| s.auto_update = on),
+                "refresh_on_connect" => app.edit(|s| s.refresh_on_connect = on),
                 "overlay_enabled" => app.edit(|s| s.overlay_enabled = on),
                 "overlay_mode" => app.edit(|s| s.overlay_mode = n.clamp(0, 1)),
                 "overlay_corner" => app.edit(|s| s.overlay_corner = n.clamp(0, 3)),

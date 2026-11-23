@@ -864,10 +864,11 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
             later(move |app| app.on_hotkey(id));
         }
         // Windows tells every top-level window when a device comes or goes (DBT_DEVNODES_CHANGED, also for a Bluetooth
-        // headset that connects): the devices are asked again right away rather than on their schedules
+        // headset that connects): the devices are asked again right away rather than on their schedules, unless the
+        // settings say to wait for the schedules
         WM_DEVICECHANGE => {
             later(|app| {
-                if let Some(m) = &app.monitor {
+                if let Some(m) = app.monitor.as_ref().filter(|_| app.settings.refresh_on_connect) {
                     m.devices_changed();
                 }
             });

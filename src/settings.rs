@@ -69,6 +69,9 @@ pub struct AppSettings {
     /// A Windows notification when a device finishes charging.
     pub notify_charged: bool,
     pub auto_update: bool,
+    /// A device connected to the computer brings the polls forward, so it shows up within seconds; off, it waits for
+    /// the next scheduled poll. The levels of the devices already shown are polled either way.
+    pub refresh_on_connect: bool,
     pub overlay_enabled: bool,
     pub overlay_hotkey_key: i32,
     pub overlay_hotkey_modifiers: i32,
@@ -102,6 +105,7 @@ impl Default for AppSettings {
             language: AUTO.into(),
             notify_charged: true,
             auto_update: true,
+            refresh_on_connect: true,
             overlay_enabled: false,
             overlay_hotkey_key: DEFAULT_HOTKEY.0,
             overlay_hotkey_modifiers: DEFAULT_HOTKEY.1,
@@ -207,6 +211,7 @@ impl AppSettings {
                 "Language" => set(&mut s.language, v.as_str().map(str::to_string)),
                 "NotifyCharged" => set(&mut s.notify_charged, v.as_bool()),
                 "AutoUpdate" => set(&mut s.auto_update, v.as_bool()),
+                "RefreshOnConnect" => set(&mut s.refresh_on_connect, v.as_bool()),
                 "OverlayEnabled" => set(&mut s.overlay_enabled, v.as_bool()),
                 "OverlayHotkeyKey" => set(&mut s.overlay_hotkey_key, int(v)),
                 "OverlayHotkeyModifiers" => set(&mut s.overlay_hotkey_modifiers, int(v)),
@@ -584,6 +589,16 @@ mod tests {
         assert!(s.sound, "a value of the wrong type keeps its default");
         assert!(!clean);
         assert_eq!(s.extra.get("Future"), Some(&serde_json::json!([1, 2])), "unknown values are kept");
+    }
+
+    #[test]
+    fn the_polls_on_a_device_change_can_be_turned_off() {
+        assert!(AppSettings::default().refresh_on_connect, "on unless turned off");
+        let (s, clean) = AppSettings::from_value(&serde_json::json!({ "RefreshOnConnect": false }));
+        assert!(clean && !s.refresh_on_connect);
+        let saved = serde_json::to_value(&s).unwrap();
+        assert_eq!(saved["RefreshOnConnect"], serde_json::json!(false));
+        assert!(AppSettings::from_value(&serde_json::json!({ "RefreshOnConnect": "no" })).0.refresh_on_connect);
     }
 
     #[test]

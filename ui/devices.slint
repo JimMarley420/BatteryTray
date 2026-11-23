@@ -92,7 +92,9 @@ export global Drag {
 }
 
 // One device: a card (pinned and connected devices) or a "Not connected" row, also the lifted copy that follows the
-// pointer during a drag. The card of a device without connection is compact: no level, no bar.
+// pointer during a drag. Every card is as tall as one with a level, a bar and one line under the name, the most usual
+// one: a card without connection (no level, no bar) has its content in the middle, and a card grows only for a text
+// that takes two lines.
 export component DeviceView inherits Rectangle {
     in property <DeviceItem> item;
     // A row of the "Not connected" block rather than a card
@@ -109,6 +111,8 @@ export component DeviceView inherits Rectangle {
     border-color: root.lifted ? Palette.accent
         : root.renaming || root.menu-open ? Palette.popup-stroke : Palette.stroke;
     border-radius: 8px;
+    // 15 + 36 (the name and one line under it, beside the level) + 12 + 4 (the bar) + 15
+    min-height: root.as-row ? 0px : 82px;
 
     property <bool> renaming: !root.lifted && DeviceUi.renaming-id != "" && DeviceUi.renaming-id == root.item.id;
     property <bool> menu-open: !root.lifted && DeviceUi.menu-id != "" && DeviceUi.menu-id == root.item.id;
@@ -368,8 +372,9 @@ component DragCell inherits Rectangle {
     callback wheel(delta: length);
     callback menu-clicked();
     callback rename-done();
-    // As high as the device, lifted or not, so nothing else moves when it is picked up
-    height: view.preferred-height;
+    // As high as the device, lifted or not, so nothing else moves when it is picked up; a card is never lower than its
+    // usual height
+    height: max(view.preferred-height, view.min-height);
 
     property <bool> in-drag: Drag.active && Drag.list == root.list;
     property <bool> lifted: root.in-drag && Drag.source == root.index;

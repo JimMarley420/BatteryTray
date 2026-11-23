@@ -190,6 +190,43 @@ struct DeviceRowView: View {
     private var renaming: Bool { model.renamingID == device.id }
 
     var body: some View {
+        // Every card is as tall as one with a level, a bar and one line under the name, the most usual one; a card
+        // grows only for a text that takes two lines. A card without a level has its content in the middle.
+        ZStack(alignment: .leading) {
+            if card {
+                Self.template.hidden()
+            }
+            content
+        }
+        .padding(.vertical, card ? 12 : 4)
+        // Rows without a card keep the cards' inner edge: their icons and menus line up with the cards'
+        .padding(.horizontal, 12)
+        .background {
+            if card {
+                RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor)))
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
+    }
+
+    /// A card's usual content, in the same fonts: what gives every card its height.
+    private static var template: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                VStack(spacing: 2) {
+                    Text(verbatim: "Ag").font(.system(size: 15, weight: .semibold))
+                    Text(verbatim: "Ag").font(.caption)
+                }
+                Text(verbatim: "0%").font(.system(size: 24, weight: .semibold))
+            }
+            LevelBar(fill: 0, color: .clear, faint: false)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
                 KindIcon(kind: device.kind, connected: device.connected, size: card ? 20 : 15)
@@ -216,7 +253,8 @@ struct DeviceRowView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 4)
+                // The text takes all the room up to the level, so a longer line under the name still fits
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if card && device.connected {
                     HStack(spacing: 2) {
                         Text(device.levelText)
@@ -227,6 +265,7 @@ struct DeviceRowView: View {
                         }
                     }
                     .foregroundStyle(device.color.color)
+                    .fixedSize()
                 }
                 Button { model.menuID = device.id } label: {
                     Image(systemName: "ellipsis").frame(width: 24, height: 24).contentShape(Rectangle())
@@ -247,17 +286,6 @@ struct DeviceRowView: View {
                     .padding(.leading, 44)
             }
         }
-        .padding(.vertical, card ? 12 : 4)
-        // Rows without a card keep the cards' inner edge: their icons and menus line up with the cards'
-        .padding(.horizontal, 12)
-        .background {
-            if card {
-                RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor)))
-            }
-        }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .contain)
     }
 }
 
