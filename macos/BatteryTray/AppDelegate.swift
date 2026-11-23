@@ -180,11 +180,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowsChanged()
     }
 
-    /// While a window is open the app is in the Dock and in ⌘Tab, as the Windows app is in the taskbar; the device
+    /// The app stays a menu bar app with its windows open too, out of the Dock: a window is made in the space the user
+    /// is in only while the app has no Dock icon, so with one the settings opened from the device window over an app in
+    /// full screen went to the desktop, out of sight. While a window is open the device
     /// list's "N min ago" stays fresh; an automatic update waits.
     func windowsChanged() {
         let open = mainWindow != nil || settingsWindow != nil
-        NSApp.setActivationPolicy(open ? .regular : .accessory)
         if open {
             NSApp.activate(ignoringOtherApps: true)
             if clockTimer == nil {

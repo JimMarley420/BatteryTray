@@ -29,6 +29,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
+        // Comes up where the user is, over an app in full screen too, also when it was opened before in another space
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         super.init()
         window.delegate = self
         languageChanged()
@@ -158,10 +160,7 @@ struct GeneralSettings: View {
                         .padding(.top, 4)
                     }
                     Toggle(isOn: Binding(get: { s.settings.autoUpdate }, set: { model.set("auto_update", $0) })) {
-                        HStack(spacing: 6) {
-                            Text(model.t("updates.auto"))
-                            Hint(text: model.t("updates.auto.hint"))
-                        }
+                        Text(model.t("updates.auto"))
                     }
                 }
                 Section {

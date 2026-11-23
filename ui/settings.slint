@@ -313,8 +313,6 @@ export component GeneralPage inherits Page {
             Divider { }
             SwitchRow {
                 text: T.t("updates.auto");
-                hint: T.t("updates.auto.hint");
-                hint-label: T.t("updates.auto.info");
                 checked: root.auto-update;
                 toggled(on) => { root.auto-update-changed(on); }
             }

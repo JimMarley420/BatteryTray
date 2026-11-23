@@ -21,6 +21,8 @@ final class MainWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate 
             backing: .buffered, defer: false)
         super.init()
         window.isReleasedWhenClosed = false
+        // Opens where the user is, over an app in full screen too (as the settings do)
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.contentMinSize = NSSize(width: 380, height: 360)
         window.contentView = NSHostingView(rootView: DevicesView().environmentObject(model))
         window.delegate = self
