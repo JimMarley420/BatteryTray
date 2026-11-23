@@ -324,20 +324,28 @@ export component GeneralPage inherits Page {
     }
 }
 
-// "Reminders": the levels and the repeat interval, each a field and a slider; sound; the finished charge
+// "Reminders": the levels and the repeat interval, each a field and a slider; closing on its own, after a field and a
+// slider's seconds; sound; the finished charge
 export component RemindersPage inherits Page {
     in property <int> low;
     in property <int> critical;
     in property <int> repeat;
     in property <bool> sound;
     in property <bool> notify-charged;
+    in property <bool> auto-close;
+    in property <int> auto-close-seconds;
     // One of the number fields has the keyboard focus
-    out property <bool> field-focused: low-field.has-focus || critical-field.has-focus || repeat-field.has-focus;
+    out property <bool> field-focused: low-field.has-focus || critical-field.has-focus || repeat-field.has-focus
+        || close-field-focused;
+    // The seconds' field is there only while the reminder closes on its own
+    property <bool> close-field-focused;
     callback low-changed(int);
     callback critical-changed(int);
     callback repeat-changed(int);
     callback sound-changed(bool);
     callback notify-charged-changed(bool);
+    callback auto-close-changed(bool);
+    callback auto-close-seconds-changed(int);
     callback test-alert();
 
     // Drops what was typed into the fields: they lose the focus afterwards with nothing to apply
@@ -459,6 +467,55 @@ export component RemindersPage inherits Page {
                     label: T.t("alerts.repeat");
                     value: root.repeat;
                     changed(v) => { root.repeat-changed(v); }
+                }
+            }
+            Divider { }
+            SwitchRow {
+                text: T.t("alerts.autoclose");
+                hint: T.t("alerts.autoclose.hint");
+                hint-label: T.t("alerts.autoclose.info");
+                checked: root.auto-close;
+                toggled(on) => {
+                    root.close-field-focused = false;
+                    root.auto-close-changed(on);
+                }
+            }
+            if root.auto-close: close := VerticalLayout {
+                // The bounds of AUTO_CLOSE_SECONDS in settings.rs, which keeps any value within them
+                property <int> fewest: 5;
+                property <int> most: 15;
+                padding-right: 16px;
+                padding-bottom: 12px;
+                padding-left: 16px;
+                spacing: 6px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: T.t("alerts.autoclose.after");
+                        color: Palette.text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+                    NumberField {
+                        label: T.t("alerts.autoclose.after");
+                        value: root.auto-close-seconds;
+                        minimum: close.fewest;
+                        maximum: close.most;
+                        unit: T.t("alerts.autoclose.unit");
+                        unit-gap: 4px;
+                        value-color: Palette.accent;
+                        changed(v) => { root.auto-close-seconds-changed(v); }
+                        changed has-focus => { root.close-field-focused = self.has-focus; }
+                    }
+                }
+                StepSlider {
+                    minimum: close.fewest;
+                    maximum: close.most;
+                    step: 1;
+                    label: T.t("alerts.autoclose.after");
+                    value: root.auto-close-seconds;
+                    changed(v) => { root.auto-close-seconds-changed(v); }
                 }
             }
             Divider { }

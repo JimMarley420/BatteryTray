@@ -21,6 +21,9 @@ pub const MOD_SHIFT: i32 = 0x0004;
 pub const MOD_WIN: i32 = 0x0008;
 /// Ctrl+Alt+V (⌃⌥V on macOS)
 pub const DEFAULT_HOTKEY: (i32, i32) = (0x56, MOD_ALT | MOD_CONTROL);
+/// The reminder closes on its own after this many seconds at the least and at the most. The field and the slider in
+/// Settings > Reminders (RemindersPage in ui/settings.slint) have the same bounds.
+pub const AUTO_CLOSE_SECONDS: (i32, i32) = (5, 15);
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -68,6 +71,10 @@ pub struct AppSettings {
     pub language: String,
     /// A Windows notification when a device finishes charging.
     pub notify_charged: bool,
+    /// The low battery reminder closes on its own after `auto_close_seconds`, as if snoozed (the default); off, it
+    /// waits for an answer.
+    pub auto_close: bool,
+    pub auto_close_seconds: i32,
     pub auto_update: bool,
     /// A device connected to the computer brings the polls forward, so it shows up within seconds; off, it waits for
     /// the next scheduled poll. The levels of the devices already shown are polled either way.
@@ -107,6 +114,8 @@ impl Default for AppSettings {
             sound: true,
             language: AUTO.into(),
             notify_charged: true,
+            auto_close: true,
+            auto_close_seconds: 10,
             auto_update: true,
             refresh_on_connect: true,
             overlay_enabled: false,
@@ -214,6 +223,8 @@ impl AppSettings {
                 "Sound" => set(&mut s.sound, v.as_bool()),
                 "Language" => set(&mut s.language, v.as_str().map(str::to_string)),
                 "NotifyCharged" => set(&mut s.notify_charged, v.as_bool()),
+                "AutoClose" => set(&mut s.auto_close, v.as_bool()),
+                "AutoCloseSeconds" => set(&mut s.auto_close_seconds, int(v)),
                 "AutoUpdate" => set(&mut s.auto_update, v.as_bool()),
                 "RefreshOnConnect" => set(&mut s.refresh_on_connect, v.as_bool()),
                 "OverlayEnabled" => set(&mut s.overlay_enabled, v.as_bool()),
@@ -276,6 +287,7 @@ impl AppSettings {
         self.low_percent = self.low_percent.clamp(10, 50);
         self.critical_percent = self.critical_percent.clamp(5, self.low_percent - 5);
         self.repeat_minutes = self.repeat_minutes.clamp(1, 120);
+        self.auto_close_seconds = self.auto_close_seconds.clamp(AUTO_CLOSE_SECONDS.0, AUTO_CLOSE_SECONDS.1);
         if !hotkey_valid(self.overlay_hotkey_key, self.overlay_hotkey_modifiers) {
             (self.overlay_hotkey_key, self.overlay_hotkey_modifiers) = DEFAULT_HOTKEY;
         }
@@ -378,6 +390,15 @@ impl AppSettings {
 
     pub fn set_repeat(&mut self, minutes: i32) {
         self.repeat_minutes = minutes.clamp(1, 120);
+    }
+
+    pub fn set_auto_close_seconds(&mut self, seconds: i32) {
+        self.auto_close_seconds = seconds.clamp(AUTO_CLOSE_SECONDS.0, AUTO_CLOSE_SECONDS.1);
+    }
+
+    /// How long the reminder stays before it closes on its own; None while it waits for an answer.
+    pub fn auto_close_after(&self) -> Option<std::time::Duration> {
+        self.auto_close.then(|| std::time::Duration::from_secs(self.auto_close_seconds as u64))
     }
 
     /// A reminder level entered for one device. It becomes the device's own, and the critical level with it: the one
@@ -756,6 +777,18 @@ mod tests {
     }
 
     #[test]
+    fn the_reminder_closes_on_its_own_unless_told_not_to() {
+        let s = AppSettings::default();
+        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(10)));
+        let (s, _) = AppSettings::from_value(&serde_json::json!({ "AutoClose": false }));
+        assert_eq!(s.auto_close_after(), None);
+        let (mut s, clean) = AppSettings::from_value(&serde_json::json!({ "AutoClose": true, "AutoCloseSeconds": 60 }));
+        assert!(clean);
+        s.normalize();
+        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(15)));
+    }
+
+    #[test]
     fn the_general_levels_keep_their_distance() {
         let mut s = AppSettings::default();
         s.set_device_low("own", 30);
@@ -773,6 +806,10 @@ mod tests {
         assert_eq!(s.repeat_minutes, 1);
         s.set_repeat(500);
         assert_eq!(s.repeat_minutes, 120);
+        s.set_auto_close_seconds(1);
+        assert_eq!(s.auto_close_seconds, 5);
+        s.set_auto_close_seconds(60);
+        assert_eq!(s.auto_close_seconds, 15);
         assert_eq!((s.low_for("own"), s.critical_for("own")), (30, 10), "a device's own levels stay out of it");
     }
 

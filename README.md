@@ -27,7 +27,7 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 - **The level always in sight** — in the Windows tray or the Mac menu bar, the number of the device that most needs charging: green, yellow below its reminder level, red below its critical level, blue while charging. Hover it (Windows) or click it (Mac) to see every device.
 - **All devices in one window** — connected ones as cards with their percentage, the rest with the last known level and when it was seen. Each device's **⋯** menu renames it, pins it to the top or hides it under "Hidden"; drag a card to change the order (the overlay and the tray follow it).
 - **New devices show up by themselves** — plug in a receiver or connect a Bluetooth headset and it appears within seconds.
-- **Low battery reminder that can't be missed** — its own always-on-top window in the corner, not a toast: Do Not Disturb doesn't hide it, it doesn't time out and it doesn't steal focus from a game. "Remind me in N min" or "Don't remind me until it's charged"; at the critical level it comes back even if snoozed.
+- **Low battery reminder that can't be missed** — its own always-on-top window in the corner, not a toast: Do Not Disturb doesn't hide it and it doesn't steal focus from a game. "Remind me in N min" or "Don't remind me until it's charged"; left unanswered, it closes after 10 seconds while you're at the computer and comes back after the repeat interval (or it stays until you answer: Settings → Reminders). At the critical level it comes back even if snoozed.
 
   <img src="docs/reminder-en.png" alt="BatteryTray's low battery reminder: AirPods Pro at 18% and a Razer Barracuda X at a critical 14%, with Remind me in 10 min and Don't remind me until it's charged" width="340">
 
@@ -205,7 +205,7 @@ Yes — BatteryTray, free and open source, for Windows 10/11 and macOS 13+. It s
 BatteryTray puts it in the tray: every Bluetooth device whose level Windows knows, read fresh from Bluetooth LE devices, with AirPods' earbuds and case each on their own.
 
 **How do I get a low battery warning for my wireless mouse or headset?**
-BatteryTray shows a reminder that stays on screen (Do Not Disturb doesn't hide it) when a device drops below its level — 20% by default, or a level of its own for each device — and again at the critical level.
+BatteryTray shows a reminder window (Do Not Disturb doesn't hide it) when a device drops below its level — 20% by default, or a level of its own for each device — and again at the critical level. Left unanswered, it closes after 10 seconds and comes back after the repeat interval; while you're away from the computer it waits for you.
 
 **How do I see my AirPods battery on Windows?**
 BatteryTray reads the level of each earbud and of the case from the AirPods' own Bluetooth messages, as an iPhone does, and shows it in the tray.

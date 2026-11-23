@@ -265,6 +265,13 @@ pub fn main() {
 
     let (main, window) = open(&rows);
     main.set_screen(1);
+    main.set_settings_tab(1);
+    main.set_auto_close(true);
+    main.set_auto_close_seconds(10);
+    render(&window, scale, size, &folder.join("main-settings-reminders-autoclose.png"));
+
+    let (main, window) = open(&rows);
+    main.set_screen(1);
     main.set_settings_tab(2);
     main.set_shortcut_error(t("overlay.conflict").into());
     render(&window, scale, size, &folder.join("main-settings-overlay.png"));
@@ -273,8 +280,20 @@ pub fn main() {
     let window = last();
     gui::setup_texts(&alert.global::<gui::T>());
     alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![
-        AlertRow { glyph: "\u{E7F6}".into(), name: "Razer Barracuda X".into(), level: "18%".into(), critical: false },
-        AlertRow { glyph: "\u{E962}".into(), name: "Attack Shark R3".into(), level: "9%".into(), critical: true },
+        AlertRow {
+            glyph: "\u{E7F6}".into(),
+            name: "Razer Barracuda X".into(),
+            level: "18%".into(),
+            percent: 18,
+            critical: false,
+        },
+        AlertRow {
+            glyph: "\u{E962}".into(),
+            name: "Attack Shark R3".into(),
+            level: "9%".into(),
+            percent: 9,
+            critical: true,
+        },
     ]))));
     alert.set_critical(true);
     alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
@@ -292,9 +311,13 @@ pub fn main() {
         glyph: "\u{E7F6}".into(),
         name: "Razer Barracuda X".into(),
         level: "18%".into(),
+        percent: 18,
         critical: false,
     }]))));
     alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
+    // Closing on its own, 40% of its time gone
+    alert.set_auto_close(true);
+    alert.set_remaining(0.6);
     lay_out(&window, scale, (376.0, 400.0));
     let height = alert.get_content_height();
     render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert-low.png"));

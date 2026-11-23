@@ -97,6 +97,7 @@ pub fn main() {
                     critical: true,
                 }],
                 10,
+                None,
             );
             view.show();
             VIEW.with(|v| *v.borrow_mut() = Some(view));

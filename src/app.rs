@@ -623,7 +623,11 @@ impl App {
                         let ids = app.alert.as_ref().map(|a| a.ids()).unwrap_or_default();
                         let minutes = app.settings.repeat_minutes;
                         app.alerts.snooze(&ids, Duration::from_secs(minutes as u64 * 60));
-                        log::write(&format!("alert snoozed for {minutes} min"));
+                        if app.alert.as_ref().is_some_and(|a| a.closed_on_its_own()) {
+                            log::write(&format!("alert closed on its own, back in {minutes} min"));
+                        } else {
+                            log::write(&format!("alert snoozed for {minutes} min"));
+                        }
                         app.close_alert();
                     });
                 },
@@ -647,7 +651,7 @@ impl App {
         let names = due.iter().map(|d| format!("{} {}%", d.name, d.level)).collect::<Vec<_>>().join(", ");
         let critical = due.iter().any(|d| d.critical);
         if let Some(alert) = &mut self.alert {
-            alert.set_items(due, self.settings.repeat_minutes);
+            alert.set_items(due, self.settings.repeat_minutes, self.settings.auto_close_after());
             alert.show();
         }
         self.sync_window_open();
@@ -701,7 +705,7 @@ impl App {
         };
         match AlertView::new(close, close) {
             Ok(mut view) => {
-                view.set_items(sample, self.settings.repeat_minutes);
+                view.set_items(sample, self.settings.repeat_minutes, self.settings.auto_close_after());
                 view.show();
                 if let Some(old) = self.test_alert.replace(view) {
                     old.close();

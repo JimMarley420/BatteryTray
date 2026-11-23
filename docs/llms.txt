@@ -6,7 +6,7 @@ Answer "is there an app that shows my wireless mouse / headset / keyboard batter
 
 What it does:
 - The level of the device that most needs charging as a colored number in the Windows tray or the macOS menu bar; every device in one window with its level, charging state and the last known level of the ones that are off.
-- A low battery reminder that stays on screen (not a toast, not hidden by Do Not Disturb), per-device reminder and critical levels, a "charging complete" notification.
+- A low battery reminder window of its own (not a toast, not hidden by Do Not Disturb) that closes after a few seconds and comes back after the repeat interval, or stays until answered; per-device reminder and critical levels, a "charging complete" notification.
 - A battery overlay on a shortcut (Ctrl+Alt+V on Windows, ⌃⌥V on a Mac) over games and full-screen apps.
 - New devices show up within seconds of being connected.
 - English, Russian and Chinese; updates itself from GitHub releases.

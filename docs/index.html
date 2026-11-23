@@ -48,7 +48,7 @@
     { "@type": "Question", "name": "How do I see the battery of my Bluetooth devices on Windows 11 without opening Settings?",
       "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray shows every Bluetooth device whose level Windows knows in the tray, read fresh from Bluetooth LE devices, with AirPods' earbuds and case each on their own." } },
     { "@type": "Question", "name": "How do I get a low battery warning for my wireless mouse or headset?",
-      "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray shows a reminder that stays on screen, not hidden by Do Not Disturb, when a device drops below its level (20% by default, or a level of its own per device), and again at the critical level." } },
+      "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray shows its own reminder window, not hidden by Do Not Disturb, when a device drops below its level (20% by default, or a level of its own per device), and again at the critical level. Left unanswered, it closes after a few seconds and comes back after the repeat interval." } },
     { "@type": "Question", "name": "How do I see my AirPods battery on Windows?",
       "acceptedAnswer": { "@type": "Answer", "text": "BatteryTray reads the level of each earbud and of the case from the AirPods' own Bluetooth messages and shows it in the Windows tray." } },
     { "@type": "Question", "name": "How do I check my Razer or Logitech mouse battery without Synapse or G HUB?",
@@ -119,7 +119,7 @@
   <h2>What it does</h2>
   <div class="grid">
     <div class="card"><h3>The level always in sight</h3><p>The device that most needs charging, as a colored number next to the clock or in the menu bar; every device in one window.</p></div>
-    <div class="card"><h3>Reminders you can't miss</h3><p>A window that stays on screen when a battery runs low, not a toast; a level of its own for each device.</p></div>
+    <div class="card"><h3>Reminders you can't miss</h3><p>A window of its own when a battery runs low, not a toast, that waits while you're away; a level of its own for each device.</p></div>
     <div class="card"><h3>No vendor software</h3><p>Talks to Razer, Logitech, SteelSeries, HyperX, Corsair and many more devices through their receivers, the way their own apps do.</p></div>
     <div class="card"><h3>Bluetooth too</h3><p>AirPods with each earbud and the case, Magic devices, headsets, controllers, any Bluetooth device the system knows a level for.</p></div>
     <div class="card"><h3>Overlay in games</h3><p>A shortcut shows your devices' levels for five seconds over games and full-screen apps, without taking focus.</p></div>
@@ -129,7 +129,7 @@
   <h2>A reminder before it dies</h2>
   <div class="reminder">
     <img src="reminder-en.png" alt="BatteryTray's low battery reminder: AirPods Pro at 18% and a Razer Barracuda X at a critical 14%">
-    <p>When a device drops below its level, BatteryTray shows its own window in the corner: Do Not Disturb doesn't hide it, it doesn't time out and it doesn't steal focus from a game. Snooze it for a few minutes or until the device is charged; at the critical level it comes back anyway.</p>
+    <p>When a device drops below its level, BatteryTray shows its own window in the corner: Do Not Disturb doesn't hide it and it doesn't steal focus from a game. Snooze it for a few minutes or until the device is charged, or let it close on its own after 10 seconds and come back later; at the critical level it comes back anyway.</p>
   </div>
 
   <h2>Devices</h2>
@@ -138,7 +138,7 @@
   <h2>Questions</h2>
   <details><summary>Is there an app that shows the battery level of my wireless mouse, keyboard or headset in the taskbar?</summary><p>Yes — BatteryTray, for Windows 10/11 and macOS 13+. It shows the level as a number next to the clock or in the menu bar and reminds you before the battery runs out.</p></details>
   <details><summary>How do I see the battery of my Bluetooth devices on Windows 11 without opening Settings?</summary><p>BatteryTray puts every Bluetooth device whose level Windows knows in the tray, read fresh from Bluetooth LE devices.</p></details>
-  <details><summary>How do I get a low battery warning for my wireless mouse or headset?</summary><p>Set a level (20% by default, or one per device): BatteryTray shows a reminder that stays on screen, and again at the critical level.</p></details>
+  <details><summary>How do I get a low battery warning for my wireless mouse or headset?</summary><p>Set a level (20% by default, or one per device): BatteryTray shows a reminder window, and again at the critical level.</p></details>
   <details><summary>How do I see my AirPods battery on Windows?</summary><p>BatteryTray reads each earbud's and the case's level from the AirPods' own Bluetooth messages.</p></details>
   <details><summary>How do I check my Razer or Logitech mouse battery without Synapse or G HUB?</summary><p>BatteryTray asks the device through its receiver with its own protocol, as the vendor's app would, and shows the level in the tray.</p></details>
   <details><summary>Is there a Mac menu bar app that shows the battery of all my devices?</summary><p>Yes: BatteryTray for macOS lists AirPods, Magic devices, Bluetooth headsets and mice, controllers, an iPhone or iPad on a cable, and gaming peripherals on their receivers.</p></details>

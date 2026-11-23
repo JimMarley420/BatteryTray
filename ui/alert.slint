@@ -1,6 +1,7 @@
 // The low battery reminder: a small always-on-top window in the corner of the screen. Unlike
-// a toast it isn't swallowed by Do Not Disturb and doesn't time out - it stays until the user picks an answer. It
-// never takes focus (see gui.rs), so it doesn't interrupt typing or a game.
+// a toast it isn't swallowed by Do Not Disturb. It stays until the user picks an answer, or, when the settings say so,
+// closes on its own after a few seconds (a line along its bottom edge shows the time left). It never takes focus (see
+// gui.rs), so it doesn't interrupt typing or a game.
 
 import { Palette, T, Glyph, Btn, IconButton } from "theme.slint";
 
@@ -8,6 +9,7 @@ export struct AlertRow {
     glyph: string,
     name: string,
     level: string,
+    percent: int,
     critical: bool,
 }
 
@@ -25,29 +27,35 @@ export component AlertWindow inherits Window {
     in property <[AlertRow]> items;
     in property <bool> critical;
     in property <string> snooze-text;
+    // Closes on its own: the share of its time still left, 1 to 0
+    in property <bool> auto-close;
+    in property <float> remaining: 1;
     callback snooze();
     callback mute();
     // Its height before it is shown, for a first guess at where it goes (text is measured exactly only once the
     // window exists; alert_view.rs places it again then)
     out property <length> content-height: content.preferred-height;
 
-    property <color> accent: root.critical ? Palette.bad : Palette.warn;
-
-    Rectangle {
-        x: 0;
-        width: 4px;
-        background: root.accent;
-    }
-    // Only what is due and the answers: a header with the cross (which snoozes) over the levels, the devices with
-    // their levels, the two buttons. The cross's glyph and the levels end at the same edge: the button is 34px wide
-    // with a 12px glyph in its middle, so everything under it keeps 11px further in.
+    // A header with the app's name and the cross (which snoozes), the devices, the two answers. The severity is in
+    // the levels' color only; the window's border stays neutral.
     content := VerticalLayout {
-        padding-left: 22px;
-        padding-right: 11px;
-        padding-top: 8px;
         padding-bottom: 16px;
         HorizontalLayout {
-            alignment: end;
+            padding-top: 4px;
+            padding-left: 16px;
+            padding-right: 4px;
+            spacing: 8px;
+            Glyph {
+                text: "\u{E83F}";
+                font-size: 14px;
+            }
+            Text {
+                text: "BatteryTray";
+                font-size: 12px;
+                color: Palette.secondary;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
             IconButton {
                 glyph: "\u{E711}";
                 glyph-size: 12px;
@@ -56,35 +64,62 @@ export component AlertWindow inherits Window {
             }
         }
         VerticalLayout {
-            padding-right: 11px;
+            padding-top: 2px;
+            padding-left: 16px;
+            padding-right: 16px;
+            spacing: 12px;
             for item in root.items: HorizontalLayout {
-                padding-top: 5px;
-                padding-bottom: 5px;
-                Glyph {
-                    width: 30px;
-                    text: item.glyph;
-                    font-size: 17px;
+                spacing: 12px;
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 8px;
+                    background: Palette.stroke;
+                    Glyph {
+                        text: item.glyph;
+                        font-size: 20px;
+                        color: Palette.text;
+                        horizontal-alignment: center;
+                    }
                 }
-                Text {
-                    text: item.name;
-                    font-size: 14px;
-                    color: Palette.text;
-                    vertical-alignment: center;
-                    overflow: elide;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 8px;
                     horizontal-stretch: 1;
+                    Text {
+                        text: item.name;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: Palette.text;
+                        overflow: elide;
+                    }
+                    Rectangle {
+                        height: 4px;
+                        border-radius: 2px;
+                        background: Palette.track;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * max(0, min(100, item.percent)) / 100;
+                            border-radius: 2px;
+                            background: item.critical ? Palette.bad : Palette.warn;
+                        }
+                    }
                 }
                 Text {
+                    min-width: 56px;
                     text: item.level;
-                    font-size: 20px;
+                    font-size: 24px;
                     font-weight: 600;
                     color: item.critical ? Palette.bad : Palette.warn;
+                    horizontal-alignment: right;
                     vertical-alignment: center;
                 }
             }
         }
         VerticalLayout {
             padding-top: 16px;
-            padding-right: 11px;
+            padding-left: 16px;
+            padding-right: 16px;
             spacing: 8px;
             Btn {
                 accent: true;
@@ -96,5 +131,13 @@ export component AlertWindow inherits Window {
                 clicked => { root.mute(); }
             }
         }
+    }
+    // The time left, shrinking towards the left; it stands still while the pointer is over the window
+    if root.auto-close: Rectangle {
+        x: 0;
+        y: root.height - self.height;
+        width: root.width * max(0, min(1, root.remaining));
+        height: 3px;
+        background: Palette.accent;
     }
 }

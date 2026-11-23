@@ -104,6 +104,8 @@ impl MainView {
         ui.set_repeat(s.repeat_minutes);
         ui.set_sound(s.sound);
         ui.set_notify_charged(s.notify_charged);
+        ui.set_auto_close(s.auto_close);
+        ui.set_auto_close_seconds(s.auto_close_seconds);
         ui.set_auto_update(s.auto_update);
         ui.set_overlay_enabled(s.overlay_enabled);
         ui.set_overlay_mode(s.overlay_mode);
@@ -327,6 +329,12 @@ fn connect(ui: &MainWindow) {
     });
     ui.on_notify_charged_changed(|on| {
         with_app(|a| a.edit(|s| s.notify_charged = on));
+    });
+    ui.on_auto_close_changed(|on| {
+        with_app(|a| a.edit(|s| s.auto_close = on));
+    });
+    ui.on_auto_close_seconds_changed(|v| {
+        with_app(|a| a.edit(|s| s.set_auto_close_seconds(v)));
     });
     ui.on_auto_update_changed(|on| {
         with_app(|a| a.edit(|s| s.auto_update = on));
