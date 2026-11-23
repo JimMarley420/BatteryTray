@@ -166,12 +166,16 @@ pub fn earbuds_for(heard: &[Heard], product: u16, now: Instant) -> Option<Earbud
 
 /// A device's level from its Battery Level characteristics, each a (name, level): the lowest, and with several,
 /// each part with its level. The name is the characteristic's user description, which ZMK gives the battery of each
-/// half that reaches the computer through the other one; the battery of the device itself has none.
+/// half that reaches the computer through the other one; the battery of the device itself has none. A named part at
+/// 0 is left out: ZMK reports 0 for a half it hasn't heard from (switched off or out of range), which would otherwise
+/// show the whole device as empty and set off its critical reminder. With nothing left, the caller keeps the level
+/// the system has.
 pub fn of_parts(parts: &[(String, u8)]) -> Option<(i32, Option<String>)> {
     let parts: Vec<(&str, u8)> = parts
         .iter()
         .filter(|(_, level)| *level <= 100)
         .map(|(name, level)| (name.trim_matches(|c: char| c.is_whitespace() || c.is_control()), *level))
+        .filter(|&(name, level)| name.is_empty() || level > 0)
         .collect();
     let lowest = parts.iter().map(|&(_, level)| level).min()?;
     let detail = (parts.len() > 1).then(|| {
@@ -317,5 +321,13 @@ mod tests {
         // A level that isn't one is left out
         assert_eq!(of_parts(&[(String::new(), 80), ("Peripheral 0".into(), 0xff)]), Some((80, None)));
         assert_eq!(of_parts(&[]), None);
+        // A half the other one hasn't heard from says 0: left out, not the device's level
+        assert_eq!(of_parts(&[(String::new(), 80), ("Peripheral 0".into(), 0)]), Some((80, None)));
+        assert_eq!(of_parts(&[("Peripheral 0".into(), 0)]), None);
+        // The device's own battery at 0 is a level
+        assert_eq!(
+            of_parts(&[(String::new(), 0), ("Peripheral 0".into(), 70)]),
+            Some((0, Some("main 0%, Peripheral 0 70%".into())))
+        );
     }
 }
