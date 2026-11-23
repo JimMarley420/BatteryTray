@@ -1,8 +1,14 @@
 //! Bluetooth devices whose battery level the system itself knows: on Windows the level in Settings > Bluetooth &
-//! devices, on macOS the one the Bluetooth menu shows. Their IDs are "bt:" and the device address on both.
+//! devices, on macOS the one the Bluetooth menu shows. Their IDs are "bt:" and the device address on both. On Windows
+//! a connected device's own Battery Services and AirPods' advertisements tell more, where the device has them.
 
+#[cfg(windows)]
+mod advertisements;
 #[cfg(target_os = "macos")]
 mod macos;
+// Pure, so the Mac runs its tests too
+#[cfg(any(windows, test))]
+mod parts;
 #[cfg(windows)]
 mod windows;
 

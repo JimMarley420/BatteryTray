@@ -509,9 +509,9 @@ pub struct PropertyKey {
     pub id: u32,
 }
 
-/// Every present device node under the given enumerators ("BTHENUM", "BTHLE"...) that has a one-byte value for
-/// `key`: (instance ID, value).
-pub fn byte_property(enumerators: &[&str], key: PropertyKey) -> Vec<(String, u8)> {
+/// Every present device node under the given enumerators ("BTHENUM", "BTHLE"...): its instance ID, and its one-byte
+/// value for `key` when it has one.
+pub fn device_nodes(enumerators: &[&str], key: PropertyKey) -> Vec<(String, Option<u8>)> {
     const DEVPROP_TYPE_BYTE: u32 = 0x3;
     let mut result = Vec::new();
     for enumerator in enumerators {
@@ -528,17 +528,22 @@ pub fn byte_property(enumerators: &[&str], key: PropertyKey) -> Vec<(String, u8)
                 index += 1;
                 let mut value = [0u8; 4];
                 let mut kind: u32 = 0;
-                if ffi::SetupDiGetDevicePropertyW(set, &data, &dev_key, &mut kind, value.as_mut_ptr(), 4, null_mut(), 0)
-                    == 0
-                    || kind != DEVPROP_TYPE_BYTE
-                {
-                    continue;
-                }
+                let has_value = ffi::SetupDiGetDevicePropertyW(
+                    set,
+                    &data,
+                    &dev_key,
+                    &mut kind,
+                    value.as_mut_ptr(),
+                    4,
+                    null_mut(),
+                    0,
+                ) != 0
+                    && kind == DEVPROP_TYPE_BYTE;
                 let mut id = [0u16; 512];
                 if ffi::SetupDiGetDeviceInstanceIdW(set, &data, id.as_mut_ptr(), id.len() as u32, null_mut()) == 0 {
                     continue;
                 }
-                result.push((win::from_wide(&id), value[0]));
+                result.push((win::from_wide(&id), has_value.then_some(value[0])));
             }
             ffi::SetupDiDestroyDeviceInfoList(set);
         }
