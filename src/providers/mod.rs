@@ -38,6 +38,13 @@ pub trait Provider: Send {
 
     /// For providers whose devices also report changes by themselves: how to ask for a poll right away.
     fn set_pusher(&mut self, _push: Pusher) {}
+
+    /// Whether to poll early when the system says a device came or went (`Monitor::devices_changed`), given what the
+    /// last poll returned. Yes by default: a device that has just come is listed at once. A provider that asks its
+    /// devices rarely on purpose says no while it has one on the air, and keeps its pace.
+    fn polls_on_device_change(&self, _last: &[DeviceReading]) -> bool {
+        true
+    }
 }
 
 /// Every provider, in the order the C# app polls them. macOS has no XInput: an Xbox controller reaches a Mac over

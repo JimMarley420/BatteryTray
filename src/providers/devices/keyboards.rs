@@ -291,6 +291,13 @@ impl Provider for KeyboardProvider {
             self.table.delay(last)
         }
     }
+
+    /// A keyboard on the air, and a stranger's that never answered, are asked on their schedules only, also when
+    /// another device comes: a request may keep a keyboard awake. With neither, a device change is a reason to look
+    /// for a keyboard right away.
+    fn polls_on_device_change(&self, last: &[DeviceReading]) -> bool {
+        !last.iter().any(|r| r.online) && !(last.is_empty() && self.strangers)
+    }
 }
 
 /// Whether a reading is of a `KEPT_AWAKE` keyboard that answered over its receiver: on its cable it is powered and

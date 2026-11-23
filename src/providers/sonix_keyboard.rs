@@ -161,6 +161,12 @@ impl Provider for SonixKeyboardProvider {
             secs(60)
         }
     }
+
+    /// A request may wake a dozing keyboard: one that is on the air is asked on its schedule only, also when another
+    /// device comes. Without one, a device change is a reason to look for it right away.
+    fn polls_on_device_change(&self, last: &[DeviceReading]) -> bool {
+        !last.iter().any(|r| r.online)
+    }
 }
 
 impl SonixKeyboardProvider {
