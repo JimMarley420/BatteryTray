@@ -303,6 +303,13 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
 #[cfg(target_os = "macos")]
 static MAC: &[(&str, &str, &str, &str)] = &[
     ("autostart", "Открывать при входе в систему", "Open at login", "登录时打开"),
+    ("move.title", "Переместить BatteryTray в «Программы»?", "Move BatteryTray to Applications?",
+        "将 BatteryTray 移到“应用程序”文件夹？"),
+    ("move.text", "Так программа сможет обновляться сама и открываться при входе в систему.",
+        "That way it can update itself and open at login.", "这样它才能自动更新并在登录时打开。"),
+    ("move.yes", "Переместить", "Move", "移动"),
+    ("move.no", "Не сейчас", "Not now", "暂不"),
+    ("move.failed", "Не удалось переместить BatteryTray: {0}", "Couldn't move BatteryTray: {0}", "无法移动 BatteryTray：{0}"),
 
     ("autostart.banner", "BatteryTray не открывается при входе в систему", "BatteryTray doesn't open at login",
         "BatteryTray 未设置登录时打开"),

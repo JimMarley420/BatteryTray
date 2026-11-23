@@ -68,3 +68,15 @@ rm -f "$OUT/BatteryTray-macOS.zip"
 ditto -c -k --keepParent "$APP" "$OUT/BatteryTray-macOS.zip"
 echo "== $APP"
 echo "== $OUT/BatteryTray-macOS.zip"
+
+# The disk image people download (a release's universal build): the app beside a link to Applications, to be dragged
+# there. The zip stays what the app updates itself from.
+if [ "${1:-universal}" = "universal" ]; then
+  STAGE="$WORK/dmg"
+  rm -rf "$STAGE" "$OUT/BatteryTray-macOS.dmg"
+  mkdir -p "$STAGE"
+  ditto "$APP" "$STAGE/BatteryTray.app"
+  ln -s /Applications "$STAGE/Applications"
+  hdiutil create -quiet -volname BatteryTray -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$OUT/BatteryTray-macOS.dmg"
+  echo "== $OUT/BatteryTray-macOS.dmg"
+fi

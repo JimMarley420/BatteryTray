@@ -33,8 +33,16 @@ let snapshot = arguments.firstIndex(of: "--snapshot").flatMap { at in
 // One copy at a time. A second launch asks the running copy to open its window, unless it is the login start. Drawing
 // the snapshots isn't a launch: it has the demo's devices and settings, and runs beside the app
 if snapshot == nil, let id = Bundle.main.bundleIdentifier {
-    let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
-        .filter { $0.processIdentifier != getpid() && !$0.isTerminated }
+    var others: [NSRunningApplication] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: id)
+            .filter { $0.processIdentifier != getpid() && !$0.isTerminated }
+    }
+    // Started by the copy that moved itself into Applications: that one is on its way out
+    if arguments.contains("--moved") {
+        for _ in 0..<100 where !others.isEmpty {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
     if let running = others.first {
         if !background {
             DistributedNotificationCenter.default().postNotificationName(

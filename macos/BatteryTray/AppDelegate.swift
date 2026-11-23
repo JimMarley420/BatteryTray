@@ -53,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         deviceWatch.start()
         perform(started["effects"] as? [[String: Any]] ?? [])
+        // Opened from the disk image or Downloads: once, the offer to move into Applications (this copy then quits)
+        if !demo, snapshot == nil, Installer.offerToMove(model) {
+            return
+        }
 
         // Snoozes run out between polls
         alertTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
