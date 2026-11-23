@@ -298,6 +298,12 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
         "约值：鼠标以 10% 为单位报告电量"),
     ("d.unknownModel", "заряд этой модели программа пока не читает — её поможет добавить лог",
         "this model's level can't be read yet; its log can help add it", "暂时无法读取此型号的电量，日志可帮助添加支持"),
+    // The parts of a device with batteries of their own: earbuds and their case, the halves of a split keyboard (the
+    // one the computer talks to is the main one; the others are named by the device)
+    ("d.budLeft", "левый {0}%", "left {0}%", "左耳 {0}%"),
+    ("d.budRight", "правый {0}%", "right {0}%", "右耳 {0}%"),
+    ("d.case", "кейс {0}%", "case {0}%", "充电盒 {0}%"),
+    ("d.mainPart", "основной {0}%", "main {0}%", "主设备 {0}%"),
 ];
 
 /// macOS: the texts that speak of Windows, in the words of a Mac, and the texts only the Mac app has.
@@ -333,9 +339,6 @@ static MAC: &[(&str, &str, &str, &str)] = &[
     ("menu.minimize", "Свернуть", "Minimize", "最小化"),
     ("menu.close", "Закрыть", "Close", "关闭"),
     ("d.needsAdmin", "нужно разрешение «Мониторинг ввода»", "needs the Input Monitoring permission", "需要“输入监控”权限"),
-    ("d.budLeft", "левый {0}%", "left {0}%", "左耳 {0}%"),
-    ("d.budRight", "правый {0}%", "right {0}%", "右耳 {0}%"),
-    ("d.case", "кейс {0}%", "case {0}%", "充电盒 {0}%"),
     ("permission.banner", "Для некоторых мышей и клавиатур нужно разрешение «Мониторинг ввода»",
         "Some mice and keyboards need the Input Monitoring permission", "部分鼠标和键盘需要“输入监控”权限"),
     ("permission.text", "macOS даёт читать клавиатуры и мыши с клавишами только программам с разрешением «Мониторинг ввода». BatteryTray читает только заряд, нажатия клавиш ей не нужны.",

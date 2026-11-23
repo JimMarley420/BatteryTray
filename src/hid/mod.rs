@@ -28,7 +28,7 @@ pub fn admin_rights_would_help() -> bool {
 pub(crate) use windows::ffi;
 #[cfg(windows)]
 pub use windows::{
-    admin_rights_would_help, byte_property, enumerate, enumerate_unclaimed, feature_value, HidDevice, PropertyKey,
+    admin_rights_would_help, device_nodes, enumerate, enumerate_unclaimed, feature_value, HidDevice, PropertyKey,
 };
 
 use std::fmt;
