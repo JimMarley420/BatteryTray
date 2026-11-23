@@ -13,10 +13,23 @@ mod windows;
 
 #[cfg(target_os = "macos")]
 pub use macos::{enumerate, feature_value, input_monitoring_allowed, request_input_monitoring, HidDevice};
+
+/// On macOS every collection is offered to the app: nothing here is refused for missing admin rights (see the Windows
+/// side), so the catch-all enumeration is the usual one.
+#[cfg(target_os = "macos")]
+pub use macos::enumerate as enumerate_unclaimed;
+
+/// Windows only: on macOS admin rights never let the app read a device it can't otherwise.
+#[cfg(target_os = "macos")]
+pub fn admin_rights_would_help() -> bool {
+    false
+}
 #[cfg(windows)]
 pub(crate) use windows::ffi;
 #[cfg(windows)]
-pub use windows::{byte_property, enumerate, feature_value, HidDevice, PropertyKey};
+pub use windows::{
+    admin_rights_would_help, byte_property, enumerate, enumerate_unclaimed, feature_value, HidDevice, PropertyKey,
+};
 
 use std::fmt;
 
