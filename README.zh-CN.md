@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray.exe"><img src="docs/download-windows-zh.svg" alt="下载 Windows 版 BatteryTray" height="64"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.zip"><img src="docs/download-macos-zh.svg" alt="下载 macOS 版 BatteryTray" height="64"></a>
+  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.dmg"><img src="docs/download-macos-zh.svg" alt="下载 macOS 版 BatteryTray" height="64"></a>
 </p>
 <p align="center"><sub>Windows 10 和 11 · macOS 13 Ventura 或更高版本，Apple 芯片和 Intel · 免费开源（MIT）<br><a href="https://github.com/qu1ncky/BatteryTray/releases">所有版本和更新说明</a></sub></p>
 
@@ -73,9 +73,11 @@ Razer Barracuda X（2.4 GHz 接收器，已测试）、Attack Shark R3 及其他
 
 ### macOS
 
-1. 点击上方的 **下载 macOS 版**（即[最新版本](https://github.com/qu1ncky/BatteryTray/releases/latest)中的 `BatteryTray-macOS.zip`），打开后将 **BatteryTray.app** 拖到“应用程序”文件夹。
+1. 点击上方的 **下载 macOS 版**（即[最新版本](https://github.com/qu1ncky/BatteryTray/releases/latest)中的 `BatteryTray-macOS.dmg`），打开后将 **BatteryTray** 拖到“应用程序”。从其他位置打开时，应用会主动提出移到“应用程序”。
 2. 打开应用。该应用未经 Apple 公证，第一次打开时 macOS 会阻止：前往 **系统设置 → 隐私与安全性**，向下滚动并点击 **仍要打开**（macOS 13 和 14 也可以按住 Control 点按应用并选择“打开”）。
-3. 电量数字会出现在菜单栏中。可在“设置 → 常规”中打开 **登录时打开**。
+3. 电量数字会出现在菜单栏中。macOS 会请求蓝牙权限：点击 **允许**。可在“设置 → 常规”中打开 **登录时打开**。
+
+macOS 只会在需要时各请求一次：**蓝牙**（读取 macOS 自身不显示电量的低功耗蓝牙设备）、**本地网络**（macOS 15+，通过 Wi-Fi 读取 iPhone 和 iPad）、**输入监控**（仅在连接键盘或带键盘按键的鼠标时；需在 macOS 打开的系统设置中手动打开开关）。应用使用临时签名，没有 Apple Developer ID，因此首次打开需要“仍要打开”，更新后 macOS 可能会再次请求这些权限。
 
 设置和日志位于 `~/Library/Application Support/BatteryTray`。应用会像 Windows 版一样从 GitHub 自动更新（`BatteryTray-macOS.zip`，校验 SHA-256 和版本）。
 

@@ -13,7 +13,7 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 <p align="center">
   <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray.exe"><img src="docs/download-windows-en.svg" alt="Download BatteryTray for Windows" height="64"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.zip"><img src="docs/download-macos-en.svg" alt="Download BatteryTray for macOS" height="64"></a>
+  <a href="https://github.com/qu1ncky/BatteryTray/releases/latest/download/BatteryTray-macOS.dmg"><img src="docs/download-macos-en.svg" alt="Download BatteryTray for macOS" height="64"></a>
 </p>
 <p align="center"><sub>Windows 10 and 11 · macOS 13 Ventura or later, Apple Silicon and Intel · free and open source (MIT)<br><a href="#download-and-install">How to install</a> · <a href="https://github.com/qu1ncky/BatteryTray/releases">All versions and release notes</a></sub></p>
 
@@ -165,11 +165,26 @@ That's all it takes. If Windows keeps a device from the app (some third-party dr
 
 ### macOS
 
-1. Click **Download for macOS** above (it is `BatteryTray-macOS.zip` from the [latest release](https://github.com/qu1ncky/BatteryTray/releases/latest)), open it and drag **BatteryTray.app** to **Applications**.
-2. Open it. The app isn't notarized by Apple, so the first time macOS refuses to open it: go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** (on macOS 13 and 14 you can also Control-click the app and choose **Open**).
-3. The number appears in the menu bar. Turn on **Open at login** in Settings → General, or with "Enable" on the banner above the device list.
+1. Click **Download for macOS** above (it is `BatteryTray-macOS.dmg` from the [latest release](https://github.com/qu1ncky/BatteryTray/releases/latest)), open it and drag **BatteryTray** onto **Applications**.
+2. Open it from Applications. The app isn't notarized by Apple, so the first time macOS refuses to open it: go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** (on macOS 13 and 14 you can also Control-click the app and choose **Open**). Opened from anywhere else, the app offers to move itself into Applications.
+3. The number appears in the menu bar. macOS asks for the Bluetooth permission: click **Allow**. Turn on **Open at login** with "Enable" on the banner above the device list.
 
-Settings and the log are in `~/Library/Application Support/BatteryTray`, the login item is `~/Library/LaunchAgents/io.github.qu1ncky.BatteryTray.plist`. To remove the app, turn **Open at login** off, quit it from its menu and move it to the Trash. The app is signed ad hoc, not with an Apple Developer ID, so after an update macOS may ask for the Input Monitoring permission again.
+#### Permissions on a Mac
+
+macOS asks for each of them by itself, once, when it is first needed:
+
+| Permission | When it's asked | What for | How |
+|---|---|---|---|
+| Bluetooth | at the first start | the level of Bluetooth LE devices macOS doesn't show itself (read from their Battery Service) | **Allow** in macOS' dialog |
+| Local Network (macOS 15+) | when an iPhone or iPad is on the same Wi-Fi | the iPhone's and iPad's level over Wi-Fi | **Allow** in macOS' dialog |
+| Input Monitoring | only when a keyboard, or a mouse with keyboard keys, is connected | macOS lets an app open such a device only with it, even to read its battery | "Allow" on the banner above the list, then turn BatteryTray on in the System Settings pane macOS opens — no app can turn this one on for you |
+| Notifications, login item | not asked | "Charging complete", "a new version"; **Open at login** | macOS shows "Background item added" once |
+
+Nothing else: no Accessibility, no Screen Recording, no administrator password (except to update a copy in an administrator's Applications folder).
+
+**Limits of an app without an Apple Developer ID.** The app is signed ad hoc, not with Apple's paid Developer ID, and isn't notarized. So macOS needs **Open Anyway** once, and after an update it may ask for the permissions above again, because it sees each version as a different app.
+
+Settings and the log are in `~/Library/Application Support/BatteryTray`, the login item is `~/Library/LaunchAgents/io.github.qu1ncky.BatteryTray.plist`. To remove the app, turn **Open at login** off, quit it from its menu and move it to the Trash.
 
 ## FAQ
 
@@ -296,8 +311,10 @@ cargo test --workspace              # tests (no hardware polling or access to yo
 
 1. Raise `version` in `Cargo.toml`.
 2. `powershell -File build-release.ps1`.
-3. Take `BatteryTray-macOS.zip` from the `BatteryTray-macOS` artifact of the macOS workflow on that commit (or build it with `macos/build.sh` on a Mac).
-4. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe BatteryTray-macOS.zip --title "BatteryTray X.Y.Z" --notes "what's new"`.
+3. Take `BatteryTray-macOS.zip` and `BatteryTray-macOS.dmg` from the `BatteryTray-macOS` artifact of the macOS workflow on that commit (or build them with `macos/build.sh` on a Mac).
+4. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe BatteryTray-macOS.zip BatteryTray-macOS.dmg --title "BatteryTray X.Y.Z" --notes "what's new"`.
+
+The download buttons at the top of the README take `BatteryTray.exe` and `BatteryTray-macOS.dmg` from the latest release, so both must be in every release.
 
 The updaters take the asset named exactly `BatteryTray.exe` (Windows) or `BatteryTray-macOS.zip` (macOS) from the latest release, and the tag must match the version inside the exe or the app. Drafts and pre-releases are ignored by the updater, handy for testing a build.
 
