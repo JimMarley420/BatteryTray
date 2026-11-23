@@ -1,6 +1,7 @@
 //! The battery protocols, one provider per family of devices.
 
 pub mod ajazz_mouse;
+pub mod apple_keyboard;
 #[cfg(target_os = "macos")]
 pub mod apple_mobile;
 pub mod aula_mchose;
@@ -9,6 +10,7 @@ pub mod bluetooth;
 pub mod devices;
 pub mod headset;
 pub mod logitech;
+pub mod nintendo;
 pub mod oem_mouse;
 pub mod playstation;
 pub mod razer_peripheral;
@@ -17,6 +19,7 @@ pub mod rongyuan;
 pub mod sonix_keyboard;
 pub mod standard_hid;
 pub mod steelseries;
+pub mod xbox_bluetooth;
 pub mod xenta;
 #[cfg(windows)]
 pub mod xinput;
@@ -50,7 +53,10 @@ pub trait Provider: Send {
 }
 
 /// Every provider, in the order the C# app polls them. macOS has no XInput: an Xbox controller reaches a Mac over
-/// Bluetooth only, where the Bluetooth provider has its level from macOS.
+/// Bluetooth only, where the Bluetooth provider has its level from macOS. The Switch and Xbox controllers and the
+/// Magic Keyboards on Bluetooth Classic are read from their own reports on Windows only (the modules are built on
+/// both, for their tests): on a Mac the system lists them itself, the keyboards through the Bluetooth provider and
+/// the controllers through GameController in the Swift app, and reading them here too would list them twice.
 pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
     let mut providers: Vec<Box<dyn Provider>> = vec![
         Box::new(barracuda::RazerBarracudaProvider::new(state.clone())),
@@ -78,7 +84,12 @@ pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
         Box::new(playstation::PlayStationProvider),
     ];
     #[cfg(windows)]
-    providers.push(Box::new(xinput::XInputProvider));
+    providers.extend([
+        Box::new(nintendo::NintendoProvider) as Box<dyn Provider>,
+        Box::new(xbox_bluetooth::XboxBluetoothProvider::default()),
+        Box::new(xinput::XInputProvider),
+        Box::new(apple_keyboard::AppleKeyboardProvider::default()),
+    ]);
     providers.push(Box::new(bluetooth::BluetoothProvider));
     #[cfg(target_os = "macos")]
     providers.push(Box::new(apple_mobile::AppleMobileProvider));
