@@ -271,7 +271,8 @@ pub fn main() {
     ]))));
     alert.set_critical(true);
     alert.set_snooze_text("Напомнить через 10 мин".into());
-    let height = alert.window().size().height as f32 / alert.window().scale_factor();
+    // As tall as its contents, as the app sizes it (the window has no size of its own before it is shown)
+    let height = alert.get_content_height();
     render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert.png"));
 
     let overlay = OverlayWindow::new().unwrap();
