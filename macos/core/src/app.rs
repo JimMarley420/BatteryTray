@@ -418,7 +418,15 @@ impl MacApp {
             let ours = self.external.readings.lock().unwrap_or_else(|e| e.into_inner());
             known.extend(ours.get("controllers").into_iter().flatten().map(|r| r.name.to_lowercase()));
         }
-        self.external.set(source, readings.into_iter().filter(|r| !known.contains(&r.name.to_lowercase())).collect());
+        // The same device under two names: "MX Ergo" over Bluetooth LE, "Logitech MX Ergo Multi-Device Trackball"
+        // over HID++; a name too short to tell anything ("Mouse") has to match whole
+        let listed = |name: &str| {
+            let name = name.to_lowercase();
+            known
+                .iter()
+                .any(|k| *k == name || (name.len() >= 5 && k.len() >= 5 && (k.contains(&name) || name.contains(k))))
+        };
+        self.external.set(source, readings.into_iter().filter(|r| !listed(&r.name)).collect());
     }
 
     pub fn updates_install(&self) {
