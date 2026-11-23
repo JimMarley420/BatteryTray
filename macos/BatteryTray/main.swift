@@ -30,8 +30,9 @@ let snapshot = arguments.firstIndex(of: "--snapshot").flatMap { at in
     arguments.indices.contains(at + 1) ? (arguments[at + 1], arguments.indices.contains(at + 2) ? arguments[at + 2] : nil) : nil
 }
 
-// One copy at a time. A second launch asks the running copy to open its window, unless it is the login start
-if let id = Bundle.main.bundleIdentifier {
+// One copy at a time. A second launch asks the running copy to open its window, unless it is the login start. Drawing
+// the snapshots isn't a launch: it has the demo's devices and settings, and runs beside the app
+if snapshot == nil, let id = Bundle.main.bundleIdentifier {
     let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
         .filter { $0.processIdentifier != getpid() && !$0.isTerminated }
     if let running = others.first {

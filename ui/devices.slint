@@ -764,11 +764,6 @@ export component DevicesScreen inherits Rectangle {
                         }
                     }
                 }
-                // 8 + 0 + 8: twice the usual gap between the pinned devices and whatever follows them
-                if root.pinned.length > 0 && (root.connected.length > 0 || root.none-online
-                    || root.offline.length > 0 || root.hidden.length > 0): Rectangle {
-                    height: 0px;
-                }
                 if root.connected.length > 0: Dimmable {
                     dimmed: Drag.active && Drag.list != 1;
                     VerticalLayout {

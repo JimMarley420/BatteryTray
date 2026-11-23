@@ -1,14 +1,18 @@
 //! The levels macOS knows: what `system_profiler SPBluetoothDataType` reports for the connected devices, which is
 //! what the Bluetooth menu shows - a mouse's or keyboard's own level, a headset's, the two earbuds and the case of
-//! AirPods. A paired device that isn't connected has no level there; once this session has had one from it, it is
+//! AirPods. A headset that reports its level over the hands-free profile (as Windows reads it) has none there: macOS
+//! keeps that one among its power sources, the accessories the battery widget and `pmset -g accps` show, under the
+//! device's name. A paired device that isn't connected has no level; once this session has had one from it, it is
 //! listed as offline, as Windows lists a device whose level it still holds.
 
 use super::kind_by_name;
 use crate::loc::tf;
 use crate::log;
+use crate::mac::{items_of, number_of, string_of, value_of, CFTypeRef, Cf};
 use crate::reading::{DeviceKind, DeviceReading};
 use serde_json::Value;
 use std::collections::HashSet;
+use std::ffi::{c_char, c_void};
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
@@ -19,9 +23,10 @@ static SEEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 pub fn poll() -> Vec<DeviceReading> {
     let Some(report) = system_profiler() else { return Vec::new() };
+    let accessories = accessories();
     let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
     let seen = seen.get_or_insert_with(HashSet::new);
-    let readings = readings(&report, seen);
+    let readings = readings(&report, &accessories, seen);
     for r in &readings {
         if r.level.is_some() {
             seen.insert(r.id.clone());
@@ -58,8 +63,52 @@ fn system_profiler() -> Option<Value> {
     serde_json::from_str(&text).ok()
 }
 
+/// A level among macOS's power sources: an accessory's, or one part's of it (an earbud, the case).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Accessory {
+    pub name: String,
+    /// "Single" for the device itself, "Left", "Right", "Case" for the parts of earbuds
+    pub part: String,
+    pub level: i32,
+    pub charging: bool,
+}
+
+/// The accessories macOS has a level for. The list comes from IOKit's IOPSCopyPowerSourcesByType, which isn't in the
+/// SDK headers: it is looked up when the app runs, so a macOS without it only goes without these levels.
+fn accessories() -> Vec<Accessory> {
+    type ByType = unsafe extern "C" fn(kind: i32) -> CFTypeRef;
+    // kIOPSSourceForAccessories in IOPowerSourcesPrivate.h
+    const FOR_ACCESSORIES: i32 = 4;
+    const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
+    let function = unsafe { dlsym(RTLD_DEFAULT, c"IOPSCopyPowerSourcesByType".as_ptr()) };
+    if function.is_null() {
+        return Vec::new();
+    }
+    let by_type: ByType = unsafe { std::mem::transmute::<*mut c_void, ByType>(function) };
+    let Some(blob) = Cf::new(unsafe { by_type(FOR_ACCESSORIES) }) else { return Vec::new() };
+    let Some(list) = Cf::new(unsafe { IOPSCopyPowerSourcesList(blob.0) }) else { return Vec::new() };
+    let mut result = Vec::new();
+    for source in items_of(list.0) {
+        // Owned by the blob
+        let description = unsafe { IOPSGetPowerSourceDescription(blob.0, source) };
+        let text = |key| string_of(value_of(description, key));
+        let number = |key| number_of(value_of(description, key));
+        let (Some(name), Some(current), Some(max)) = (text("Name"), number("Current Capacity"), number("Max Capacity"))
+        else {
+            continue;
+        };
+        if max <= 0 || number("Is Present") == Some(0) {
+            continue;
+        }
+        let level = ((current * 100 + max / 2) / max).clamp(0, 100) as i32;
+        let part = text("Part Identifier").unwrap_or_else(|| "Single".into());
+        result.push(Accessory { name, part, level, charging: number("Is Charging").unwrap_or(0) != 0 });
+    }
+    result
+}
+
 /// The connected devices that report a level, and the devices `seen` before that are no longer connected.
-pub fn readings(report: &Value, seen: &HashSet<String>) -> Vec<DeviceReading> {
+pub fn readings(report: &Value, accessories: &[Accessory], seen: &HashSet<String>) -> Vec<DeviceReading> {
     let mut result = Vec::new();
     let controllers = report.get("SPBluetoothDataType").and_then(Value::as_array).cloned().unwrap_or_default();
     for controller in &controllers {
@@ -71,7 +120,11 @@ pub fn readings(report: &Value, seen: &HashSet<String>) -> Vec<DeviceReading> {
                     continue;
                 };
                 let id = format!("bt:{address:012X}");
-                let battery = Battery::of(device);
+                let mut battery = Battery::of(device);
+                let mut charging = false;
+                if connected && battery.level().is_none() {
+                    (battery, charging) = Battery::among(accessories, name);
+                }
                 if connected && battery.level().is_none() {
                     continue; // nothing to show: a phone, a speaker without a level
                 }
@@ -83,6 +136,7 @@ pub fn readings(report: &Value, seen: &HashSet<String>) -> Vec<DeviceReading> {
                     online: connected,
                     level: battery.level().filter(|_| connected),
                     detail: battery.detail().filter(|_| connected),
+                    charging,
                     ..DeviceReading::new(id, name.clone(), kind, "Bluetooth")
                 });
             }
@@ -121,6 +175,25 @@ impl Battery {
         }
     }
 
+    /// The levels macOS keeps for the accessory of that name, and whether it is charging.
+    fn among(accessories: &[Accessory], name: &str) -> (Self, bool) {
+        let mut battery = Self::default();
+        let mut charging = false;
+        for a in accessories.iter().filter(|a| a.name == name) {
+            let slot = match a.part.to_ascii_lowercase().as_str() {
+                "left" => &mut battery.left,
+                "right" => &mut battery.right,
+                "case" => &mut battery.case,
+                _ => {
+                    charging = a.charging;
+                    &mut battery.main
+                }
+            };
+            *slot = Some(a.level);
+        }
+        (battery, charging)
+    }
+
     /// The device's own level, or that of the earbud that runs out first.
     fn level(&self) -> Option<i32> {
         self.main.or(match (self.left, self.right) {
@@ -143,6 +216,16 @@ impl Battery {
         }
         (!parts.is_empty()).then(|| parts.join(", "))
     }
+}
+
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    fn IOPSCopyPowerSourcesList(blob: CFTypeRef) -> CFTypeRef;
+    fn IOPSGetPowerSourceDescription(blob: CFTypeRef, source: CFTypeRef) -> CFTypeRef;
+}
+
+extern "C" {
+    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
 }
 
 fn kind_of(minor_type: Option<&str>, name: &str) -> DeviceKind {
@@ -170,7 +253,9 @@ mod tests {
                 { "AirPods Pro": { "device_address": "70:AE:D5:00:00:02", "device_batteryLevelLeft": "100%",
                     "device_batteryLevelRight": "90%", "device_batteryLevelCase": "45%",
                     "device_minorType": "Headphones" } },
-                { "iPhone": { "device_address": "B4:55:75:00:00:03", "device_rssi": "-50" } }
+                { "iPhone": { "device_address": "B4:55:75:00:00:03", "device_rssi": "-50" } },
+                { "Razer Barracuda X (BT)": { "device_address": "44:5E:CD:52:31:8B", "device_minorType": "Headset",
+                    "device_services": "0x800019 < HFP AVRCP A2DP ACL >" } }
             ],
             "device_not_connected": [
                 { "Keychron K6": { "device_address": "DC:2C:26:00:00:04", "device_minorType": "Keyboard" } },
@@ -179,20 +264,34 @@ mod tests {
         }]})
     }
 
+    fn accessory(name: &str, part: &str, level: i32, charging: bool) -> Accessory {
+        Accessory { name: name.into(), part: part.into(), level, charging }
+    }
+
     #[test]
     fn levels_of_the_connected_devices() {
         let seen = HashSet::from(["bt:DC2C26000004".to_string()]);
-        let all = readings(&report(), &seen);
-        let shown: Vec<_> = all.iter().map(|r| (r.id.as_str(), r.name.as_str(), r.kind, r.online, r.level)).collect();
+        let accessories = [
+            accessory("Razer Barracuda X (BT)", "Single", 40, true),
+            // system_profiler's own levels come first
+            accessory("MX Ergo", "Single", 10, false),
+            // A device that isn't connected shows no level
+            accessory("Keychron K6", "Single", 50, false),
+        ];
+        let all = readings(&report(), &accessories, &seen);
+        let shown: Vec<_> =
+            all.iter().map(|r| (r.id.as_str(), r.name.as_str(), r.kind, r.online, r.level, r.charging)).collect();
         assert_eq!(
             shown,
             [
-                ("bt:D12C26383890", "MX Ergo", DeviceKind::Mouse, true, Some(85)),
-                ("bt:70AED5000002", "AirPods Pro", DeviceKind::Headset, true, Some(90)),
+                ("bt:D12C26383890", "MX Ergo", DeviceKind::Mouse, true, Some(85), false),
+                ("bt:70AED5000002", "AirPods Pro", DeviceKind::Headset, true, Some(90), false),
+                ("bt:445ECD52318B", "Razer Barracuda X (BT)", DeviceKind::Headset, true, Some(40), true),
                 // Not connected: only the one this session had a level from
-                ("bt:DC2C26000004", "Keychron K6", DeviceKind::Keyboard, false, None),
+                ("bt:DC2C26000004", "Keychron K6", DeviceKind::Keyboard, false, None, false),
             ]
         );
+        assert!(readings(&report(), &[], &seen).iter().all(|r| !r.name.contains("Barracuda")));
         assert_eq!(all[1].detail.as_deref(), Some("left 100%, right 90%, case 45%"));
         assert_eq!(all[0].detail, None);
         assert!(all.iter().all(|r| r.via == "Bluetooth"));
@@ -207,12 +306,29 @@ mod tests {
         assert_eq!(odd, Battery::default());
         assert_eq!(parse_address("AC-8E-BD-00-00-05"), Some(0xAC8EBD000005));
         assert_eq!(parse_address("AC:8E"), None);
-        assert!(readings(&serde_json::json!({}), &HashSet::new()).is_empty());
+        assert!(readings(&serde_json::json!({}), &[], &HashSet::new()).is_empty());
+    }
+
+    #[test]
+    fn earbuds_among_the_power_sources() {
+        let accessories = [
+            accessory("Buds", "Left", 80, false),
+            accessory("Buds", "Right", 60, false),
+            accessory("Buds", "Case", 30, true),
+            accessory("Other", "Single", 10, false),
+        ];
+        let (battery, charging) = Battery::among(&accessories, "Buds");
+        assert_eq!(battery, Battery { main: None, left: Some(80), right: Some(60), case: Some(30) });
+        assert_eq!((battery.level(), charging), (Some(60), false), "the case charging isn't the earbuds charging");
+        assert_eq!(Battery::among(&accessories, "Nothing"), (Battery::default(), false));
     }
 
     /// The real thing, on this Mac.
     #[test]
     fn this_macs_devices() {
+        for a in accessories() {
+            println!("{a:?}");
+        }
         for r in poll() {
             println!("{r}");
         }

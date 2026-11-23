@@ -84,6 +84,27 @@ pub fn data_of(value: CFTypeRef) -> Option<Vec<u8>> {
     }
 }
 
+/// A CFDictionary's value for a text key; NULL when the dictionary is NULL, of another type or has no such key.
+pub fn value_of(dictionary: CFTypeRef, key: &str) -> CFTypeRef {
+    unsafe {
+        if dictionary.is_null() || CFGetTypeID(dictionary) != CFDictionaryGetTypeID() {
+            return std::ptr::null();
+        }
+        let key = Cf::string(key);
+        CFDictionaryGetValue(dictionary, key.0)
+    }
+}
+
+/// A CFArray's items, owned by the array; empty for NULL or another type.
+pub fn items_of(array: CFTypeRef) -> Vec<CFTypeRef> {
+    unsafe {
+        if array.is_null() || CFGetTypeID(array) != CFArrayGetTypeID() {
+            return Vec::new();
+        }
+        (0..CFArrayGetCount(array)).map(|i| CFArrayGetValueAtIndex(array, i)).collect()
+    }
+}
+
 /// IOKit's and the kernel's text for a return code ("(iokit/common) not permitted").
 pub fn system_message(code: u32) -> String {
     let text = unsafe { mach_error_string(code as i32) };
@@ -156,6 +177,9 @@ extern "C" {
     fn CFDataGetLength(data: CFTypeRef) -> CFIndex;
     fn CFDataGetBytePtr(data: CFTypeRef) -> *const u8;
     fn CFLocaleCopyPreferredLanguages() -> CFTypeRef;
+    fn CFDictionaryGetTypeID() -> usize;
+    fn CFDictionaryGetValue(dictionary: CFTypeRef, key: CFTypeRef) -> CFTypeRef;
+    fn CFArrayGetTypeID() -> usize;
     fn CFArrayGetCount(array: CFTypeRef) -> CFIndex;
     fn CFArrayGetValueAtIndex(array: CFTypeRef, index: CFIndex) -> CFTypeRef;
 }

@@ -12,47 +12,56 @@ struct DevicesView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let snapshot = model.snapshot {
+                // One edge on each side for everything: the cards, the headings, the rows and the footer's text
                 List {
                     banners(snapshot)
-                    // The pinned devices, then a wider gap, then the connected ones
-                    if !snapshot.devices.pinned.isEmpty {
-                        Section { block(snapshot.devices.pinned, card: true) }
-                    }
-                    if !snapshot.devices.connected.isEmpty {
-                        Section { block(snapshot.devices.connected, card: true) }
-                    }
+                    // The pinned devices, then the connected ones, one list; a drag never leaves its block
+                    block(snapshot.devices.pinned, card: true)
+                    block(snapshot.devices.connected, card: true)
                     if snapshot.devices.noneOnline {
-                        Section {
-                            Text(model.t("none.online"))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 18)
-                                .listRowSeparator(.hidden)
-                        }
+                        Text(model.t("none.online"))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 18)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(Self.insets(top: 3, bottom: 3))
                     }
                     if !snapshot.devices.offline.isEmpty {
-                        Section {
-                            block(snapshot.devices.offline, card: false)
-                        } header: {
-                            Text(model.t("offline.header"))
-                        }
+                        Text(model.t("offline.header"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 14)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(Self.insets(top: 3, bottom: 1))
+                        block(snapshot.devices.offline, card: false)
                     }
                     if !snapshot.devices.hidden.isEmpty {
-                        Section {
-                            DisclosureGroup(isExpanded: $hiddenExpanded.value) {
-                                ForEach(snapshot.devices.hidden) { device in
-                                    HiddenRow(device: device)
-                                }
-                            } label: {
+                        // Not a disclosure group: a list with one keeps a column for its arrow on the left of every row
+                        Button { hiddenExpanded.value.toggle() } label: {
+                            HStack(spacing: 5) {
                                 Text("\(model.t("hidden.header")) · \(snapshot.devices.hidden.count)")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                                Image(systemName: hiddenExpanded.value ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 9, weight: .bold))
                             }
-                            .listRowSeparator(.hidden)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 10)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(Self.insets(top: 3, bottom: 3))
+                        if hiddenExpanded.value {
+                            ForEach(snapshot.devices.hidden) { device in
+                                HiddenRow(device: device)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(Self.insets(top: 1, bottom: 1))
+                            }
                         }
                     }
                 }
-                .listStyle(.inset(alternatesRowBackgrounds: false))
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .environment(\.defaultMinListRowHeight, 10)
                 footer(snapshot)
             }
@@ -60,12 +69,21 @@ struct DevicesView: View {
         .frame(minWidth: 380, minHeight: 360)
     }
 
+    /// The window's edge on the left and the right, as the footer has it
+    static let margin: CGFloat = 16
+
+    /// A row's insets that put its content on the window's edge: the list keeps 8 points of its own on the left of
+    /// every row and 9 on the right.
+    static func insets(top: CGFloat, bottom: CGFloat) -> EdgeInsets {
+        EdgeInsets(top: top, leading: margin - 8, bottom: bottom, trailing: margin - 9)
+    }
+
     /// A block of devices, reordered by dragging; a drag never leaves its block.
     private func block(_ devices: [Device], card: Bool) -> some View {
         ForEach(devices) { device in
             DeviceRowView(device: device, card: card)
                 .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                .listRowInsets(Self.insets(top: 3, bottom: 3))
         }
         .onMove { from, to in
             guard let start = from.first, devices.indices.contains(start) else { return }
@@ -135,7 +153,7 @@ struct Banner<Buttons: View>: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(tint.opacity(0.08)))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(tint.opacity(0.6)))
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
+        .listRowInsets(DevicesView.insets(top: 4, bottom: 4))
     }
 }
 
@@ -230,7 +248,8 @@ struct DeviceRowView: View {
             }
         }
         .padding(.vertical, card ? 12 : 4)
-        .padding(.horizontal, card ? 12 : 2)
+        // Rows without a card keep the cards' inner edge: their icons and menus line up with the cards'
+        .padding(.horizontal, 12)
         .background {
             if card {
                 RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor))
@@ -281,6 +300,8 @@ struct HiddenRow: View {
             .accessibilityLabel("\(model.t("device.show")): \(device.name)")
         }
         .padding(.vertical, 3)
+        // As the rows without a card
+        .padding(.horizontal, 12)
     }
 }
 
