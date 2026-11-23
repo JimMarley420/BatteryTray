@@ -18,8 +18,8 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 <p align="center"><sub>Windows 10 and 11 · macOS 13 Ventura or later, Apple Silicon and Intel · free and open source (MIT)<br><a href="#download-and-install">How to install</a> · <a href="https://github.com/qu1ncky/BatteryTray/releases">All versions and release notes</a></sub></p>
 
 <p align="center">
-  <img src="docs/screenshot-en.png" alt="BatteryTray on Windows: battery levels of a wireless headset, mouse, keyboard and Xbox controller" width="400">
-  <img src="docs/macos-en.png" alt="BatteryTray on macOS: battery levels of a wireless headset, mouse, keyboard and Xbox controller in a Mac window" width="400">
+  <img src="docs/screenshot-en.png" alt="BatteryTray on Windows: battery levels of a wireless headset, mouse, keyboard and Xbox controller" height="580">
+  <img src="docs/macos-en.png" alt="BatteryTray on macOS: battery levels of a wireless headset, mouse, keyboard and Xbox controller in a Mac window" height="580">
 </p>
 
 ## Features
@@ -51,7 +51,7 @@ The same app on both: the device list, the reminders, the overlay and every supp
 | Overlay shortcut | **Ctrl+Alt+V** | **⌃⌥V** (any shortcut with ⌘, ⌃ or ⌥) |
 | Starts at sign-in | Task Scheduler task (installed) or the Startup setting | login item, **Open at login** |
 | Bluetooth devices | the level Windows shows in Settings → Bluetooth & devices, read fresh from a Bluetooth LE device's Battery Service; AirPods with each earbud and the case; Magic Keyboard; Xbox and Switch controllers | the levels macOS knows: AirPods with each earbud and the case, Magic devices, headsets, controllers; any Bluetooth LE device with a Battery Service; Logitech MX over Bluetooth |
-| Phones and tablets | Android on a cable, in File transfer mode | iPhone and iPad on a cable or on Wi-Fi |
+| Phones and tablets | Android on a cable, in File transfer mode | iPhone and iPad on a cable |
 | UPS | a UPS on USB (what Windows shows as a battery) | — |
 | Xbox Wireless Adapter | yes (XInput) | no: macOS has no driver for it |
 | Permissions | admin rights only when a third-party driver locks a receiver | Input Monitoring, only for keyboards (macOS asks it of every app that opens one) |
@@ -131,7 +131,7 @@ The same app on both: the device list, the reminders, the overlay and every supp
 | **Nintendo Switch** Pro Controller, Joy-Con (Windows only) | Bluetooth, once a game or Steam has switched the controller to full reports | ⚠️ untested; 5 levels |
 | **Apple Magic Keyboard** (2015, 2021, USB-C; with Touch ID and with Numeric Keypad) (Windows only) | Bluetooth | ⚠️ untested |
 | **Any Bluetooth device** whose battery Windows or macOS shows (Xbox controller, AirPods with each earbud and the case, Magic Mouse / Keyboard / Trackpad, many mice, keyboards and headsets) | Bluetooth | ✅ tested on Windows (Xbox controller) and macOS (Razer Barracuda X in Bluetooth mode, AirPods) |
-| **iPhone, iPad** (macOS) | USB cable, or Wi-Fi with "Show this iPhone when on Wi-Fi"; the device must trust the Mac | ✅ tested on the cable (iPhone, iOS 26) |
+| **iPhone, iPad** (macOS) | USB cable; the device must trust the Mac | ✅ tested (iPhone, iOS 26) |
 | **Bluetooth LE devices** with the standard Battery Service: many mice and keyboards (Logitech MX, keyboards with ZMK and both halves of a split one), trackers | Bluetooth LE | ⚠️ untested; on Windows read fresh from the device, on a Mac with the Bluetooth permission |
 | **Logitech MX** mice and keyboards connected directly over Bluetooth (macOS; Windows shows them itself) | Bluetooth LE | ⚠️ untested |
 | **AirPods and Beats** with each earbud and the case on Windows | Bluetooth | ⚠️ untested |
@@ -185,7 +185,6 @@ macOS asks for each of them by itself, once, when it is first needed:
 | Permission | When it's asked | What for | How |
 |---|---|---|---|
 | Bluetooth | at the first start | the level of Bluetooth LE devices macOS doesn't show itself (read from their Battery Service) | **Allow** in macOS' dialog |
-| Local Network (macOS 15+) | when an iPhone or iPad is on the same Wi-Fi | the iPhone's and iPad's level over Wi-Fi | **Allow** in macOS' dialog |
 | Input Monitoring | only when a keyboard, or a mouse with keyboard keys, is connected | macOS lets an app open such a device only with it, even to read its battery | "Allow" on the banner above the list, then turn BatteryTray on in the System Settings pane macOS opens — no app can turn this one on for you |
 | Notifications, login item | not asked | "Charging complete", "a new version"; **Open at login** | macOS shows "Background item added" once |
 
@@ -210,7 +209,7 @@ Yes, if the system itself knows it: on Windows, when Settings → Bluetooth & de
 Install BatteryTray for macOS: it lists every Bluetooth device whose level macOS knows, AirPods with each earbud and the case, next to your gaming headset, mouse and keyboard.
 
 **Can it show my iPhone or iPad battery on a Mac?**
-Yes, on a cable, or on Wi-Fi when "Show this iPhone when on Wi-Fi" is on in Finder, once it trusts the Mac (Finder asks for that the first time you connect it): its level and whether it charges, in the list and the menu bar.
+Yes, while it is on a cable and trusts the Mac (Finder asks for that the first time you connect it): its level and whether it charges, in the list and the menu bar.
 
 **And my Android phone on Windows?**
 Yes, while it is on the cable in "File transfer" mode (in "Charging only" Windows doesn't see it as a device).

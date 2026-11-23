@@ -1,3 +1,2 @@
-/* The reasons macOS shows when it asks for a permission */
+/* The reason macOS shows when it asks for the Bluetooth permission */
 "NSBluetoothAlwaysUsageDescription" = "BatteryTray читает заряд Bluetooth-устройств, который macOS сама не показывает.";
-"NSLocalNetworkUsageDescription" = "BatteryTray читает заряд iPhone и iPad по Wi-Fi.";

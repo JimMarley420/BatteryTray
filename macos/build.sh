@@ -47,7 +47,7 @@ echo "== bundle $VERSION"
 sed "s/@VERSION@/$VERSION/g" "$ROOT/macos/Info.plist" > "$APP/Contents/Info.plist"
 swift "$ROOT/macos/make-icon.swift" "$WORK/AppIcon.iconset"
 iconutil -c icns -o "$APP/Contents/Resources/AppIcon.icns" "$WORK/AppIcon.iconset"
-# The reasons macOS shows when it asks for Bluetooth or the local network, in each language of the app
+# The reason macOS shows when it asks for Bluetooth, in each language of the app
 for lproj in "$ROOT"/macos/*.lproj; do
   mkdir -p "$APP/Contents/Resources/$(basename "$lproj")"
   cp "$lproj/InfoPlist.strings" "$APP/Contents/Resources/$(basename "$lproj")/"
@@ -60,7 +60,7 @@ if cargo about --version >/dev/null 2>&1; then
 else
   echo "warning: cargo-about isn't installed: the app has no THIRD_PARTY_LICENSES.md, a release must not go out so" >&2
 fi
-# The signature macOS ties the app's permissions to (Bluetooth, Input Monitoring, Local Network). The project's own
+# The signature macOS ties the app's permissions to (Bluetooth, Input Monitoring). The project's own
 # certificate, "BatteryTray Code Signing" (in the keychain, or the identity in BATTERYTRAY_SIGNING_IDENTITY), is the
 # same for every version, so the permissions stay from one version to the next. It isn't Apple's Developer ID: macOS
 # still wants "Open Anyway" once for an app downloaded from the internet. Without it the app is signed ad hoc, and

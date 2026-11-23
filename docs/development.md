@@ -48,8 +48,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 joins the two into one app, draws the icon (`macos/make-icon.swift`), writes the version from `Cargo.toml` into
 Info.plist, signs the app and zips it (a release's universal build also makes the disk image). The signature is the
 project's own certificate, "BatteryTray Code Signing" (a self-signed code signing certificate, valid until 2046): the
-same one for every version, so macOS keeps the permissions it gave the app (Bluetooth, Input Monitoring, Local
-Network) across updates, which it doesn't for an app signed ad hoc. `build.sh` takes it from the keychain or from
+same one for every version, so macOS keeps the permissions it gave the app (Bluetooth, Input Monitoring) across updates, which it doesn't for an app signed ad hoc. `build.sh` takes it from the keychain or from
 `BATTERYTRAY_SIGNING_IDENTITY`, and falls back to ad hoc with a warning when there is none (a release must not go out
 so). CI has it in the repository secrets `MACOS_SIGNING_P12` (the .p12, base64) and `MACOS_SIGNING_PASSWORD`, imported
 into a keychain of its own. Losing the certificate isn't fatal: a new one makes every Mac ask for the permissions once
