@@ -59,6 +59,28 @@ fn enumerate_with(matches: impl Fn(u16, u16) -> bool, note_refusals: bool) -> Ve
     result
 }
 
+/// The paths of every present device interface of a class, given by its interface GUID (the batteries, say).
+pub fn interface_paths(class: &ffi::Guid) -> Vec<String> {
+    let mut result = Vec::new();
+    unsafe {
+        let set = ffi::SetupDiGetClassDevsW(class, null(), 0, ffi::DIGCF_PRESENT | ffi::DIGCF_DEVICEINTERFACE);
+        if set == INVALID_HANDLE {
+            return result;
+        }
+        let mut data = ffi::SpDeviceInterfaceData {
+            cb_size: size_of::<ffi::SpDeviceInterfaceData>() as u32,
+            ..Default::default()
+        };
+        let mut index = 0;
+        while ffi::SetupDiEnumDeviceInterfaces(set, null(), class, index, &mut data) != 0 {
+            index += 1;
+            result.extend(interface_path(set, &data));
+        }
+        ffi::SetupDiDestroyDeviceInfoList(set);
+    }
+    result
+}
+
 unsafe fn interface_path(set: isize, data: &ffi::SpDeviceInterfaceData) -> Option<String> {
     let mut size: u32 = 0;
     ffi::SetupDiGetDeviceInterfaceDetailW(set, data, null_mut(), 0, &mut size, null_mut());
