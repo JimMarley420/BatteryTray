@@ -1,6 +1,8 @@
 //! The battery protocols, one provider per family of devices.
 
 pub mod ajazz_mouse;
+#[cfg(target_os = "macos")]
+pub mod apple_mobile;
 pub mod aula_mchose;
 pub mod barracuda;
 pub mod bluetooth;
@@ -78,6 +80,8 @@ pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
     #[cfg(windows)]
     providers.push(Box::new(xinput::XInputProvider));
     providers.push(Box::new(bluetooth::BluetoothProvider));
+    #[cfg(target_os = "macos")]
+    providers.push(Box::new(apple_mobile::AppleMobileProvider));
     providers.push(Box::new(standard_hid::StandardHidBatteryProvider));
     providers
 }

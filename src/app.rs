@@ -10,7 +10,7 @@ use crate::autostart::{self, BACKGROUND_SWITCH};
 use crate::hotkey::Gesture;
 use crate::loc::{self, t, tf};
 use crate::main_view::MainView;
-use crate::monitor::Monitor;
+use crate::monitor::{self, Monitor};
 use crate::overlay::{Overlay, Rect};
 use crate::reading::DeviceReading;
 use crate::rows::{self, AlertManager, ChargeDoneWatcher, DeviceRow};
@@ -257,6 +257,7 @@ impl App {
         settings.last_run_version = Some(version());
         settings.save();
         loc::set(loc::resolve(Some(&settings.language)));
+        monitor::set_polls_on_connect(settings.refresh_on_connect);
         let state = Arc::new(StateStore::load());
 
         let monitor = Monitor::start(providers::create(&state), state.clone(), || {
@@ -429,6 +430,7 @@ impl App {
 
     fn settings_changed(&mut self) {
         self.save_later();
+        monitor::set_polls_on_connect(self.settings.refresh_on_connect);
         if let Some(u) = &self.updates {
             u.set_auto_update(self.settings.auto_update);
         }
@@ -908,10 +910,10 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         }
         // Windows tells every top-level window when a device comes or goes (DBT_DEVNODES_CHANGED, also for a Bluetooth
         // headset that connects): the devices are asked again right away rather than on their schedules, unless the
-        // settings say to wait for the schedules
+        // settings say to wait for the schedules (see Monitor::devices_changed)
         WM_DEVICECHANGE => {
             later(|app| {
-                if let Some(m) = app.monitor.as_ref().filter(|_| app.settings.refresh_on_connect) {
+                if let Some(m) = &app.monitor {
                     m.devices_changed();
                 }
             });

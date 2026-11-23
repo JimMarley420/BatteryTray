@@ -103,7 +103,7 @@ struct GeneralSettings: View {
                                 Hint(text: model.t("refresh.onConnect.hint"))
                             }
                         } icon: {
-                            Image(systemName: "cable.connector")
+                            Image(systemName: "arrow.clockwise")
                         }
                     }
                 }

@@ -77,15 +77,16 @@ pub struct Accessory {
 /// SDK headers: it is looked up when the app runs, so a macOS without it only goes without these levels.
 fn accessories() -> Vec<Accessory> {
     type ByType = unsafe extern "C" fn(kind: i32) -> CFTypeRef;
-    // kIOPSSourceForAccessories in IOPowerSourcesPrivate.h
-    const FOR_ACCESSORIES: i32 = 4;
+    // kIOPSSourceAll in IOPowerSourcesPrivate.h: the accessories, and also the HID devices with a battery that macOS
+    // files as a UPS (ioupsd does so for those that aren't an Apple accessory, a peripheral or a controller)
+    const ALL: i32 = 0;
     const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
     let function = unsafe { dlsym(RTLD_DEFAULT, c"IOPSCopyPowerSourcesByType".as_ptr()) };
     if function.is_null() {
         return Vec::new();
     }
     let by_type: ByType = unsafe { std::mem::transmute::<*mut c_void, ByType>(function) };
-    let Some(blob) = Cf::new(unsafe { by_type(FOR_ACCESSORIES) }) else { return Vec::new() };
+    let Some(blob) = Cf::new(unsafe { by_type(ALL) }) else { return Vec::new() };
     let Some(list) = Cf::new(unsafe { IOPSCopyPowerSourcesList(blob.0) }) else { return Vec::new() };
     let mut result = Vec::new();
     for source in items_of(list.0) {
@@ -97,7 +98,8 @@ fn accessories() -> Vec<Accessory> {
         else {
             continue;
         };
-        if max <= 0 || number("Is Present") == Some(0) {
+        // The Mac's own battery isn't a device of the list
+        if max <= 0 || number("Is Present") == Some(0) || text("Type").as_deref() == Some("InternalBattery") {
             continue;
         }
         let level = ((current * 100 + max / 2) / max).clamp(0, 100) as i32;

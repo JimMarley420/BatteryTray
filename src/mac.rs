@@ -69,6 +69,16 @@ pub fn number_of(value: CFTypeRef) -> Option<i64> {
     }
 }
 
+/// A CFBoolean's value; None for NULL or another type.
+pub fn bool_of(value: CFTypeRef) -> Option<bool> {
+    unsafe {
+        if value.is_null() || CFGetTypeID(value) != CFBooleanGetTypeID() {
+            return None;
+        }
+        Some(CFBooleanGetValue(value) != 0)
+    }
+}
+
 /// A CFData's bytes; None for NULL or another type.
 pub fn data_of(value: CFTypeRef) -> Option<Vec<u8>> {
     unsafe {
@@ -178,6 +188,8 @@ extern "C" {
     fn CFDataGetBytePtr(data: CFTypeRef) -> *const u8;
     fn CFLocaleCopyPreferredLanguages() -> CFTypeRef;
     fn CFDictionaryGetTypeID() -> usize;
+    fn CFBooleanGetTypeID() -> usize;
+    fn CFBooleanGetValue(boolean: CFTypeRef) -> u8;
     fn CFDictionaryGetValue(dictionary: CFTypeRef, key: CFTypeRef) -> CFTypeRef;
     fn CFArrayGetTypeID() -> usize;
     fn CFArrayGetCount(array: CFTypeRef) -> CFIndex;

@@ -170,19 +170,14 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
         "新版本会在程序窗口关闭时安装，之后程序自动重启。"),
     ("updates.auto.info", "Как проходит автоматическое обновление", "How automatic updates work", "自动更新如何进行"),
     ("autostart", "Запускать при входе в Windows", "Start with Windows", "开机自动启动"),
-    ("refresh.onConnect", "Сразу показывать подключённые устройства", "Show newly connected devices right away",
-        "立即显示新连接的设备"),
+    ("refresh.onConnect", "Автоматически искать новые устройства", "Look for new devices automatically",
+        "自动查找新设备"),
     ("refresh.onConnect.hint",
-        "Когда к компьютеру подключают устройство, программа сразу опрашивает устройства, и новое появляется в списке \
-         и в трее за несколько секунд. Если выключить, оно появится при следующем плановом опросе (обычно в пределах \
-         пары минут) или по кнопке «Обновить заряд». Заряд устройств, которые уже показаны, обновляется в любом \
-         случае. Выключите, если после подключения устройств что-то работает не так.",
-        "When a device is connected to the computer, the app polls the devices right away, and the new one shows up \
-         in the list and the tray within seconds. Turned off, it shows up at the next scheduled poll (usually within a \
-         couple of minutes) or when you refresh the battery levels. The levels of the devices already shown keep \
-         updating either way. Turn it off if something misbehaves after devices are connected.",
-        "设备连接到电脑时，程序会立即查询设备，新设备几秒内就会出现在列表和托盘中。关闭后，新设备会在下一次定时查询时出现（通常在几分钟内），\
-         或在点击“刷新电量”后出现。已显示设备的电量无论如何都会照常更新。如果连接设备后出现异常，可以关闭此项。"),
+        "Программа сама ищет новые устройства в фоне. Если выключить, нажимайте «Обновить заряд», чтобы найти новое \
+         устройство. Заряд уже найденных устройств обновляется автоматически в любом случае.",
+        "The app looks for new devices in the background. Turned off, press Refresh to find a new device. The levels \
+         of the devices already found update automatically either way.",
+        "程序会在后台自动查找新设备。关闭后，请点击“刷新电量”查找新设备。已找到设备的电量始终会自动更新。"),
     ("refresh.onConnect.info", "Что меняет этот переключатель", "What this setting changes", "此选项的作用"),
     ("open.folder", "Открыть папку с логом и настройками", "Open the log and settings folder", "打开日志和设置文件夹"),
     ("feedback", "Предложить улучшение", "Suggest an improvement", "提出改进建议"),
@@ -309,17 +304,7 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
 #[cfg(target_os = "macos")]
 static MAC: &[(&str, &str, &str, &str)] = &[
     ("autostart", "Открывать при входе в систему", "Open at login", "登录时打开"),
-    ("refresh.onConnect.hint",
-        "Когда к Mac подключают устройство, программа сразу опрашивает устройства, и новое появляется в списке и в \
-         строке меню за несколько секунд. Если выключить, оно появится при следующем плановом опросе (обычно в \
-         пределах пары минут) или по команде «Обновить заряд». Заряд устройств, которые уже показаны, обновляется в \
-         любом случае. Выключите, если после подключения устройств что-то работает не так.",
-        "When a device is connected to the Mac, the app polls the devices right away, and the new one shows up in the \
-         list and the menu bar within seconds. Turned off, it shows up at the next scheduled poll (usually within a \
-         couple of minutes) or when you refresh the battery levels. The levels of the devices already shown keep \
-         updating either way. Turn it off if something misbehaves after devices are connected.",
-        "设备连接到 Mac 时，程序会立即查询设备，新设备几秒内就会出现在列表和菜单栏中。关闭后，新设备会在下一次定时查询时出现（通常在几分钟内），\
-         或在点击“刷新电量”后出现。已显示设备的电量无论如何都会照常更新。如果连接设备后出现异常，可以关闭此项。"),
+
     ("autostart.banner", "BatteryTray не открывается при входе в систему", "BatteryTray doesn't open at login",
         "BatteryTray 未设置登录时打开"),
     ("charged.hint", "Уведомление macOS. Работает с устройствами, которые сами сообщают, что зарядились",

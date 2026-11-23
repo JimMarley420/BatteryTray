@@ -32,6 +32,8 @@ pub fn glyph(kind: DeviceKind) -> &'static str {
         DeviceKind::Keyboard => "\u{E765}",
         DeviceKind::Gamepad => "\u{E7FC}",
         DeviceKind::Other => "\u{E772}",
+        DeviceKind::Phone => "\u{E8EA}",
+        DeviceKind::Tablet => "\u{E70A}",
     }
 }
 

@@ -222,6 +222,8 @@ func symbol(_ kind: String) -> String {
     case "mouse": return "computermouse"
     case "keyboard": return "keyboard"
     case "gamepad": return "gamecontroller"
+    case "phone": return "iphone"
+    case "tablet": return "ipad"
     default: return "dot.radiowaves.left.and.right"
     }
 }

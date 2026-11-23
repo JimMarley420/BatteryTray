@@ -8,7 +8,7 @@ use batterytray::autostart;
 use batterytray::hid;
 use batterytray::loc::{self, t, tf};
 use batterytray::log;
-use batterytray::monitor::{Monitor, Pusher};
+use batterytray::monitor::{self, Monitor, Pusher};
 use batterytray::providers::{self, Provider};
 use batterytray::reading::{DeviceKind, DeviceReading};
 use batterytray::rows::{self, AlertItem, AlertManager, ChargeDoneWatcher, DeviceRow};
@@ -106,6 +106,7 @@ impl MacApp {
         settings.last_run_version = Some(version.clone());
         settings.save_to(&settings_path);
         loc::set(loc::resolve(Some(&settings.language)));
+        monitor::set_polls_on_connect(settings.refresh_on_connect);
         let state = Arc::new(StateStore::load_from(folder.join("state.json")));
 
         let external = External::default();
@@ -180,6 +181,7 @@ impl MacApp {
     }
 
     fn settings_changed(&mut self) -> Effects {
+        monitor::set_polls_on_connect(self.settings.refresh_on_connect);
         if let Some(u) = &self.updates {
             u.set_auto_update(self.settings.auto_update);
         }
@@ -340,10 +342,10 @@ impl MacApp {
         }
     }
 
-    /// The system says a device came or went: the devices are asked again right away (see Monitor::devices_changed),
-    /// unless the settings say to wait for their schedules.
+    /// The system says a device came or went: the devices are asked again right away, unless the settings say to wait
+    /// for their schedules (see Monitor::devices_changed).
     pub fn devices_changed(&self) {
-        if let Some(m) = self.monitor.as_ref().filter(|_| self.settings.refresh_on_connect) {
+        if let Some(m) = &self.monitor {
             m.devices_changed();
         }
     }
@@ -588,6 +590,8 @@ pub fn kind(kind: DeviceKind) -> &'static str {
         DeviceKind::Keyboard => "keyboard",
         DeviceKind::Gamepad => "gamepad",
         DeviceKind::Other => "other",
+        DeviceKind::Phone => "phone",
+        DeviceKind::Tablet => "tablet",
     }
 }
 
