@@ -278,7 +278,9 @@ pub fn main() {
     ]))));
     alert.set_critical(true);
     alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
-    // As tall as its contents, as the app sizes it (the window has no size of its own before it is shown)
+    // As tall as its contents, as the app sizes it: measured once laid out at its width (before that its rows have no
+    // width to wrap in, and it measures short)
+    lay_out(&window, scale, (376.0, 400.0));
     let height = alert.get_content_height();
     render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert.png"));
 
@@ -293,6 +295,7 @@ pub fn main() {
         critical: false,
     }]))));
     alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
+    lay_out(&window, scale, (376.0, 400.0));
     let height = alert.get_content_height();
     render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert-low.png"));
 
