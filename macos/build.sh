@@ -60,9 +60,22 @@ if cargo about --version >/dev/null 2>&1; then
 else
   echo "warning: cargo-about isn't installed: the app has no THIRD_PARTY_LICENSES.md, a release must not go out so" >&2
 fi
-# Ad hoc: no Developer ID. macOS asks once whether to open an app downloaded from the internet
-codesign --force --sign - "$APP"
+# The signature macOS ties the app's permissions to (Bluetooth, Input Monitoring, Local Network). The project's own
+# certificate, "BatteryTray Code Signing" (in the keychain, or the identity in BATTERYTRAY_SIGNING_IDENTITY), is the
+# same for every version, so the permissions stay from one version to the next. It isn't Apple's Developer ID: macOS
+# still wants "Open Anyway" once for an app downloaded from the internet. Without it the app is signed ad hoc, and
+# macOS sees each build as another app and asks for the permissions again.
+SIGN="${BATTERYTRAY_SIGNING_IDENTITY:-}"
+if [ -z "$SIGN" ]; then
+  SIGN=$(security find-identity -p codesigning 2>/dev/null | awk '/"BatteryTray Code Signing"/ { print $2; exit }')
+fi
+if [ -z "$SIGN" ]; then
+  echo "warning: no \"BatteryTray Code Signing\" identity: signed ad hoc, a release must not go out so" >&2
+  SIGN=-
+fi
+codesign --force --sign "$SIGN" "$APP"
 codesign --verify --strict "$APP"
+echo "== signed: $(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')"
 
 rm -f "$OUT/BatteryTray-macOS.zip"
 ditto -c -k --keepParent "$APP" "$OUT/BatteryTray-macOS.zip"

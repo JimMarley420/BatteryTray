@@ -17,6 +17,9 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+      MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
@@ -37,6 +40,21 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Tests
         run: cargo test --workspace --locked
+      - name: The signing identity
+        # The project's own certificate, kept in the repository's secrets: every version of the app is signed with
+        # it, so macOS keeps the permissions it gave the app. Without the secrets (a fork's pull request) the app is
+        # signed ad hoc.
+        if: env.MACOS_SIGNING_P12 != ''
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          echo "$MACOS_SIGNING_P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$MACOS_SIGNING_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
       - name: Build the app
         run: macos/build.sh universal
       - name: Draw the windows

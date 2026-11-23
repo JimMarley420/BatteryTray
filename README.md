@@ -191,7 +191,7 @@ macOS asks for each of them by itself, once, when it is first needed:
 
 Nothing else: no Accessibility, no Screen Recording, no administrator password (except to update a copy in an administrator's Applications folder).
 
-**Limits of an app without an Apple Developer ID.** The app is signed ad hoc, not with Apple's paid Developer ID, and isn't notarized. So macOS needs **Open Anyway** once, and after an update it may ask for the permissions above again, because it sees each version as a different app.
+**What the signature means.** The app is signed with the project's own certificate, not with Apple's paid Developer ID, and isn't notarized. So macOS needs **Open Anyway** once, at the first start. The certificate is the same for every version, so the permissions you give stay after updates.
 
 Settings and the log are in `~/Library/Application Support/BatteryTray`, the login item is `~/Library/LaunchAgents/io.github.qu1ncky.BatteryTray.plist`. To remove the app, turn **Open at login** off, quit it from its menu and move it to the Trash.
 
