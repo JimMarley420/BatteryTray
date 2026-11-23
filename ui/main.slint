@@ -46,7 +46,6 @@ export component MainWindow inherits Window {
     in property <string> install-text;
     in property <bool> check-enabled: true;
     in property <bool> auto-update;
-    in property <bool> refresh-on-connect: true;
     // Settings / Reminders
     in property <int> low;
     in property <int> critical;
@@ -87,7 +86,6 @@ export component MainWindow inherits Window {
     callback grant-admin();
     callback dismiss-admin-banner();
     callback auto-update-changed(on: bool);
-    callback refresh-on-connect-changed(on: bool);
     callback low-changed(value: int);
     callback critical-changed(value: int);
     callback repeat-changed(value: int);
@@ -355,7 +353,6 @@ export component MainWindow inherits Window {
                 GeneralPage {
                     visible: root.settings-tab == 0;
                     autostart: root.autostart;
-                    refresh-on-connect: root.refresh-on-connect;
                     language: root.language;
                     update-status: root.update-status;
                     update-checked-text: root.update-checked-text;
@@ -365,7 +362,6 @@ export component MainWindow inherits Window {
                     check-enabled: root.check-enabled;
                     auto-update: root.auto-update;
                     autostart-changed(on) => { root.autostart-changed(on); }
-                    refresh-on-connect-changed(on) => { root.refresh-on-connect-changed(on); }
                     language-chosen(language) => { root.language-chosen(language); }
                     install-update => { root.install-update(); }
                     check-updates => { root.check-updates(); }

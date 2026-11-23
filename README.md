@@ -26,7 +26,7 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 
 - **The level always in sight** — in the Windows tray or the Mac menu bar, the number of the device that most needs charging: green, yellow below its reminder level, red below its critical level, blue while charging. Hover it (Windows) or click it (Mac) to see every device.
 - **All devices in one window** — connected ones as cards with their percentage, the rest with the last known level and when it was seen. Each device's **⋯** menu renames it, pins it to the top or hides it under "Hidden"; drag a card to change the order (the overlay and the tray follow it).
-- **New devices show up by themselves** — plug in a receiver or connect a Bluetooth headset and it appears within seconds. If that ever gets in the way, turn off **Look for new devices automatically** in Settings → General: new devices then wait for the refresh button, the levels of the ones already found keep updating.
+- **New devices show up by themselves** — plug in a receiver or connect a Bluetooth headset and it appears within seconds.
 - **Low battery reminder that can't be missed** — its own always-on-top window in the corner, not a toast: Do Not Disturb doesn't hide it, it doesn't time out and it doesn't steal focus from a game. "Remind me in N min" or "Don't remind me until it's charged"; at the critical level it comes back even if snoozed.
 
   <img src="docs/reminder-en.png" alt="BatteryTray's low battery reminder: AirPods Pro at 18% and a Razer Barracuda X at a critical 14%, with Remind me in 10 min and Don't remind me until it's charged" width="340">
@@ -231,8 +231,8 @@ Yes, while it is on a cable and trusts the Mac (Finder asks for that the first t
 **And my Android phone on Windows?**
 Yes, while it is on the cable in "File transfer" mode (in "Charging only" Windows doesn't see it as a device).
 
-**A new device doesn't show up / I'd rather the app didn't look for devices by itself.**
-Devices appear within seconds of connecting. Press "Refresh battery levels" to look right away; to turn the automatic search off, uncheck **Look for new devices automatically** in Settings → General (the levels of the devices already found keep updating).
+**A new device doesn't show up.**
+Devices appear within seconds of connecting. Press "Refresh battery levels" to look right away.
 
 **Does it work on a Mac with Apple Silicon (M1, M2, M3, M4) and on Intel Macs?**
 Yes, the macOS app is one universal app for both, macOS 13 Ventura or later.

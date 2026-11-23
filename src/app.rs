@@ -10,7 +10,7 @@ use crate::autostart::{self, BACKGROUND_SWITCH};
 use crate::hotkey::Gesture;
 use crate::loc::{self, t, tf};
 use crate::main_view::MainView;
-use crate::monitor::{self, Monitor};
+use crate::monitor::Monitor;
 use crate::overlay::{Overlay, Rect};
 use crate::reading::DeviceReading;
 use crate::rows::{self, AlertManager, ChargeDoneWatcher, DeviceRow};
@@ -257,7 +257,7 @@ impl App {
         settings.last_run_version = Some(version());
         settings.save();
         loc::set(loc::resolve(Some(&settings.language)));
-        monitor::set_polls_on_connect(settings.refresh_on_connect);
+        // New devices are always looked for on Windows: the polls when a device connects have no switch here
         let state = Arc::new(StateStore::load());
 
         let monitor = Monitor::start(providers::create(&state), state.clone(), || {
@@ -430,7 +430,6 @@ impl App {
 
     fn settings_changed(&mut self) {
         self.save_later();
-        monitor::set_polls_on_connect(self.settings.refresh_on_connect);
         if let Some(u) = &self.updates {
             u.set_auto_update(self.settings.auto_update);
         }

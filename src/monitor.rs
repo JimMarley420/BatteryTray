@@ -21,7 +21,8 @@ pub fn no_push() -> Pusher {
 
 /// Settings > General, "Look for new devices automatically": whether a device the system reports, or one a provider
 /// sees arrive by itself, brings the polls forward. Off, a new device waits for the schedules or a refresh; the levels
-/// of the devices already found are polled either way. The apps set it from their settings.
+/// of the devices already found are polled either way. Only the macOS app sets it, from its settings; on Windows it
+/// stays on.
 static ON_CONNECT: AtomicBool = AtomicBool::new(true);
 
 pub fn set_polls_on_connect(on: bool) {
