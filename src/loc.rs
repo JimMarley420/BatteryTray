@@ -293,6 +293,8 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
         "the level shows once a game or Steam uses the controller", "游戏或 Steam 使用手柄后才会显示电量"),
     ("d.fourLevels", "примерно: геймпад сообщает только 4 уровня", "approximate: the controller reports only 4 levels",
         "约值：手柄仅报告 4 个等级"),
+    ("d.fiveLevels", "примерно: геймпад сообщает только 5 уровней", "approximate: the controller reports only 5 levels",
+        "约值：手柄仅报告 5 个等级"),
     ("d.tenSteps", "примерно: мышь сообщает заряд шагами по 10%", "approximate: the mouse reports the level in 10% steps",
         "约值：鼠标以 10% 为单位报告电量"),
     ("d.unknownModel", "заряд этой модели программа пока не читает — её поможет добавить лог",
