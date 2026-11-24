@@ -13,12 +13,22 @@ use std::path::PathBuf;
 
 pub const AUTO: &str = "auto";
 
-/// Win32 hotkey modifiers, without the registration-only MOD_NOREPEAT flag.
+/// Win32 hotkey modifiers, without the registration-only MOD_NOREPEAT flag. A shortcut is kept as a Win32 virtual key
+/// and these on macOS too, where Alt is ⌥ (Option), Ctrl is ⌃ (Control) and MOD_WIN is ⌘ (Command).
 pub const MOD_ALT: i32 = 0x0001;
 pub const MOD_CONTROL: i32 = 0x0002;
 pub const MOD_SHIFT: i32 = 0x0004;
-/// Ctrl+Alt+V
+pub const MOD_WIN: i32 = 0x0008;
+/// Ctrl+Alt+V (⌃⌥V on macOS)
 pub const DEFAULT_HOTKEY: (i32, i32) = (0x56, MOD_ALT | MOD_CONTROL);
+/// What the fields in Settings > Reminders take (RemindersPage in ui/settings.slint, ReminderSettings in
+/// macos/BatteryTray/SettingsWindow.swift; a device's levels in its menu too). Their sliders cover the usual part of it
+/// (reminder level 10-50%, critical 5-45%, repeat 1-60 min, closing 3-15 s) and stand at an end for a typed value past
+/// it. The critical level is never above the reminder level. The repeat and the closing have no real end: 99 999
+/// minutes or seconds is the most a field holds.
+pub const LEVEL_PERCENT: (i32, i32) = (1, 100);
+pub const REPEAT_MINUTES: (i32, i32) = (1, 99_999);
+pub const AUTO_CLOSE_SECONDS: (i32, i32) = (1, 99_999);
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -66,6 +76,10 @@ pub struct AppSettings {
     pub language: String,
     /// A Windows notification when a device finishes charging.
     pub notify_charged: bool,
+    /// The low battery reminder closes on its own after `auto_close_seconds`, as if snoozed (the default); off, it
+    /// waits for an answer.
+    pub auto_close: bool,
+    pub auto_close_seconds: i32,
     pub auto_update: bool,
     pub overlay_enabled: bool,
     pub overlay_hotkey_key: i32,
@@ -102,6 +116,8 @@ impl Default for AppSettings {
             sound: true,
             language: AUTO.into(),
             notify_charged: true,
+            auto_close: true,
+            auto_close_seconds: 10,
             auto_update: true,
             overlay_enabled: false,
             overlay_hotkey_key: DEFAULT_HOTKEY.0,
@@ -122,6 +138,16 @@ impl Default for AppSettings {
 /// A shortcut the overlay may use: Ctrl or Alt with an ordinary key, or a function key alone (not F12); the
 /// clipboard shortcuts and Alt+F4 stay with the focused app.
 pub fn hotkey_valid(key: i32, modifiers: i32) -> bool {
+    if cfg!(target_os = "macos") {
+        macos_hotkey_valid(key, modifiers)
+    } else {
+        windows_hotkey_valid(key, modifiers)
+    }
+}
+
+/// Windows: an ordinary key needs Ctrl or Alt (an F key goes alone); the Windows keys, F12 (the debugger's), Ctrl+C,
+/// Ctrl+V, Ctrl+X and Alt+F4 stay the system's.
+pub fn windows_hotkey_valid(key: i32, modifiers: i32) -> bool {
     (modifiers & !(MOD_ALT | MOD_CONTROL | MOD_SHIFT)) == 0
         && (0x08..=0xFE).contains(&key)
         && ![0x10, 0x11, 0x12, 0x14, 0x5B, 0x5C, 0x5D, 0x7B, 0x90, 0x91].contains(&key)
@@ -131,9 +157,24 @@ pub fn hotkey_valid(key: i32, modifiers: i32) -> bool {
         && !(modifiers == MOD_ALT && key == 0x73)
 }
 
+/// macOS: an ordinary key needs ⌘, ⌃ or ⌥ (an F key goes alone, F12 too); what every Mac app and the system answer
+/// stays theirs - ⌘Q, ⌘W, ⌘H, ⌘M, ⌘C, ⌘V, ⌘X, ⌘Z, ⌘A, ⌘Tab, ⌘`, ⌘Space, ⌃Space, ⇧⌘3/4/5 and ⌥⌘Esc.
+pub fn macos_hotkey_valid(key: i32, modifiers: i32) -> bool {
+    const COMMAND_KEYS: [i32; 12] = [0x51, 0x57, 0x48, 0x4D, 0x43, 0x56, 0x58, 0x5A, 0x41, 0x09, 0xC0, 0x20];
+    (modifiers & !(MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN)) == 0
+        && (0x08..=0xFE).contains(&key)
+        && ![0x10, 0x11, 0x12, 0x14, 0x5B, 0x5C, 0x5D, 0x90, 0x91].contains(&key)
+        && !(0xA0..=0xA5).contains(&key)
+        && ((modifiers & (MOD_ALT | MOD_CONTROL | MOD_WIN)) != 0 || (0x70..=0x87).contains(&key))
+        && !(modifiers == MOD_WIN && COMMAND_KEYS.contains(&key))
+        && !(modifiers == MOD_CONTROL && key == 0x20)
+        && !(modifiers == MOD_WIN | MOD_SHIFT && [0x33, 0x34, 0x35].contains(&key))
+        && !(modifiers == MOD_WIN | MOD_ALT && key == 0x1B)
+}
+
 impl AppSettings {
     pub fn path() -> PathBuf {
-        crate::win::app_data_folder().join("settings.json")
+        crate::sys::app_data_folder().join("settings.json")
     }
 
     pub fn load() -> Self {
@@ -183,6 +224,8 @@ impl AppSettings {
                 "Sound" => set(&mut s.sound, v.as_bool()),
                 "Language" => set(&mut s.language, v.as_str().map(str::to_string)),
                 "NotifyCharged" => set(&mut s.notify_charged, v.as_bool()),
+                "AutoClose" => set(&mut s.auto_close, v.as_bool()),
+                "AutoCloseSeconds" => set(&mut s.auto_close_seconds, int(v)),
                 "AutoUpdate" => set(&mut s.auto_update, v.as_bool()),
                 "OverlayEnabled" => set(&mut s.overlay_enabled, v.as_bool()),
                 "OverlayHotkeyKey" => set(&mut s.overlay_hotkey_key, int(v)),
@@ -241,9 +284,10 @@ impl AppSettings {
 
     /// Keeps every level and choice within what the app offers (as the C# app does on load).
     pub fn normalize(&mut self) {
-        self.low_percent = self.low_percent.clamp(10, 50);
-        self.critical_percent = self.critical_percent.clamp(5, self.low_percent - 5);
-        self.repeat_minutes = self.repeat_minutes.clamp(1, 120);
+        self.low_percent = self.low_percent.clamp(LEVEL_PERCENT.0, LEVEL_PERCENT.1);
+        self.critical_percent = self.critical_percent.clamp(LEVEL_PERCENT.0, self.low_percent);
+        self.repeat_minutes = self.repeat_minutes.clamp(REPEAT_MINUTES.0, REPEAT_MINUTES.1);
+        self.auto_close_seconds = self.auto_close_seconds.clamp(AUTO_CLOSE_SECONDS.0, AUTO_CLOSE_SECONDS.1);
         if !hotkey_valid(self.overlay_hotkey_key, self.overlay_hotkey_modifiers) {
             (self.overlay_hotkey_key, self.overlay_hotkey_modifiers) = DEFAULT_HOTKEY;
         }
@@ -259,9 +303,9 @@ impl AppSettings {
             if d.low_percent.is_none() && d.critical_percent.is_none() {
                 continue;
             }
-            let own_low = d.low_percent.unwrap_or(low).clamp(10, 50);
+            let own_low = d.low_percent.unwrap_or(low).clamp(LEVEL_PERCENT.0, LEVEL_PERCENT.1);
             d.low_percent = Some(own_low);
-            d.critical_percent = Some(d.critical_percent.unwrap_or(critical).clamp(5, own_low - 5));
+            d.critical_percent = Some(d.critical_percent.unwrap_or(critical).clamp(LEVEL_PERCENT.0, own_low));
         }
         // A device has one place in the user's order: named twice (by hand), the first one counts
         let mut seen = HashSet::new();
@@ -301,10 +345,10 @@ impl AppSettings {
         self.devices.get(id).and_then(|d| d.low_percent).unwrap_or(self.low_percent)
     }
 
-    /// The critical level a device actually turns red at: its own when set, the global one otherwise. Never closer
-    /// than 5 below the level it alerts at, so a low custom level can't fire critical first.
+    /// The critical level a device actually turns red at: its own when set, the global one otherwise. Never above the
+    /// level it alerts at, so a low custom level can't fire critical first.
     pub fn critical_for(&self, id: &str) -> i32 {
-        self.devices.get(id).and_then(|d| d.critical_percent).unwrap_or(self.critical_percent).min(self.low_for(id) - 5)
+        self.devices.get(id).and_then(|d| d.critical_percent).unwrap_or(self.critical_percent).min(self.low_for(id))
     }
 
     pub fn display_name(&self, id: &str, fallback: &str) -> String {
@@ -332,42 +376,51 @@ impl AppSettings {
         true
     }
 
-    /// The general reminder level; the critical one stays at least 5 below it.
+    /// The general reminder level; the critical one goes no higher, pulled down along.
     pub fn set_low(&mut self, value: i32) {
-        self.low_percent = value.clamp(10, 50);
-        self.critical_percent = self.critical_percent.min(self.low_percent - 5);
+        self.low_percent = value.clamp(LEVEL_PERCENT.0, LEVEL_PERCENT.1);
+        self.critical_percent = self.critical_percent.min(self.low_percent);
     }
 
-    /// The general critical level; the reminder level stays at least 5 above it.
+    /// The general critical level; the reminder level goes up along when it would be lower.
     pub fn set_critical(&mut self, value: i32) {
-        self.critical_percent = value.clamp(5, 45);
-        self.low_percent = self.low_percent.max(self.critical_percent + 5);
+        self.critical_percent = value.clamp(LEVEL_PERCENT.0, LEVEL_PERCENT.1);
+        self.low_percent = self.low_percent.max(self.critical_percent);
     }
 
     pub fn set_repeat(&mut self, minutes: i32) {
-        self.repeat_minutes = minutes.clamp(1, 120);
+        self.repeat_minutes = minutes.clamp(REPEAT_MINUTES.0, REPEAT_MINUTES.1);
+    }
+
+    pub fn set_auto_close_seconds(&mut self, seconds: i32) {
+        self.auto_close_seconds = seconds.clamp(AUTO_CLOSE_SECONDS.0, AUTO_CLOSE_SECONDS.1);
+    }
+
+    /// How long the reminder stays before it closes on its own; None while it waits for an answer.
+    pub fn auto_close_after(&self) -> Option<std::time::Duration> {
+        self.auto_close.then(|| std::time::Duration::from_secs(self.auto_close_seconds as u64))
     }
 
     /// A reminder level entered for one device. It becomes the device's own, and the critical level with it: the one
-    /// in effect until now, pulled down when it would be closer than 5. Entering the level the device has already
-    /// changes nothing, so a device that follows the general levels goes on following them when the focus only
-    /// passes through its field.
+    /// in effect until now, pulled down when it would be higher. Entering the level the device has already changes
+    /// nothing, so a device that follows the general levels goes on following them when the focus only passes through
+    /// its field.
     pub fn set_device_low(&mut self, id: &str, value: i32) {
         let (was, critical) = (self.low_for(id), self.critical_for(id));
-        let low = value.clamp(10, 50);
+        let low = value.clamp(LEVEL_PERCENT.0, LEVEL_PERCENT.1);
         if low == was {
             return;
         }
         let d = self.device_mut(id);
         d.low_percent = Some(low);
-        d.critical_percent = Some(critical.min(low - 5));
+        d.critical_percent = Some(critical.min(low));
     }
 
-    /// A critical level entered for one device: no higher than 5 below its reminder level, which becomes the
-    /// device's own with it. Entering the level the device has already changes nothing.
+    /// A critical level entered for one device: no higher than its reminder level, which becomes the device's own with
+    /// it. Entering the level the device has already changes nothing.
     pub fn set_device_critical(&mut self, id: &str, value: i32) {
         let (low, was) = (self.low_for(id), self.critical_for(id));
-        let critical = value.min(low - 5).max(5);
+        let critical = value.min(low).max(LEVEL_PERCENT.0);
         if critical == was {
             return;
         }
@@ -578,17 +631,39 @@ mod tests {
         let mut s = AppSettings { low_percent: 80, critical_percent: 90, repeat_minutes: 0, ..Default::default() };
         s.device_mut("a").low_percent = Some(12);
         s.normalize();
-        assert_eq!((s.low_percent, s.critical_percent, s.repeat_minutes), (50, 45, 1));
-        assert_eq!((s.low_for("a"), s.critical_for("a")), (12, 7));
+        assert_eq!((s.low_percent, s.critical_percent, s.repeat_minutes), (80, 80, 1), "critical no higher");
+        assert_eq!((s.low_for("a"), s.critical_for("a")), (12, 12));
+        let mut s =
+            AppSettings { low_percent: 0, critical_percent: 500, repeat_minutes: 1_000_000, ..Default::default() };
+        s.normalize();
+        assert_eq!((s.low_percent, s.critical_percent, s.repeat_minutes), (1, 1, 99_999));
     }
 
     #[test]
     fn shortcuts() {
-        assert!(hotkey_valid(0x56, MOD_ALT | MOD_CONTROL));
-        assert!(hotkey_valid(0x71, 0), "F2 alone");
-        assert!(!hotkey_valid(0x7B, 0), "F12 is the debugger's");
-        assert!(!hotkey_valid(0x41, 0), "an ordinary key needs Ctrl or Alt");
-        assert!(!hotkey_valid(0x43, MOD_CONTROL), "Ctrl+C");
+        let valid = windows_hotkey_valid;
+        assert!(valid(0x56, MOD_ALT | MOD_CONTROL));
+        assert!(valid(0x71, 0), "F2 alone");
+        assert!(!valid(0x7B, 0), "F12 is the debugger's");
+        assert!(!valid(0x41, 0), "an ordinary key needs Ctrl or Alt");
+        assert!(!valid(0x43, MOD_CONTROL), "Ctrl+C");
+        assert!(!valid(0x56, MOD_WIN | MOD_ALT), "the Windows key is the system's");
+    }
+
+    #[test]
+    fn shortcuts_on_a_mac() {
+        let valid = macos_hotkey_valid;
+        assert!(valid(DEFAULT_HOTKEY.0, DEFAULT_HOTKEY.1), "⌃⌥V");
+        assert!(valid(0x42, MOD_WIN | MOD_SHIFT), "⇧⌘B");
+        assert!(valid(0x56, MOD_WIN | MOD_ALT), "⌥⌘V");
+        assert!(valid(0x7B, 0), "F12 alone: no debugger there");
+        assert!(!valid(0x41, MOD_SHIFT), "an ordinary key needs ⌘, ⌃ or ⌥");
+        assert!(!valid(0x43, MOD_WIN), "⌘C");
+        assert!(!valid(0x20, MOD_WIN), "⌘Space, Spotlight");
+        assert!(!valid(0x20, MOD_CONTROL), "⌃Space, the input source");
+        assert!(!valid(0x34, MOD_WIN | MOD_SHIFT), "⇧⌘4, a screenshot");
+        assert!(!valid(0x1B, MOD_WIN | MOD_ALT), "⌥⌘Esc, Force Quit");
+        assert!(!valid(0x5B, MOD_WIN), "a modifier alone");
     }
 
     #[test]
@@ -644,20 +719,20 @@ mod tests {
         let mut s = AppSettings::default(); // 20% and 10%
         s.set_device_low("a", 30);
         assert_eq!(levels(&s, "a"), (Some(30), Some(10)), "the other one as it was shown");
-        // Lowering it pulls the critical level along, 5 below
-        s.set_device_low("a", 12);
-        assert_eq!(levels(&s, "a"), (Some(12), Some(7)));
-        // The critical level goes no higher than 5 below the reminder level, which it doesn't move
+        // Lowering it under the critical level pulls that along
+        s.set_device_low("a", 7);
+        assert_eq!(levels(&s, "a"), (Some(7), Some(7)));
+        // The critical level goes no higher than the reminder level, which it doesn't move
         s.set_device_critical("b", 40);
-        assert_eq!(levels(&s, "b"), (Some(20), Some(15)));
+        assert_eq!(levels(&s, "b"), (Some(20), Some(20)));
         s.set_device_critical("b", 6);
         assert_eq!(levels(&s, "b"), (Some(20), Some(6)));
         // Out of range: the nearest that is in it
-        s.set_device_low("c", 99);
+        s.set_device_low("c", 199);
         s.set_device_critical("c", 0);
-        assert_eq!(levels(&s, "c"), (Some(50), Some(5)));
-        s.set_device_low("c", 3);
-        assert_eq!(levels(&s, "c"), (Some(10), Some(5)));
+        assert_eq!(levels(&s, "c"), (Some(100), Some(1)));
+        s.set_device_low("c", -3);
+        assert_eq!(levels(&s, "c"), (Some(1), Some(1)));
         // The general levels and the reminders' switch are someone else's
         assert_eq!((s.low_percent, s.critical_percent, s.device("a").alerts), (20, 10, true));
         let entered = s.clone();
@@ -671,14 +746,14 @@ mod tests {
         s.set_device_low("a", 20);
         s.set_device_critical("a", 10);
         assert_eq!(s, AppSettings::default(), "it still follows the general levels");
-        s.set_low(10);
-        s.set_device_low("a", 3);
+        s.set_low(1);
+        s.set_device_low("a", -3);
         s.set_device_critical("a", 99);
         assert!(s.devices.is_empty(), "nor when the nearest level in range is the one it has");
         // A device with its own levels keeps them, also when they equal the general ones again
         s.set_device_low("a", 30);
-        s.set_device_low("a", 10);
-        assert_eq!((s.device("a").low_percent, s.device("a").critical_percent), (Some(10), Some(5)));
+        s.set_device_low("a", 1);
+        assert_eq!((s.device("a").low_percent, s.device("a").critical_percent), (Some(1), Some(1)));
     }
 
     #[test]
@@ -696,23 +771,47 @@ mod tests {
     }
 
     #[test]
-    fn the_general_levels_keep_their_distance() {
+    fn the_reminder_closes_on_its_own_unless_told_not_to() {
+        let s = AppSettings::default();
+        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(10)));
+        let (s, _) = AppSettings::from_value(&serde_json::json!({ "AutoClose": false }));
+        assert_eq!(s.auto_close_after(), None);
+        // A typed value past the slider's end is kept, up to what the field holds
+        let (mut s, clean) = AppSettings::from_value(&serde_json::json!({ "AutoClose": true, "AutoCloseSeconds": 60 }));
+        assert!(clean);
+        s.normalize();
+        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(60)));
+        let (mut s, _) = AppSettings::from_value(&serde_json::json!({ "AutoCloseSeconds": 1_000_000 }));
+        s.normalize();
+        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(99_999)));
+    }
+
+    #[test]
+    fn the_critical_level_is_never_above_the_reminder_level() {
         let mut s = AppSettings::default();
         s.set_device_low("own", 30);
-        s.set_low(12);
-        assert_eq!((s.low_percent, s.critical_percent), (12, 7));
+        s.set_low(7);
+        assert_eq!((s.low_percent, s.critical_percent), (7, 7), "the critical level pulled down along");
         s.set_critical(30);
-        assert_eq!((s.low_percent, s.critical_percent), (35, 30));
-        s.set_low(99);
-        s.set_critical(99);
-        assert_eq!((s.low_percent, s.critical_percent), (50, 45));
+        assert_eq!((s.low_percent, s.critical_percent), (30, 30), "the reminder level pushed up along");
+        s.set_low(199);
+        s.set_critical(199);
+        assert_eq!((s.low_percent, s.critical_percent), (100, 100));
         s.set_critical(0);
         s.set_low(0);
-        assert_eq!((s.low_percent, s.critical_percent), (10, 5));
+        assert_eq!((s.low_percent, s.critical_percent), (1, 1));
         s.set_repeat(0);
         assert_eq!(s.repeat_minutes, 1);
         s.set_repeat(500);
-        assert_eq!(s.repeat_minutes, 120);
+        assert_eq!(s.repeat_minutes, 500, "the field takes more than the slider's 60");
+        s.set_repeat(1_000_000);
+        assert_eq!(s.repeat_minutes, 99_999);
+        s.set_auto_close_seconds(0);
+        assert_eq!(s.auto_close_seconds, 1);
+        s.set_auto_close_seconds(45);
+        assert_eq!(s.auto_close_seconds, 45, "the field takes more than the slider's 15");
+        s.set_auto_close_seconds(1_000_000);
+        assert_eq!(s.auto_close_seconds, 99_999);
         assert_eq!((s.low_for("own"), s.critical_for("own")), (30, 10), "a device's own levels stay out of it");
     }
 

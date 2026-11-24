@@ -49,7 +49,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::providers::{hex_trimmed as hex, remaining_ms, secs, Provider};
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
@@ -199,7 +199,7 @@ fn u2_is_controller(d: &[u8]) -> bool {
     u2_is_reply(d, U2_INFO) && u16::from_le_bytes([d[U2_DATA + 4], d[U2_DATA + 5]]) == U2_CONTROLLER
 }
 
-fn ultimate2(io: &mut Io) -> win::Result<State> {
+fn ultimate2(io: &mut Io) -> sys::Result<State> {
     // Three questions at most, so none may wait long
     io.set_timeout(400);
     let link = io.ask(&u2_request(U2_LINK, 0), |d| u2_is_reply(d, U2_LINK), 8, false)?;
@@ -249,7 +249,7 @@ fn flydigi_state(body: &[u8], models: &[u8], steps: u8) -> Option<State> {
     }
 }
 
-fn flydigi(io: &mut Io, report_id: u8, models: &[u8], steps: u8) -> win::Result<State> {
+fn flydigi(io: &mut Io, report_id: u8, models: &[u8], steps: u8) -> sys::Result<State> {
     // While a game or Steam uses the controller its state arrives here a thousand times a second
     io.set_timeout(600);
     let reply = io.ask(&flydigi_request(report_id), |d| flydigi_reply(d, FLYDIGI_INFO).is_some(), 1000, false)?;
@@ -278,7 +278,7 @@ fn gamesir_nova_state(d: &[u8]) -> Option<State> {
     gamesir_level(d[18])
 }
 
-fn gamesir_nova(io: &mut Io) -> win::Result<State> {
+fn gamesir_nova(io: &mut Io) -> sys::Result<State> {
     // The controller's state frames share the collection: the wait is what ends the listening, not their number
     io.set_timeout(1000);
     let reply = io.ask(&[0x00, 0x01, 0x01], |d| d.len() >= 19 && d[0] == 0x01, 1000, false)?;
@@ -310,7 +310,7 @@ fn super_nova_name(product: Option<&str>) -> Option<String> {
     })
 }
 
-fn gamesir_super_nova(io: &mut Io) -> win::Result<State> {
+fn gamesir_super_nova(io: &mut Io) -> sys::Result<State> {
     // The controller's state frames share the collection
     io.set_timeout(900);
     let reply = io.ask(&[0x07, 0x03, 0x0A, 0x01], is_super_nova_reply, 400, false)?;
@@ -329,7 +329,7 @@ fn beitong_state(d: &[u8]) -> Option<State> {
     (1..=100).contains(&d[2]).then(|| on(d[2] as i32, d[4] == 0x51))
 }
 
-fn beitong_kp40d(io: &mut Io) -> win::Result<State> {
+fn beitong_kp40d(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(800);
     let reply = io.ask(&[0x02, 0x15], |d| d.len() >= 5 && d[0] == 0x02 && d[1] == 0x15, 20, false)?;
     Ok(reply.and_then(|d| beitong_state(&d)).unwrap_or_else(off))
@@ -362,7 +362,7 @@ fn shield_charger(d: &[u8]) -> (bool, bool) {
     (d[5] == 2, d[5] == 3)
 }
 
-fn shield(io: &mut Io) -> win::Result<State> {
+fn shield(io: &mut Io) -> sys::Result<State> {
     // The collection may be the one the controller's state arrives on: the wait ends the listening, not a count
     io.set_timeout(1000);
     let battery = io.ask(&[0x04, SHIELD_BATTERY, 0x00], |d| shield_is_reply(d, SHIELD_BATTERY), 1000, false)?;
@@ -503,10 +503,10 @@ fn is_steam_slot(info: &HidInfo) -> bool {
 /// Listens to one slot. `read` returns the next input report, or None when none came in the given milliseconds.
 /// `seen` gets, per kind of report, how many came and the first of them.
 fn listen(
-    mut read: impl FnMut(u32) -> win::Result<Option<Vec<u8>>>,
+    mut read: impl FnMut(u32) -> sys::Result<Option<Vec<u8>>>,
     heard: fn(&[u8]) -> Heard,
     seen: &mut Vec<(&'static str, usize, String)>,
-) -> win::Result<Slot> {
+) -> sys::Result<Slot> {
     let start = Instant::now();
     let mut deadline = start + Duration::from_millis(QUIET_MS);
     let mut on = false;
@@ -612,7 +612,7 @@ impl Provider for SteamControllerProvider {
 impl SteamControllerProvider {
     /// Logs what a slot sent the first time it is found quiet and the first time a controller is found on it in a
     /// session.
-    fn log_once(&mut self, id: &str, info: &HidInfo, slot: &win::Result<Slot>, seen: &[(&'static str, usize, String)]) {
+    fn log_once(&mut self, id: &str, info: &HidInfo, slot: &sys::Result<Slot>, seen: &[(&'static str, usize, String)]) {
         let online = matches!(slot, Ok(Slot::On(_)));
         if !self.logged.insert(format!("{id}{online}")) {
             return;
@@ -943,7 +943,7 @@ mod tests {
     }
 
     /// Reports handed out one by one, then silence.
-    fn reader(reports: Vec<Vec<u8>>) -> impl FnMut(u32) -> win::Result<Option<Vec<u8>>> {
+    fn reader(reports: Vec<Vec<u8>>) -> impl FnMut(u32) -> sys::Result<Option<Vec<u8>>> {
         let mut left = reports.into_iter();
         move |_| Ok(left.next())
     }

@@ -3,7 +3,7 @@
 
 import { ScrollView } from "std-widgets.slint";
 import { Palette, T, Glyph, Card, SectionHeader, Hint, Btn, StepSlider } from "theme.slint";
-import { SwitchRow, TipButton, InfoTip, NumberField, Dropdown, WideButton, ShortcutField, Divider, OverlayTabGlyph } from "controls.slint";
+import { SwitchRow, TipButton, InfoTip, NumberField, Dropdown, WideButton, ShortcutField, Divider, OverlayTabGlyph, Collapsible } from "controls.slint";
 
 // One of the three tabs: a glyph and a label, centred, and a bar along the bottom, in the accent colour under the
 // current one
@@ -302,8 +302,6 @@ export component GeneralPage inherits Page {
             Divider { }
             SwitchRow {
                 text: T.t("updates.auto");
-                hint: T.t("updates.auto.hint");
-                hint-label: T.t("updates.auto.info");
                 checked: root.auto-update;
                 toggled(on) => { root.auto-update-changed(on); }
             }
@@ -326,27 +324,36 @@ export component GeneralPage inherits Page {
     }
 }
 
-// "Reminders": the levels and the repeat interval, each a field and a slider; sound; the finished charge
+// "Reminders": the levels and the repeat interval, each a field and a slider; closing on its own, after a field and a
+// slider's seconds; sound; the finished charge
 export component RemindersPage inherits Page {
     in property <int> low;
     in property <int> critical;
     in property <int> repeat;
     in property <bool> sound;
     in property <bool> notify-charged;
+    in property <bool> auto-close;
+    in property <int> auto-close-seconds;
     // One of the number fields has the keyboard focus
-    out property <bool> field-focused: low-field.has-focus || critical-field.has-focus || repeat-field.has-focus;
+    out property <bool> field-focused: low-field.has-focus || critical-field.has-focus || repeat-field.has-focus
+        || close-field.has-focus;
     callback low-changed(int);
     callback critical-changed(int);
     callback repeat-changed(int);
     callback sound-changed(bool);
     callback notify-charged-changed(bool);
+    callback auto-close-changed(bool);
+    callback auto-close-seconds-changed(int);
     callback test-alert();
+    // A field is done with (Return, or its block closes under it): the window takes the focus back
+    callback fields-done();
 
     // Drops what was typed into the fields: they lose the focus afterwards with nothing to apply
     public function reset-fields() {
         low-field.reset();
         critical-field.reset();
         repeat-field.reset();
+        close-field.reset();
     }
 
     Card {
@@ -367,14 +374,16 @@ export component RemindersPage inherits Page {
                         horizontal-stretch: 1;
                         wrap: word-wrap;
                     }
+                    // The fields take what settings.rs does (LEVEL_PERCENT, REPEAT_MINUTES, AUTO_CLOSE_SECONDS); the
+                    // sliders cover the usual part of it
                     low-field := NumberField {
                         label: T.t("alerts.low");
                         value: root.low;
-                        minimum: 10;
-                        maximum: 50;
+                        minimum: 1;
                         unit: "%";
                         value-color: Palette.accent;
                         changed(v) => { root.low-changed(v); }
+                        submitted => { root.fields-done(); }
                     }
                 }
                 StepSlider {
@@ -414,11 +423,11 @@ export component RemindersPage inherits Page {
                     critical-field := NumberField {
                         label: T.t("alerts.critical");
                         value: root.critical;
-                        minimum: 5;
-                        maximum: 45;
+                        minimum: 1;
                         unit: "%";
                         value-color: Palette.accent;
                         changed(v) => { root.critical-changed(v); }
+                        submitted => { root.fields-done(); }
                     }
                 }
                 StepSlider {
@@ -448,19 +457,74 @@ export component RemindersPage inherits Page {
                         label: T.t("alerts.repeat");
                         value: root.repeat;
                         minimum: 1;
-                        maximum: 120;
+                        maximum: 99999;
                         unit: T.t("alerts.repeat.unit");
                         unit-gap: 4px;
                         value-color: Palette.accent;
                         changed(v) => { root.repeat-changed(v); }
+                        submitted => { root.fields-done(); }
                     }
                 }
                 StepSlider {
-                    minimum: 5;
+                    minimum: 1;
                     maximum: 60;
+                    step: 1;
                     label: T.t("alerts.repeat");
                     value: root.repeat;
                     changed(v) => { root.repeat-changed(v); }
+                }
+            }
+            Divider { }
+            SwitchRow {
+                text: T.t("alerts.autoclose");
+                checked: root.auto-close;
+                toggled(on) => {
+                    // Closing under a field that has the focus: it applies what it holds and gives the focus up
+                    if (!on && close-field.has-focus) {
+                        close-field.flush();
+                        root.fields-done();
+                    }
+                    root.auto-close-changed(on);
+                }
+            }
+            // Opens and closes smoothly with the switch. The field takes what AUTO_CLOSE_SECONDS in settings.rs does;
+            // the slider runs from 1 to 15 seconds and stands at an end for a value past that, as the repeat's does
+            Collapsible {
+                open: root.auto-close;
+                VerticalLayout {
+                    padding-right: 16px;
+                    padding-bottom: 12px;
+                    padding-left: 16px;
+                    spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Text {
+                            text: T.t("alerts.autoclose.after");
+                            color: Palette.text;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            wrap: word-wrap;
+                        }
+                        close-field := NumberField {
+                            label: T.t("alerts.autoclose.after");
+                            value: root.auto-close-seconds;
+                            minimum: 1;
+                            maximum: 99999;
+                            unit: T.t("alerts.autoclose.unit");
+                            unit-gap: 4px;
+                            value-color: Palette.accent;
+                            changed(v) => { root.auto-close-seconds-changed(v); }
+                            submitted => { root.fields-done(); }
+                        }
+                    }
+                    StepSlider {
+                        minimum: 1;
+                        maximum: 15;
+                        step: 1;
+                        label: T.t("alerts.autoclose.after");
+                        value: root.auto-close-seconds;
+                        changed(v) => { root.auto-close-seconds-changed(v); }
+                    }
                 }
             }
             Divider { }

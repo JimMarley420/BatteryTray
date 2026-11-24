@@ -30,7 +30,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
 use crate::state::StateStore;
-use crate::win;
+use crate::sys;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -161,6 +161,12 @@ impl Provider for SonixKeyboardProvider {
             secs(60)
         }
     }
+
+    /// A request may wake a dozing keyboard: one that is on the air is asked on its schedule only, also when another
+    /// device comes. Without one, a device change is a reason to look for it right away.
+    fn polls_on_device_change(&self, last: &[DeviceReading]) -> bool {
+        !last.iter().any(|r| r.online)
+    }
 }
 
 impl SonixKeyboardProvider {
@@ -193,7 +199,7 @@ impl SonixKeyboardProvider {
     }
 
     /// Asks for the level; None when the keyboard didn't answer or no reply has one.
-    fn query(&mut self, vendor: &HidInfo, trace: &mut Vec<String>) -> win::Result<Option<i32>> {
+    fn query(&mut self, vendor: &HidInfo, trace: &mut Vec<String>) -> sys::Result<Option<i32>> {
         let dev = HidDevice::open(vendor)?;
         for (i, form) in forms_to_try(self.answered.get(&vendor.path).copied()).into_iter().enumerate() {
             let mut reply = ask(&dev, form, trace)?;
@@ -221,7 +227,7 @@ fn forms_to_try(answered: Option<usize>) -> Vec<usize> {
 }
 
 /// Sends the battery request in one of its forms and waits for the reply to it; None when it didn't come.
-fn ask(dev: &HidDevice, form: usize, trace: &mut Vec<String>) -> win::Result<Option<Vec<u8>>> {
+fn ask(dev: &HidDevice, form: usize, trace: &mut Vec<String>) -> sys::Result<Option<Vec<u8>>> {
     dev.flush();
     let request = if form == 0 { request() } else { info_request() };
     trace.push(format!("> {}", hex(&request)));

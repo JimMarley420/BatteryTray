@@ -1,0 +1,2 @@
+/* The reason macOS shows when it asks for the Bluetooth permission */
+"NSBluetoothAlwaysUsageDescription" = "BatteryTray reads the battery level of your Bluetooth devices that macOS doesn't show.";

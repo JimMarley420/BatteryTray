@@ -39,7 +39,7 @@
 //! implementation. Read-only: only functions that read are sent. Not yet verified on hardware by this project.
 
 use super::{off, on, Io, Spec, State};
-use crate::win;
+use crate::sys;
 
 pub static SPECS: &[Spec] = &[
     Spec {
@@ -220,18 +220,18 @@ fn level_unknown() -> State {
 }
 
 /// Sends a request and reads until a frame ends the exchange, as `sort` sees it.
-fn exchange(io: &mut Io, prefix: &[u8], request: &[u8], sort: impl Fn(&[u8]) -> Reply) -> win::Result<Reply> {
+fn exchange(io: &mut Io, prefix: &[u8], request: &[u8], sort: impl Fn(&[u8]) -> Reply) -> sys::Result<Reply> {
     let ends = |report: &[u8]| payload(prefix, report).is_some_and(|p| sort(p) != Reply::Other);
     let report = io.ask(request, ends, READS, false)?;
     Ok(report.as_deref().and_then(|r| payload(prefix, r)).map_or(Reply::Gone, sort))
 }
 
-fn ask_directly(io: &mut Io, prefix: &[u8], feature: u8, function: u8, params: &[u8]) -> win::Result<Reply> {
+fn ask_directly(io: &mut Io, prefix: &[u8], feature: u8, function: u8, params: &[u8]) -> sys::Result<Reply> {
     let request = direct_request(prefix, feature, function, params);
     exchange(io, prefix, &request, |p| direct_reply(p, feature, function))
 }
 
-fn ask_headset(io: &mut Io, prefix: &[u8], bridge: u8, feature: u8, function: u8, params: &[u8]) -> win::Result<Reply> {
+fn ask_headset(io: &mut Io, prefix: &[u8], bridge: u8, feature: u8, function: u8, params: &[u8]) -> sys::Result<Reply> {
     let request = bridged_request(prefix, bridge, feature, function, params);
     exchange(io, prefix, &request, |p| bridged_reply(p, bridge, feature, function))
 }
@@ -239,7 +239,7 @@ fn ask_headset(io: &mut Io, prefix: &[u8], bridge: u8, feature: u8, function: u8
 /// A headset behind its receiver: find the bridge on the receiver, the battery feature on the headset, then ask
 /// it. Three exchanges a poll, as nothing is kept between polls; the indexes differ by model (the battery is
 /// feature 4 on a PRO X 2, 5 on a PRO X 3, 6 on an A20 X).
-fn behind_receiver(io: &mut Io, prefix: &[u8]) -> win::Result<State> {
+fn behind_receiver(io: &mut Io, prefix: &[u8]) -> sys::Result<State> {
     let Reply::Data(found) = ask_directly(io, prefix, ROOT, GET_FEATURE, &BRIDGE.to_be_bytes())? else {
         return Ok(off());
     };
@@ -260,7 +260,7 @@ fn behind_receiver(io: &mut Io, prefix: &[u8]) -> win::Result<State> {
 }
 
 /// The ASTRO A20 X on its cable has no bridge: the headset itself answers.
-fn on_its_cable(io: &mut Io, prefix: &[u8]) -> win::Result<State> {
+fn on_its_cable(io: &mut Io, prefix: &[u8]) -> sys::Result<State> {
     let battery = match ask_directly(io, prefix, ROOT, GET_FEATURE, &BATTERY.to_be_bytes())? {
         Reply::Data(found) => feature_index(&found),
         Reply::Refused => None,
@@ -299,7 +299,7 @@ fn a50_has_data(reply: &[u8]) -> bool {
 }
 
 /// The first data byte of the reply to a command, when the reply carries data.
-fn a50_ask(io: &mut Io, command: u8) -> win::Result<Option<u8>> {
+fn a50_ask(io: &mut Io, command: u8) -> sys::Result<Option<u8>> {
     // One reply per request and nothing unasked: the first report is the answer, whatever its status
     let reply = io.ask(&a50_request(command), |d| d.first() == Some(&A50_REPORT), 4, false)?;
     Ok(reply.filter(|r| a50_has_data(r)).map(|r| r[3]))
@@ -320,7 +320,7 @@ fn a50_state(battery: u8) -> State {
     }
 }
 
-fn astro_a50_gen4(io: &mut Io) -> win::Result<State> {
+fn astro_a50_gen4(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(A50_TIMEOUT_MS);
     if !a50_ask(io, A50_HEADSET_STATE)?.is_some_and(a50_is_there) {
         return Ok(off());

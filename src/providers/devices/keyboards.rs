@@ -50,7 +50,7 @@ use crate::loc::t;
 use crate::providers::{secs, Provider};
 use crate::reading::DeviceReading;
 use crate::state::StateStore;
-use crate::win;
+use crate::sys;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -291,6 +291,13 @@ impl Provider for KeyboardProvider {
             self.table.delay(last)
         }
     }
+
+    /// A keyboard on the air, and a stranger's that never answered, are asked on their schedules only, also when
+    /// another device comes: a request may keep a keyboard awake. With neither, a device change is a reason to look
+    /// for a keyboard right away.
+    fn polls_on_device_change(&self, last: &[DeviceReading]) -> bool {
+        !last.iter().any(|r| r.online) && !(last.is_empty() && self.strangers)
+    }
 }
 
 /// Whether a reading is of a `KEPT_AWAKE` keyboard that answered over its receiver: on its cable it is powered and
@@ -428,7 +435,7 @@ impl Evision {
     }
 }
 
-fn evision(io: &mut Io, how: &Evision) -> win::Result<State> {
+fn evision(io: &mut Io, how: &Evision) -> sys::Result<State> {
     io.set_timeout(how.wait_ms);
     for _ in 0..how.tries {
         let tag = how.next_tag();
@@ -472,7 +479,7 @@ pub fn board_5088(product: Option<&str>) -> Option<(Option<&'static str>, &'stat
     Some((*name, if *vgn { &VGN } else { &ATK }))
 }
 
-fn evision_5088(io: &mut Io) -> win::Result<State> {
+fn evision_5088(io: &mut Io) -> sys::Result<State> {
     let Some((name, how)) = board_5088(io.info().product.as_deref()) else { return Ok(off()) };
     let state = evision(io, how)?;
     Ok(State { name: name.map(str::to_string), ..state })
@@ -489,7 +496,7 @@ const AULA_ANSWER_MS: u64 = 500;
 /// is listened to first, and asked only once it has said "up": a mouse lying idle sends nothing, is sent nothing
 /// and comes out as off until it moves. The vendor's software wraps the request in a "start" and an "end" (commands
 /// 01 and 02); the mouse answers without them, and they aren't sent.
-fn aula_8k(io: &mut Io) -> win::Result<State> {
+fn aula_8k(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(AULA_LINK_MS);
     let link = io.receive(|d| aula_link(d).is_some(), 64)?.and_then(|r| aula_link(&r));
     if link != Some(true) {
@@ -532,7 +539,7 @@ const SEMICO_STATUS: [u8; 5] = [0xAA, 0x55, 0xCC, 0x33, 0x0E];
 
 /// The vendor's tool asks the same way every 5 seconds. The neighbours of command 0E write (07 lighting, 08 factory
 /// reset, 0C sleep timer), so nothing but this one frame is ever sent.
-fn semico(io: &mut Io) -> win::Result<State> {
+fn semico(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(600);
     let mut request = vec![0x00];
     request.extend_from_slice(&SEMICO_STATUS);
@@ -563,7 +570,7 @@ pub fn semico_state(reply: &[u8]) -> State {
 
 /// VIA's "custom get value" (08) of value 7 on channel 0, which is where URX HUB reads the level. No charging
 /// state: the reply was the same with the cable in. The first request can be lost while the link wakes up.
-fn via_battery(io: &mut Io) -> win::Result<State> {
+fn via_battery(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(600);
     for _ in 0..2 {
         if let Some(reply) = io.ask(&[0x00, 0x08, 0x00, 0x07], |d| via_level(d).is_some(), 8, false)? {
@@ -594,7 +601,7 @@ pub enum MchoseInfo {
 }
 
 /// Wireless-Device-Battery-Monitor asks at most every 3 minutes, "to avoid repeatedly waking an idle keyboard".
-fn mchose_k87_v3(io: &mut Io) -> win::Result<State> {
+fn mchose_k87_v3(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(300);
     for _ in 0..3 {
         let reply = io.ask(&mchose_request(), |d| mchose_info(d).is_some(), 16, false)?;
@@ -641,7 +648,7 @@ pub fn mchose_info(report: &[u8]) -> Option<MchoseInfo> {
 
 /// Command Center sends 0E A1 as a feature report without an ID (as report 0E the receiver ignores it) and gets the
 /// answer as an input report. The receiver sends other 0E reports by itself (0E 05, 0E 17, 0E 83 ...).
-fn alienware_pro(io: &mut Io) -> win::Result<State> {
+fn alienware_pro(io: &mut Io) -> sys::Result<State> {
     let mut request = vec![0u8; 65];
     request[1..3].copy_from_slice(&[0x0E, 0xA1]);
     if !io.set_feature(&request) {

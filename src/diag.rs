@@ -1,6 +1,6 @@
 //! What `--dump` writes: every provider polled once, in the format of the C# app's dump.
 
-use crate::{hid, monitor, providers, state::StateStore, win};
+use crate::{hid, monitor, providers, state::StateStore, sys};
 use std::sync::Arc;
 
 pub fn dump_lines() -> Vec<String> {
@@ -8,7 +8,7 @@ pub fn dump_lines() -> Vec<String> {
     let mut lines = vec![format!(
         "{} elevated={}",
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-        if win::is_elevated() { "True" } else { "False" }
+        if sys::is_elevated() { "True" } else { "False" }
     )];
     for mut provider in providers::create(&state) {
         let readings = monitor::poll_safely(provider.as_mut());

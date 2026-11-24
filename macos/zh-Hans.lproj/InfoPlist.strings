@@ -1,0 +1,2 @@
+/* The reason macOS shows when it asks for the Bluetooth permission */
+"NSBluetoothAlwaysUsageDescription" = "BatteryTray 会读取 macOS 未显示电量的蓝牙设备的电量。";

@@ -32,7 +32,7 @@ use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
@@ -365,7 +365,7 @@ struct Channel {
 }
 
 impl Channel {
-    fn open(transport: Transport, send: &HidInfo, listen: &HidInfo) -> win::Result<Self> {
+    fn open(transport: Transport, send: &HidInfo, listen: &HidInfo) -> sys::Result<Self> {
         if transport == Transport::Output {
             return Ok(Self { transport, writer: HidDevice::open(send)?, reader: None });
         }
@@ -375,7 +375,7 @@ impl Channel {
     }
 
     /// Sends a command with no data and returns its reply; None when it wasn't taken or nothing answered.
-    fn ask(&self, command: u8, trace: &mut Vec<String>) -> win::Result<Option<Vec<u8>>> {
+    fn ask(&self, command: u8, trace: &mut Vec<String>) -> sys::Result<Option<Vec<u8>>> {
         let request = frame(REQUEST_ID, command);
         let reader = self.reader.as_ref().unwrap_or(&self.writer);
         reader.flush();
@@ -399,7 +399,7 @@ impl Channel {
 }
 
 /// Asks for the battery; None when the mouse didn't answer, isn't there or the reply says nothing about it.
-fn query(model: &Model, send: &HidInfo, listen: &HidInfo, trace: &mut Vec<String>) -> win::Result<Option<Battery>> {
+fn query(model: &Model, send: &HidInfo, listen: &HidInfo, trace: &mut Vec<String>) -> sys::Result<Option<Battery>> {
     let channel = Channel::open(model.transport, send, listen)?;
     if model.link == Link::Ask && channel.ask(LINK_COMMAND, trace)?.and_then(|r| linked(&r)) == Some(false) {
         return Ok(None);
@@ -418,7 +418,7 @@ fn query(model: &Model, send: &HidInfo, listen: &HidInfo, trace: &mut Vec<String
 }
 
 /// Waits for the reply to a command; other reports (DPI and profile button events, command 0A) are skipped.
-fn receive(dev: &HidDevice, command: u8, trace: &mut Vec<String>) -> win::Result<Option<Vec<u8>>> {
+fn receive(dev: &HidDevice, command: u8, trace: &mut Vec<String>) -> sys::Result<Option<Vec<u8>>> {
     let deadline = Instant::now() + Duration::from_millis(TIMEOUT_MS);
     while Instant::now() < deadline {
         let Some(r) = dev.read(remaining_ms(deadline))? else {

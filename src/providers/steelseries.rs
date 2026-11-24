@@ -14,7 +14,7 @@ use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::{t, tf};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
@@ -180,7 +180,7 @@ impl SteelSeriesProvider {
     }
 }
 
-fn query(info: &HidInfo, model: &Model, trace: &mut Vec<String>) -> win::Result<Option<Battery>> {
+fn query(info: &HidInfo, model: &Model, trace: &mut Vec<String>) -> sys::Result<Option<Battery>> {
     let dev = HidDevice::open(info)?;
     dev.flush();
     let command = match model.protocol {

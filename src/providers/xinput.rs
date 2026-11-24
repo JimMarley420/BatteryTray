@@ -1,10 +1,12 @@
 //! Xbox controllers through the Xbox Wireless Adapter (or any XInput gamepad on batteries).
 //! XInput only knows four levels - empty, low, medium, full - so the percentage is a
-//! rough stand-in. Controllers on Bluetooth are skipped when XInput reveals their product ID: Windows reports their
-//! exact level, see the Bluetooth provider.
+//! rough stand-in. Controllers on Bluetooth are skipped when XInput reveals their product ID: on Bluetooth LE
+//! Windows reports their exact level (see the Bluetooth provider), and on Bluetooth Classic their own battery report
+//! is read (xbox_bluetooth.rs).
 //! xinput1_4.dll is loaded on the first poll, from System32: a Windows without it (Server Core, some stripped
 //! builds) just has no Xbox gamepads here, instead of an app that can't start.
 
+use super::xbox_bluetooth::four_level_percent;
 use super::{secs, Provider};
 use crate::loc::t;
 use crate::reading::{DeviceKind, DeviceReading};
@@ -39,8 +41,8 @@ impl Provider for XInputProvider {
             if b.kind == TYPE_DISCONNECTED || b.kind == TYPE_WIRED {
                 continue;
             }
-            // Bluetooth controllers have their exact level from Windows, and a controller that a row of the device
-            // tables has read has it from its own receiver
+            // Bluetooth controllers have their level from Windows or from their own reports, and a controller that a
+            // row of the device tables has read has it from its own receiver
             let mut caps = CapabilitiesEx::default();
             if api.capabilities.is_some_and(|get| unsafe { get(1, slot, 0, &mut caps) } == ERROR_SUCCESS)
                 && ((caps.vendor_id == 0x045E && BLUETOOTH_PIDS.contains(&caps.product_id))
@@ -49,17 +51,10 @@ impl Provider for XInputProvider {
                 continue;
             }
 
-            // Empty, low, medium, full
-            let level = match b.level {
-                0 => 5,
-                1 => 15,
-                2 => 50,
-                _ => 100,
-            };
             let name = if slot == 0 { t("name.xbox") } else { format!("{} #{}", t("name.xbox"), slot + 1) };
             result.push(DeviceReading {
                 online: true,
-                level: Some(level),
+                level: Some(four_level_percent(b.level)),
                 estimate: true,
                 detail: Some(t("d.fourLevels")),
                 ..DeviceReading::new(format!("xinput:{slot}"), name, DeviceKind::Gamepad, "XInput")

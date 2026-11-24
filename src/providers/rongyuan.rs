@@ -16,7 +16,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
 use crate::state::StateStore;
-use crate::win;
+use crate::sys;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -150,7 +150,7 @@ impl RongyuanDongleProvider {
     }
 }
 
-fn query_status(info: &HidInfo) -> win::Result<Option<Vec<u8>>> {
+fn query_status(info: &HidInfo) -> sys::Result<Option<Vec<u8>>> {
     let dev = HidDevice::open_sync(info)?;
     for attempt in 0..3 {
         if attempt > 0 {

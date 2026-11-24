@@ -40,7 +40,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::providers::{group_by, hex_trimmed as hex, no_link_reason, one_per_id, remaining_ms, secs, Provider};
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
@@ -254,7 +254,7 @@ fn slots_to_ask(linked: Option<u32>, answered_before: impl Fn(u8) -> bool) -> Ve
 
 /// One read and its answer, so the exchange can be tested without a receiver. None: nobody answered.
 trait Link {
-    fn get(&mut self, target: u8, property: u8) -> win::Result<Option<Answer>>;
+    fn get(&mut self, target: u8, property: u8) -> sys::Result<Option<Answer>>;
 }
 
 struct HidLink<'a> {
@@ -263,7 +263,7 @@ struct HidLink<'a> {
 }
 
 impl Link for HidLink<'_> {
-    fn get(&mut self, target: u8, property: u8) -> win::Result<Option<Answer>> {
+    fn get(&mut self, target: u8, property: u8) -> sys::Result<Option<Answer>> {
         let request = request(target, property);
         // What arrived before the request can't be the answer to it
         self.dev.flush();
@@ -293,7 +293,7 @@ fn read(
     property: u8,
     valid: impl Fn(u32) -> bool,
     same: impl Fn(u32, u32) -> bool,
-) -> win::Result<Read> {
+) -> sys::Result<Read> {
     let mut before = None;
     for _ in 0..READS {
         let Some(Answer::Value(now)) = link.get(target, property)? else { return Ok(Read::Absent) };
@@ -313,13 +313,13 @@ fn settled(read: Read) -> Option<u32> {
 }
 
 /// The product ID of `target`, if it says one.
-fn read_product(link: &mut impl Link, target: u8) -> win::Result<Option<u16>> {
+fn read_product(link: &mut impl Link, target: u8) -> sys::Result<Option<u16>> {
     let pid = read(link, target, PRODUCT, |v| (1..0xFFFF).contains(&v), |a, b| a == b)?;
     Ok(settled(pid).map(|pid| pid as u16))
 }
 
 /// The battery of whoever answers for `target`; None when nobody does.
-fn read_battery(link: &mut impl Link, target: u8, cable: bool) -> win::Result<Option<Battery>> {
+fn read_battery(link: &mut impl Link, target: u8, cable: bool) -> sys::Result<Option<Battery>> {
     let close = |a: u32, b: u32| a.abs_diff(b) <= AGREE_TENTHS;
     let tenths = match read(link, target, LEVEL, |v| percent(v).is_some(), close)? {
         Read::Absent => return Ok(None),
@@ -332,7 +332,7 @@ fn read_battery(link: &mut impl Link, target: u8, cable: bool) -> win::Result<Op
 
 /// The devices that answer from the receiver's slots right now. `known`: the product ID of a slot's device when it
 /// answered at the last poll too, which saves asking who it is again.
-fn read_receiver(link: &mut impl Link, known: impl Fn(u8) -> Option<u16>) -> win::Result<Vec<Child>> {
+fn read_receiver(link: &mut impl Link, known: impl Fn(u8) -> Option<u16>) -> sys::Result<Vec<Child>> {
     let linked = match link.get(SELF, LINKED)? {
         Some(Answer::Value(bits)) => Some(bits),
         _ => None,
@@ -622,7 +622,7 @@ mod tests {
     }
 
     impl Link for Script {
-        fn get(&mut self, target: u8, property: u8) -> win::Result<Option<Answer>> {
+        fn get(&mut self, target: u8, property: u8) -> sys::Result<Option<Answer>> {
             self.asked.push((target, property));
             let same = |r: &(u8, u8, Vec<u8>)| r.0 == target && r.1 == property;
             let Some(at) = self.replies.iter().position(same) else { return Ok(None) };

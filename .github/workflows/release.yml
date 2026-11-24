@@ -1,0 +1,30 @@
+name: Release files
+
+# The Windows files a release carries, built as build-release.ps1 builds them on a PC: BatteryTray.exe and
+# BatteryTray-<version>-win-x64.zip, kept as the BatteryTray-release-windows artifact. Started by hand (Actions →
+# Release files → Run workflow) on the commit to release; the Mac files come from the macOS workflow's
+# BatteryTray-macOS artifact on the same commit.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-about
+      - name: The exe and the zip
+        run: powershell -File build-release.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: BatteryTray-release-windows
+          path: dist/*.*
+          if-no-files-found: error

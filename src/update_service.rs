@@ -1,10 +1,10 @@
 //! Checks for a new release shortly after start and then every few hours. With automatic
 //! updates on, a new version is installed and the app restarts into it - but only while no window of the app is
-//! open, so it never vanishes from under the user. When installing needs an admin prompt (Program Files without
-//! admin rights), the update waits for the user's click instead and is announced once.
+//! open, so it never vanishes from under the user. When installing needs an administrator (Program Files without
+//! admin rights on Windows, an Applications folder the user can't write to on macOS), the update waits for the
+//! user's click instead and is announced once.
 //! Runs on its own thread (the HTTP calls block); what the UI needs to know arrives through `events`.
 
-use crate::autostart;
 use crate::loc::t;
 use crate::log;
 use crate::updater::{self, ReleaseInfo, Version};
@@ -216,11 +216,12 @@ fn install(shared: &Shared) -> Option<Duration> {
     });
     let result = if updater::can_install_in_place() {
         updater::install(&release, &|p| set(shared, |s| s.progress = p))
-    } else if autostart::run_self_elevated("--update") {
-        // Program Files without admin rights: an elevated copy of this exe did the same (UAC prompt)
+    } else if updater::install_elevated() {
+        // A folder only administrators can write to: a copy of this app with their rights did the same (a UAC prompt
+        // on Windows, the password on macOS)
         Ok(())
     } else {
-        Err(crate::win::Error::other(t("upd.err.cancelled")))
+        Err(crate::sys::Error::other(t("upd.err.cancelled")))
     };
     match result {
         Ok(()) => {

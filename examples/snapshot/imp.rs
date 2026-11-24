@@ -126,7 +126,7 @@ fn sample_rows(settings: &AppSettings, now: DateTime<Local>) -> Vec<DeviceRow> {
     rows::rows(current, &remembered, settings)
 }
 
-fn main() {
+pub fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let folder = std::path::PathBuf::from(args.first().cloned().unwrap_or_else(|| ".".into()));
     let language = args.get(1).map(String::as_str).unwrap_or("ru");
@@ -265,6 +265,13 @@ fn main() {
 
     let (main, window) = open(&rows);
     main.set_screen(1);
+    main.set_settings_tab(1);
+    main.set_auto_close(true);
+    main.set_auto_close_seconds(10);
+    render(&window, scale, size, &folder.join("main-settings-reminders-autoclose.png"));
+
+    let (main, window) = open(&rows);
+    main.set_screen(1);
     main.set_settings_tab(2);
     main.set_shortcut_error(t("overlay.conflict").into());
     render(&window, scale, size, &folder.join("main-settings-overlay.png"));
@@ -273,15 +280,47 @@ fn main() {
     let window = last();
     gui::setup_texts(&alert.global::<gui::T>());
     alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![
-        AlertRow { glyph: "\u{E7F6}".into(), name: "Razer Barracuda X".into(), level: "18%".into(), critical: false },
-        AlertRow { glyph: "\u{E962}".into(), name: "Attack Shark R3".into(), level: "9%".into(), critical: true },
+        AlertRow {
+            glyph: "\u{E7F6}".into(),
+            name: "Razer Barracuda X".into(),
+            level: "18%".into(),
+            percent: 18,
+            critical: false,
+        },
+        AlertRow {
+            glyph: "\u{E962}".into(),
+            name: "Attack Shark R3".into(),
+            level: "9%".into(),
+            percent: 9,
+            critical: true,
+        },
     ]))));
     alert.set_critical(true);
-    alert.set_title_text(loc::t("alert.title.critical").into());
-    alert.set_snooze_text("Напомнить через 10 мин".into());
-    alert.set_hint_text(loc::t("alert.hint.critical").into());
-    let height = alert.window().size().height as f32 / alert.window().scale_factor();
+    alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
+    // As tall as its contents, as the app sizes it: measured once laid out at its width (before that its rows have no
+    // width to wrap in, and it measures short)
+    lay_out(&window, scale, (376.0, 400.0));
+    let height = alert.get_content_height();
     render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert.png"));
+
+    // The other kind: every device below its reminder level, none below its critical one
+    let alert = AlertWindow::new().unwrap();
+    let window = last();
+    gui::setup_texts(&alert.global::<gui::T>());
+    alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![AlertRow {
+        glyph: "\u{E7F6}".into(),
+        name: "Razer Barracuda X".into(),
+        level: "18%".into(),
+        percent: 18,
+        critical: false,
+    }]))));
+    alert.set_snooze_text(tf("alert.snooze", &[&10]).into());
+    // Closing on its own, 40% of its time gone
+    alert.set_auto_close(true);
+    alert.set_remaining(0.6);
+    lay_out(&window, scale, (376.0, 400.0));
+    let height = alert.get_content_height();
+    render(&window, scale, (376.0, if height > 10.0 { height } else { 300.0 }), &folder.join("alert-low.png"));
 
     let overlay = OverlayWindow::new().unwrap();
     let window = last();

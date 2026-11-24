@@ -13,6 +13,8 @@ pub enum DeviceKind {
     Gamepad = 3,
     #[default]
     Other = 4,
+    Phone = 5,
+    Tablet = 6,
 }
 
 impl DeviceKind {
@@ -22,6 +24,8 @@ impl DeviceKind {
             1 => Self::Mouse,
             2 => Self::Keyboard,
             3 => Self::Gamepad,
+            5 => Self::Phone,
+            6 => Self::Tablet,
             _ => Self::Other,
         }
     }
@@ -43,6 +47,8 @@ impl<'de> Deserialize<'de> for DeviceKind {
                 "Mouse" => Self::Mouse,
                 "Keyboard" => Self::Keyboard,
                 "Gamepad" => Self::Gamepad,
+                "Phone" => Self::Phone,
+                "Tablet" => Self::Tablet,
                 _ => Self::Other,
             },
             _ => Self::Other,

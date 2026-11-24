@@ -1,20 +1,62 @@
 //! The low battery reminder window: in the bottom right corner, on top, never taking focus,
-//! until the user snoozes or mutes it.
+//! until the user snoozes or mutes it, or, when the settings say so, until it closes on its own as if snoozed. Its
+//! time runs only while someone is at the computer, so it is still there for a user who was away, and while the
+//! pointer is off the window, so it doesn't close under a hand on its way to a button.
 //! It opens unseen and becomes visible only once it stands in its corner at its real size. Right after show() the
 //! window still has the height Slint guessed before it existed (48 px short at 125%: text is measured exactly only
 //! then), and gets its real one a moment later.
 
 use crate::gui::{self, AlertRow, AlertWindow, Kind};
-use crate::loc::{t, tf};
+use crate::loc::tf;
 use crate::overlay::Rect;
 use crate::rows::AlertItem;
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::Duration;
-use windows::Win32::Foundation::RECT;
-use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+use std::time::{Duration, Instant};
+use windows::Win32::Foundation::{POINT, RECT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+use windows::Win32::UI::Shell::{
+    SHQueryUserNotificationState, QUNS_BUSY, QUNS_NOT_PRESENT, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+};
+use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect};
+
+/// The window's border: neutral, the severity is in the levels' color
+const BORDER: (u8, u8, u8) = (0x3F, 0x3F, 0x3F);
+/// How often the line of the time left moves
+const TICK: Duration = Duration::from_millis(33);
+/// No keyboard or mouse input for this long: nobody is at the computer, unless a full-screen app runs
+const AWAY_AFTER: Duration = Duration::from_secs(30);
+/// How often Windows is asked whether someone is at the computer
+const PRESENCE_EVERY: Duration = Duration::from_secs(1);
+
+/// The time a reminder that closes on its own has left.
+#[derive(Default)]
+struct Countdown {
+    /// None: it waits for an answer (or its time is up)
+    total: Cell<Option<Duration>>,
+    left: Cell<Duration>,
+    /// When the time last ran
+    since: Cell<Option<Instant>>,
+    /// Its time ran out: the snooze that follows came from it, not from the user
+    expired: Cell<bool>,
+    /// Whether someone is at the computer, and when Windows was last asked
+    presence: Cell<Option<(Instant, bool)>>,
+}
+
+impl Countdown {
+    fn someone_there(&self, now: Instant) -> bool {
+        match self.presence.get() {
+            Some((asked, there)) if now - asked < PRESENCE_EVERY => there,
+            _ => {
+                let there = someone_there();
+                self.presence.set(Some((now, there)));
+                there
+            }
+        }
+    }
+}
 
 pub struct AlertView {
     pub ui: AlertWindow,
@@ -23,6 +65,8 @@ pub struct AlertView {
     /// Shown but not yet seen: waiting for its real size
     revealing: Rc<Cell<bool>>,
     reveal_timer: Rc<slint::Timer>,
+    countdown: Rc<Countdown>,
+    tick: slint::Timer,
     _keep_on_top: slint::Timer,
 }
 
@@ -63,7 +107,16 @@ impl AlertView {
                 place(&ui);
             }
         });
-        Ok(Self { ui, items: Vec::new(), rows, revealing, reveal_timer, _keep_on_top: keep_on_top })
+        Ok(Self {
+            ui,
+            items: Vec::new(),
+            rows,
+            revealing,
+            reveal_timer,
+            countdown: Rc::default(),
+            tick: slint::Timer::default(),
+            _keep_on_top: keep_on_top,
+        })
     }
 
     pub fn ids(&self) -> Vec<String> {
@@ -75,35 +128,73 @@ impl AlertView {
         self.items.iter().any(|i| i.id == item.id && i.critical == item.critical)
     }
 
-    pub fn set_items(&mut self, due: Vec<AlertItem>, repeat_minutes: i32) {
+    /// The devices due and the snooze's minutes; `auto_close`: closes on its own after that long, its time starting
+    /// again whenever a device or a severity it didn't show comes up.
+    pub fn set_items(&mut self, due: Vec<AlertItem>, repeat_minutes: i32, auto_close: Option<Duration>) {
+        if due.iter().any(|d| !self.shows(d)) || auto_close != self.countdown.total.get() {
+            self.countdown.total.set(auto_close);
+            self.countdown.left.set(auto_close.unwrap_or_default());
+            self.countdown.since.set(None);
+            self.ui.set_remaining(1.0);
+        }
+        self.ui.set_auto_close(auto_close.is_some());
+        if auto_close.is_none() {
+            self.tick.stop();
+        } else if !self.tick.running() {
+            self.run_countdown();
+        }
         let critical = due.iter().any(|d| d.critical);
         self.ui.set_critical(critical);
-        self.ui.set_title_text(
-            t(if critical {
-                "alert.title.critical"
-            } else if due.len() == 1 {
-                "alert.title"
-            } else {
-                "alert.title.many"
-            })
-            .into(),
-        );
         self.ui.set_snooze_text(tf("alert.snooze", &[&repeat_minutes]).into());
-        self.ui.set_hint_text(t(if critical { "alert.hint.critical" } else { "alert.hint" }).into());
         self.rows.set_vec(
             due.iter()
                 .map(|d| AlertRow {
                     glyph: crate::main_view::glyph(d.kind).into(),
                     name: d.name.clone().into(),
                     level: format!("{}%", d.level).into(),
+                    percent: d.level,
                     critical: d.critical,
                 })
                 .collect::<Vec<_>>(),
         );
         self.items = due;
         if self.ui.window().is_visible() {
-            self.style(); // the border follows the severity; a new height is placed by the resize handler
+            self.style(); // a new height is placed by the resize handler
         }
+    }
+
+    /// It closed on its own: its time ran out, the user didn't answer.
+    pub fn closed_on_its_own(&self) -> bool {
+        self.countdown.expired.get()
+    }
+
+    /// The time runs while the window is seen, someone is at the computer and the pointer is off the window; at its
+    /// end the window snoozes, as by the button (from the event loop: snoozing closes this window, timer and all).
+    fn run_countdown(&self) {
+        let (weak, countdown, revealing) = (self.ui.as_weak(), self.countdown.clone(), self.revealing.clone());
+        self.tick.start(slint::TimerMode::Repeated, TICK, move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(total) = countdown.total.get() else { return };
+            let now = Instant::now();
+            let last = countdown.since.replace(Some(now));
+            if !ui.window().is_visible() || revealing.get() || pointer_over(&ui) || !countdown.someone_there(now) {
+                return;
+            }
+            let Some(last) = last else { return };
+            let left = countdown.left.get().saturating_sub(now - last);
+            countdown.left.set(left);
+            ui.set_remaining(left.as_secs_f32() / total.as_secs_f32());
+            if left.is_zero() {
+                countdown.total.set(None);
+                countdown.expired.set(true);
+                let weak = ui.as_weak();
+                slint::Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(ui) = weak.upgrade() {
+                        ui.invoke_snooze();
+                    }
+                });
+            }
+        });
     }
 
     pub fn show(&self) {
@@ -122,7 +213,7 @@ impl AlertView {
     }
 
     fn style(&self) {
-        gui::set_border(self.ui.window(), Some(accent(&self.ui)));
+        gui::set_border(self.ui.window(), Some(BORDER));
     }
 
     /// Where it is on the screen, for the overlay to stay clear of it.
@@ -130,24 +221,53 @@ impl AlertView {
         if !self.ui.window().is_visible() {
             return None;
         }
-        let hwnd = gui::hwnd(self.ui.window())?;
-        let mut r = RECT::default();
-        unsafe { GetWindowRect(hwnd, &mut r).ok()? };
+        let r = screen_rect(&self.ui)?;
         Some(Rect { x: r.left as f64, y: r.top as f64, w: (r.right - r.left) as f64, h: (r.bottom - r.top) as f64 })
     }
 
     pub fn close(&self) {
+        self.tick.stop();
         let _ = self.ui.hide();
     }
 }
 
-/// The border's color: the severity's, as the accent bar on the left.
-fn accent(ui: &AlertWindow) -> (u8, u8, u8) {
-    if ui.get_critical() {
-        (0xFF, 0x6B, 0x6B)
-    } else {
-        (0xF7, 0xC0, 0x4A)
+fn screen_rect(ui: &AlertWindow) -> Option<RECT> {
+    let hwnd = gui::hwnd(ui.window())?;
+    let mut r = RECT::default();
+    unsafe { GetWindowRect(hwnd, &mut r).ok()? };
+    Some(r)
+}
+
+/// The pointer is over the window (it never gets the focus, so its hover is asked of Windows).
+fn pointer_over(ui: &AlertWindow) -> bool {
+    let Some(r) = screen_rect(ui) else { return false };
+    let mut p = POINT::default();
+    let found = unsafe { GetCursorPos(&mut p).is_ok() };
+    found && (r.left..r.right).contains(&p.x) && (r.top..r.bottom).contains(&p.y)
+}
+
+/// Someone is at the computer: not while it is locked, a screen saver runs or another user has the screen; while a
+/// full-screen app runs (a game played with a controller, whose input Windows doesn't count as the user's, or a
+/// film); otherwise when the keyboard or the mouse was used in the last half minute. A reminder that comes up while
+/// the user is away waits for them.
+fn someone_there() -> bool {
+    match unsafe { SHQueryUserNotificationState() } {
+        Ok(state) if state == QUNS_NOT_PRESENT => return false,
+        Ok(state) if [QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE].contains(&state) => return true,
+        _ => {}
     }
+    let mut input = LASTINPUTINFO { cbSize: size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+    if !unsafe { GetLastInputInfo(&mut input) }.as_bool() {
+        return true; // unknown: as before, the time runs
+    }
+    // Both in ms since the system started, as a u32 that wraps after 49.7 days
+    let idle = unsafe { GetTickCount() }.wrapping_sub(input.dwTime);
+    Duration::from_millis(idle as u64) < AWAY_AFTER
+}
+
+#[link(name = "kernel32", kind = "raw-dylib")]
+extern "system" {
+    fn GetTickCount() -> u32;
 }
 
 /// In ms, unless its size changes again first: into its corner, and seen. Windows creates the window only once the
@@ -163,7 +283,7 @@ fn reveal_after(timer: &Rc<slint::Timer>, ui: &AlertWindow, revealing: &Rc<Cell<
         }
         place(&ui);
         if revealing.replace(false) {
-            gui::set_border(ui.window(), Some(accent(&ui)));
+            gui::set_border(ui.window(), Some(BORDER));
             gui::set_alpha(ui.window(), 255);
         }
     });

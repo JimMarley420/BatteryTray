@@ -1,21 +1,31 @@
 //! The battery protocols, one provider per family of devices.
 
 pub mod ajazz_mouse;
+pub mod apple_keyboard;
+#[cfg(target_os = "macos")]
+pub mod apple_mobile;
 pub mod aula_mchose;
 pub mod barracuda;
 pub mod bluetooth;
 pub mod devices;
 pub mod headset;
 pub mod logitech;
+pub mod nintendo;
 pub mod oem_mouse;
 pub mod playstation;
+#[cfg(windows)]
+pub mod portable_devices;
 pub mod razer_peripheral;
 pub mod receiver_name;
 pub mod rongyuan;
 pub mod sonix_keyboard;
 pub mod standard_hid;
 pub mod steelseries;
+#[cfg(windows)]
+pub mod ups;
+pub mod xbox_bluetooth;
 pub mod xenta;
+#[cfg(windows)]
 pub mod xinput;
 
 use crate::hid::HidInfo;
@@ -37,11 +47,22 @@ pub trait Provider: Send {
 
     /// For providers whose devices also report changes by themselves: how to ask for a poll right away.
     fn set_pusher(&mut self, _push: Pusher) {}
+
+    /// Whether to poll early when the system says a device came or went (`Monitor::devices_changed`), given what the
+    /// last poll returned. Yes by default: a device that has just come is listed at once. A provider that asks its
+    /// devices rarely on purpose says no while it has one on the air, and keeps its pace.
+    fn polls_on_device_change(&self, _last: &[DeviceReading]) -> bool {
+        true
+    }
 }
 
-/// Every provider, in the order the C# app polls them.
+/// Every provider, in the order the C# app polls them. macOS has no XInput: an Xbox controller reaches a Mac over
+/// Bluetooth only, where the Bluetooth provider has its level from macOS. The Switch and Xbox controllers and the
+/// Magic Keyboards on Bluetooth Classic are read from their own reports on Windows only (the modules are built on
+/// both, for their tests): on a Mac the system lists them itself, the keyboards through the Bluetooth provider and
+/// the controllers through GameController in the Swift app, and reading them here too would list them twice.
 pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
-    vec![
+    let mut providers: Vec<Box<dyn Provider>> = vec![
         Box::new(barracuda::RazerBarracudaProvider::new(state.clone())),
         Box::new(rongyuan::RongyuanDongleProvider::new(state.clone())),
         Box::new(xenta::XentaReceiverProvider::new(state.clone())),
@@ -65,10 +86,23 @@ pub fn create(state: &Arc<StateStore>) -> Vec<Box<dyn Provider>> {
         Box::new(devices::controllers::SteamControllerProvider::default()),
         Box::new(logitech::LogitechProvider::default()),
         Box::new(playstation::PlayStationProvider),
+    ];
+    #[cfg(windows)]
+    providers.extend([
+        Box::new(nintendo::NintendoProvider) as Box<dyn Provider>,
+        Box::new(xbox_bluetooth::XboxBluetoothProvider::default()),
         Box::new(xinput::XInputProvider),
-        Box::new(bluetooth::BluetoothProvider),
-        Box::new(standard_hid::StandardHidBatteryProvider),
-    ]
+        Box::new(apple_keyboard::AppleKeyboardProvider::default()),
+    ]);
+    providers.push(Box::new(bluetooth::BluetoothProvider));
+    #[cfg(target_os = "macos")]
+    providers.push(Box::new(apple_mobile::AppleMobileProvider));
+    #[cfg(windows)]
+    providers.push(Box::new(portable_devices::PortableDevicesProvider::default()));
+    #[cfg(windows)]
+    providers.push(Box::new(ups::UpsProvider::default()));
+    providers.push(Box::new(standard_hid::StandardHidBatteryProvider));
+    providers
 }
 
 /// Tells the device of a row whose USB IDs unrelated products share from somebody else's device with the same IDs:

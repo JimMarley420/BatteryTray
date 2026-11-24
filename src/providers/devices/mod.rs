@@ -26,7 +26,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
 use crate::state::StateStore;
-use crate::win::{self, Error};
+use crate::sys::{self, Error};
 use std::collections::{HashMap, HashSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
@@ -90,7 +90,7 @@ pub fn map(v: i32, a: i32, b: i32, c: i32, d: i32) -> i32 {
     c + (v - a) * (d - c) / (b - a)
 }
 
-pub type Query = fn(&mut Io) -> win::Result<State>;
+pub type Query = fn(&mut Io) -> sys::Result<State>;
 
 /// One device, or several that are asked the same way.
 /// `name`: a text key or a ready name. `pids`: every product ID, `cable_pids`: those of them that are the device on
@@ -442,7 +442,7 @@ fn query(spec: &Spec, collections: &[HidInfo], asked: &mut Vec<(String, Vec<Stri
 
 /// Runs the query of one device. A reply shorter or stranger than a query expects must cost that one device its
 /// reading, not every device of the provider, so a panic ends here as an error (the panic hook has logged it).
-fn guarded<T>(query: impl FnOnce() -> win::Result<T>) -> win::Result<T> {
+fn guarded<T>(query: impl FnOnce() -> sys::Result<T>) -> sys::Result<T> {
     catch_unwind(AssertUnwindSafe(query))
         .unwrap_or_else(|_| Err(Error::with_message(0, "the query failed on a reply it didn't expect")))
 }
@@ -496,7 +496,7 @@ impl<'a> Io<'a> {
 
     /// Writes an output report, padded with zeros to the collection's length. As with hidapi, the first byte is
     /// the report ID: 0x00 for a device without report IDs.
-    pub fn send(&mut self, report: &[u8]) -> win::Result<bool> {
+    pub fn send(&mut self, report: &[u8]) -> sys::Result<bool> {
         self.trace.push(format!("> {}", hex(report)));
         let sent = self.dev.write(report, self.timeout_ms as u32)?;
         if !sent {
@@ -514,7 +514,7 @@ impl<'a> Io<'a> {
         matches: impl Fn(&[u8]) -> bool,
         reads: usize,
         or_feature: bool,
-    ) -> win::Result<Option<Vec<u8>>> {
+    ) -> sys::Result<Option<Vec<u8>>> {
         self.dev.flush();
         let sent = match self.send(request) {
             Ok(sent) => sent,
@@ -530,7 +530,7 @@ impl<'a> Io<'a> {
     }
 
     /// The first input report that `matches` accepts, out of `reads` at most; None when the device went silent.
-    pub fn receive(&mut self, matches: impl Fn(&[u8]) -> bool, reads: usize) -> win::Result<Option<Vec<u8>>> {
+    pub fn receive(&mut self, matches: impl Fn(&[u8]) -> bool, reads: usize) -> sys::Result<Option<Vec<u8>>> {
         let deadline = Instant::now() + Duration::from_millis(self.timeout_ms);
         for _ in 0..reads {
             if Instant::now() >= deadline {
@@ -550,7 +550,7 @@ impl<'a> Io<'a> {
     }
 
     /// Throws away whatever the device sent unasked.
-    pub fn drain(&mut self) -> win::Result<()> {
+    pub fn drain(&mut self) -> sys::Result<()> {
         for _ in 0..16 {
             if self.dev.read(5)?.is_none() {
                 break;

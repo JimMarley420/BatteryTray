@@ -37,7 +37,7 @@ use crate::loc::{t, tf};
 use crate::log;
 use crate::providers::{contains_ignore_case, group_by, no_link_reason, one_per_id, secs, Provider};
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
@@ -221,28 +221,28 @@ fn has_full_reports(i: &HidInfo) -> bool {
     i.input_length >= REPORT_LENGTH && i.output_length >= REPORT_LENGTH
 }
 
-fn mouse_percent(io: &mut Io) -> win::Result<State> {
+fn mouse_percent(io: &mut Io) -> sys::Result<State> {
     mouse_battery(io, 0x00, MOUSE_PERCENT)
 }
 
-fn mouse_quarters(io: &mut Io) -> win::Result<State> {
+fn mouse_quarters(io: &mut Io) -> sys::Result<State> {
     mouse_battery(io, 0x00, MOUSE_QUARTERS)
 }
 
-fn strix_carry(io: &mut Io) -> win::Result<State> {
+fn strix_carry(io: &mut Io) -> sys::Result<State> {
     mouse_battery(io, 0x00, STRIX_CARRY_QUARTERS)
 }
 
-fn keyboard_percent(io: &mut Io) -> win::Result<State> {
+fn keyboard_percent(io: &mut Io) -> sys::Result<State> {
     keyboard_battery(io, 0x00, KEYBOARD_PERCENT)
 }
 
-fn falchion(io: &mut Io) -> win::Result<State> {
+fn falchion(io: &mut Io) -> sys::Result<State> {
     keyboard_battery(io, 0x00, FALCHION_PERCENT)
 }
 
 /// `id`: the report ID the collection takes requests on, 0 when it has none.
-fn mouse_battery(io: &mut Io, id: u8, level: Level) -> win::Result<State> {
+fn mouse_battery(io: &mut Io, id: u8, level: Level) -> sys::Result<State> {
     Ok(match ask(io, id, MOUSE_BATTERY)? {
         Answer::Reply(b) => mouse_state(&b, level),
         Answer::Asleep => off_because("d.asleep"),
@@ -250,7 +250,7 @@ fn mouse_battery(io: &mut Io, id: u8, level: Level) -> win::Result<State> {
     })
 }
 
-fn keyboard_battery(io: &mut Io, id: u8, level_at: usize) -> win::Result<State> {
+fn keyboard_battery(io: &mut Io, id: u8, level_at: usize) -> sys::Result<State> {
     Ok(match ask(io, id, KEYBOARD_BATTERY)? {
         Answer::Reply(b) => keyboard_state(&b, level_at),
         Answer::Asleep => off_because("d.asleep"),
@@ -265,7 +265,7 @@ enum Answer {
     Silent,
 }
 
-fn ask(io: &mut Io, id: u8, sub: u8) -> win::Result<Answer> {
+fn ask(io: &mut Io, id: u8, sub: u8) -> sys::Result<Answer> {
     io.set_timeout(TIMEOUT_MS);
     // Button and profile events come in on the same collection, and so do replies to what Armoury Crate or G-Helper
     // ask when they run too: only this request's echo counts
@@ -640,7 +640,7 @@ fn on_channel<T>(
     collections: &[HidInfo],
     to: Channel,
     lines: &mut Vec<String>,
-    query: impl FnOnce(&mut Io) -> win::Result<T>,
+    query: impl FnOnce(&mut Io) -> sys::Result<T>,
 ) -> Result<T, String> {
     let Some(info) = channel(collections, to) else {
         lines.push(format!("report {:02x}: no collection on page {:04X}", to.id, to.page));

@@ -1,10 +1,8 @@
 //! The battery overlay: a click-through panel
 //! over the active app, shown by the global shortcut for 5 seconds or until pressed again.
 
-use crate::app::level_color;
 use crate::gui::{self, Kind, OverlayEntry, OverlayRow, OverlayWindow};
 use crate::hotkey::{Binding, Gesture, WindowHotkeys};
-use crate::reading::DeviceKind;
 use crate::rows::DeviceRow;
 use crate::settings::AppSettings;
 use slint::winit_030::WinitWindowAccessor;
@@ -63,18 +61,6 @@ impl Session {
             self.hide();
         }
     }
-}
-
-/// The devices the overlay shows: on the air and not hidden, in the order of the list (never by level). Names are
-/// shown for kinds that occur more than once, or for all when the settings say so.
-pub fn select<'a>(rows: &'a [DeviceRow], settings: &AppSettings) -> Vec<(&'a DeviceRow, bool)> {
-    let shown: Vec<&DeviceRow> = crate::rows::list_order(rows, settings)
-        .into_iter()
-        .filter(|r| r.online() && !settings.device(&r.id).hidden)
-        .collect();
-    let kinds: Vec<DeviceKind> = shown.iter().map(|r| r.kind()).collect();
-    let duplicate = |k: DeviceKind| kinds.iter().filter(|&&x| x == k).count() > 1;
-    shown.into_iter().map(|r| (r, settings.overlay_show_names || duplicate(r.kind()))).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -359,24 +345,15 @@ impl Overlay {
         if self.window.is_none() || !self.session.is_visible() {
             return;
         }
-        let entries: Vec<OverlayEntry> = select(rows, s)
+        let entries: Vec<OverlayEntry> = crate::view::overlay_entries(rows, s)
             .into_iter()
-            .map(|(row, show_name)| {
-                let c = row.current.as_ref().expect("shown rows are on the air");
-                let power = c.charging || c.full_on_charger;
-                let (r, g, b) = level_color(c.level, power, true, &row.id, s);
-                OverlayEntry {
-                    glyph: crate::main_view::glyph(row.kind()).into(),
-                    name: row.name.clone().into(),
-                    show_name,
-                    level: match c.level {
-                        Some(l) => format!("{}{l}%", if c.estimate { "≈" } else { "" }).into(),
-                        None if power => "".into(),
-                        None => "—".into(),
-                    },
-                    color: slint::Color::from_rgb_u8(r, g, b),
-                    power,
-                }
+            .map(|e| OverlayEntry {
+                glyph: crate::main_view::glyph(e.kind).into(),
+                name: e.name.into(),
+                show_name: e.show_name,
+                level: e.level.into(),
+                color: slint::Color::from_rgb_u8(e.color.0, e.color.1, e.color.2),
+                power: e.power,
             })
             .collect();
         let limit = self.row_limit();
@@ -510,7 +487,6 @@ fn monitor_area_at(x: i32, y: i32) -> RECT {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reading::DeviceReading;
 
     #[test]
     fn a_long_list_goes_on_in_the_next_row() {
@@ -563,79 +539,6 @@ mod tests {
         s.hide();
         s.expire(start + Duration::from_secs(1));
         assert!(!s.is_visible());
-    }
-
-    fn row(id: &str, kind: DeviceKind, online: bool) -> DeviceRow {
-        let r = DeviceReading { online, level: Some(50), ..DeviceReading::new(id, id, kind, "test") };
-        DeviceRow { id: id.into(), current: Some(r.clone()), last: Some(r), name: id.into() }
-    }
-
-    #[test]
-    fn filters_offline_and_hidden_devices_without_using_remembered_levels() {
-        let mut settings = AppSettings::default();
-        settings.device_mut("hidden").hidden = true;
-        let offline = row("offline", DeviceKind::Mouse, false);
-        let remembered = DeviceRow { id: "remembered".into(), current: None, ..offline.clone() };
-        let rows =
-            [row("shown", DeviceKind::Keyboard, true), offline, remembered, row("hidden", DeviceKind::Mouse, true)];
-        let result = select(&rows, &settings);
-        assert_eq!(result.iter().map(|r| r.0.id.as_str()).collect::<Vec<_>>(), ["shown"]);
-    }
-
-    #[test]
-    fn names_are_shown_only_for_duplicate_kinds_unless_enabled_for_all() {
-        let rows = [
-            row("m1", DeviceKind::Mouse, true),
-            row("m2", DeviceKind::Mouse, true),
-            row("k", DeviceKind::Keyboard, true),
-        ];
-        let mut settings = AppSettings::default();
-        for (r, show) in select(&rows, &settings) {
-            assert_eq!(show, r.kind() == DeviceKind::Mouse);
-        }
-        settings.overlay_show_names = true;
-        assert!(select(&rows, &settings).iter().all(|r| r.1));
-    }
-
-    #[test]
-    fn order_does_not_follow_battery_levels() {
-        let rows: Vec<DeviceRow> = (0..20).rev().map(|i| row(&format!("{i:02}"), DeviceKind::Headset, true)).collect();
-        let settings = AppSettings::default();
-        let before: Vec<String> = select(&rows, &settings).iter().map(|r| r.0.id.clone()).collect();
-        let changed: Vec<DeviceRow> = rows
-            .iter()
-            .enumerate()
-            .map(|(i, r)| {
-                let mut r = r.clone();
-                r.current.as_mut().unwrap().level = Some(i as i32);
-                r
-            })
-            .collect();
-        let after: Vec<String> = select(&changed, &settings).iter().map(|r| r.0.id.clone()).collect();
-        assert_eq!(before, after);
-        assert_eq!(before.len(), 20);
-    }
-
-    #[test]
-    fn the_order_is_the_lists() {
-        let rows = [
-            row("mouse", DeviceKind::Mouse, true),
-            row("off", DeviceKind::Headset, false),
-            row("headset", DeviceKind::Headset, true),
-            row("keys", DeviceKind::Keyboard, true),
-            row("pad", DeviceKind::Gamepad, true),
-        ];
-        let shown = |settings: &AppSettings| -> Vec<String> {
-            select(&rows, settings).iter().map(|r| r.0.id.clone()).collect()
-        };
-        let mut settings = AppSettings::default();
-        assert_eq!(shown(&settings), ["headset", "mouse", "keys", "pad"], "by kind and name until the user orders it");
-        // The pinned one first, then the others as the user put them; what is off or hidden is left out as before
-        settings.device_order = ["pad", "off", "keys", "headset", "mouse"].map(String::from).to_vec();
-        settings.device_mut("mouse").pinned = true;
-        assert_eq!(shown(&settings), ["mouse", "pad", "keys", "headset"]);
-        settings.device_mut("keys").hidden = true;
-        assert_eq!(shown(&settings), ["mouse", "pad", "headset"]);
     }
 
     #[test]

@@ -1,9 +1,14 @@
 //! Logitech mice, keyboards and other HID++ devices behind a Unifying, Bolt, Lightspeed or Nano receiver (device slots
-//! 1-6) or on a cable (device index 0xFF). Facts from Solaar
+//! 1-6), on a cable, or - on macOS - on Bluetooth LE (device index 0xFF). Facts from Solaar
 //! (github.com/pwr-Solaar/Solaar, lib/logitech_receiver), the Linux driver hid-logitech-hidpp and LGSTrayBattery:
 //! - Windows splits the HID++ interface into a short (report 0x10, 7 bytes) and a long (report 0x11, 20 bytes)
 //!   collection. Short requests can only be written to the short one, yet HID++ 2.0 replies arrive on the long one -
 //!   so both are read.
+//! - On Bluetooth LE, HID++ is a collection of the vendor page 0xFF43 in the device itself, with the long report only
+//!   (Lazy Mouse, github.com/RRY/lazy-mouse): every request goes long. Windows shows the level of a Bluetooth LE
+//!   device itself, and they are left to it; macOS shows it only for some (those with the standard battery service;
+//!   not the MX Ergo, which reports in coarse steps over 0x1000), so there the others are asked here - rarely, as
+//!   each request wakes the device up (LinearMouse, github.com/linearmouse/linearmouse/pull/1182).
 //! - Ping: [10 dev 00 1s 00 00 mark] -> [11 dev 00 1s major minor mark] (HID++ 2.0), or the HID++ 1.0 error
 //!   [10 dev 8F 00 1s code]: 01 = HID++ 1.0 device, 04/09 = offline, 08 = empty slot.
 //! - Root.GetFeature(id): [11 dev 00 0s idHi idLo] -> [index type version]; index 0 = not supported.
@@ -18,7 +23,7 @@ use crate::hid::{self, HidDevice, HidInfo};
 use crate::loc::t;
 use crate::log;
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -27,6 +32,12 @@ const SOFTWARE_ID: u8 = 0x0C; // Solaar uses 0B, G HUB 0D, OpenRGB 07: replies a
 const TIMEOUT_MS: u64 = 1500;
 const FEATURE_NAME: u16 = 0x0005;
 const BATTERY_FEATURES: [u16; 4] = [0x1004, 0x1000, 0x1001, 0x1F20];
+/// How often a device on Bluetooth LE is asked, at most: every request wakes it up and costs it battery.
+const BLUETOOTH_EVERY: Duration = secs(5 * 60);
+/// How long a device on Bluetooth LE is left alone once it has connected: the time macOS takes to read the level of
+/// one with the battery service. Asked before that, such a device would be listed twice, and its second entry, once
+/// macOS had the level, would stay behind as a device that is never connected.
+const BLUETOOTH_SETTLE: Duration = secs(10);
 
 /// What was learned about a device in a slot; kept so the slow discovery runs once.
 #[derive(Clone)]
@@ -39,8 +50,43 @@ struct Slot {
 }
 
 impl Slot {
+    /// What is known of a device before it has said its name: its product ID, and its slot behind a receiver.
+    fn unnamed(pid: u16, dev: u8, hidpp20: bool) -> Self {
+        let number = if (1..=6).contains(&dev) { format!(" #{dev}") } else { String::new() };
+        let name = format!("Logitech {pid:04X}{number}");
+        Self { name, kind: DeviceKind::Other, hidpp20, feature_index: 0, feature_id: 0 }
+    }
+
     fn has_battery(&self) -> bool {
         !self.hidpp20 || self.feature_index != 0
+    }
+}
+
+/// How a device reaches the computer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Connection {
+    Receiver,
+    Cable,
+    BluetoothLe,
+}
+
+impl Connection {
+    fn of(info: &HidInfo) -> Self {
+        if contains_ignore_case(&info.path, "{00001812-") {
+            Self::BluetoothLe
+        } else if (0xC500..=0xC5FF).contains(&info.product_id) {
+            Self::Receiver
+        } else {
+            Self::Cable
+        }
+    }
+
+    fn label(self) -> String {
+        match self {
+            Self::Receiver => t("via.24"),
+            Self::Cable => t("via.cable"),
+            Self::BluetoothLe => "Bluetooth".into(),
+        }
     }
 }
 
@@ -56,6 +102,10 @@ struct Battery {
 #[derive(Default)]
 pub struct LogitechProvider {
     slots: HashMap<String, Slot>,
+    /// When each device on Bluetooth LE was last asked and what that gave: given again until BLUETOOTH_EVERY is up.
+    asked: HashMap<String, (Instant, Vec<DeviceReading>)>,
+    /// When each channel on Bluetooth LE was first seen, by its IORegistry entry: a new one for every connection.
+    appeared: HashMap<String, Instant>,
 }
 
 impl Provider for LogitechProvider {
@@ -68,26 +118,44 @@ impl Provider for LogitechProvider {
         let collections: Vec<HidInfo> = hid::enumerate(|v, p| {
             v == LOGITECH_VID && !(0x0800..=0x09FF).contains(&p) // webcams lock up
                 && !super::devices::handled(v, p)
-        })
-        .into_iter()
-        // Bluetooth LE devices: Windows reports their battery itself (the Bluetooth provider)
-        .filter(|i| !contains_ignore_case(&i.path, "{00001812-"))
-        .collect();
+        });
+        let mut bluetooth_channels = Vec::new();
 
         // One USB interface = one HID++ channel, split by Windows into collections
         for (channel, list) in group_by(collections, |i| channel_key(&i.path)) {
             let short = list.iter().find(|i| !i.access_denied && i.usage_page >= 0xFF00 && i.output_length == 7);
             let long = list.iter().find(|i| !i.access_denied && i.usage_page >= 0xFF00 && i.output_length == 20);
+            let pid = list[0].product_id;
+            let connection = Connection::of(&list[0]);
+            // What is learned of a device is kept by its channel. A device on Bluetooth LE comes back under a new
+            // IORegistry entry each time it reconnects, so it is kept by its product ID.
+            let key =
+                if connection == Connection::BluetoothLe { format!("bluetooth {pid:04X}") } else { channel.clone() };
+            if connection == Connection::BluetoothLe {
+                let settled = *self.appeared.entry(channel.clone()).or_insert_with(Instant::now) + BLUETOOTH_SETTLE;
+                bluetooth_channels.push(channel);
+                if Instant::now() < settled || shown_by_the_system(&list[0], settled) {
+                    continue; // not yet, or listed by the Bluetooth provider with the system's level
+                }
+                if short.is_none() && long.is_none() && list.iter().any(|i| i.access_denied) {
+                    let slot = Slot::unnamed(pid, 0xFF, true);
+                    result.push(reading(&slot, connection, None, false, Some(t("d.needsAdmin")), false));
+                    continue;
+                }
+                if let Some((_, readings)) = self.asked.get(&key).filter(|(at, _)| at.elapsed() < BLUETOOTH_EVERY) {
+                    result.extend(readings.iter().cloned());
+                    continue;
+                }
+            }
             if short.is_none() && long.is_none() {
                 continue;
             }
-            let pid = list[0].product_id;
-            let receiver = (0xC500..=0xC5FF).contains(&pid);
-            let polled = (|| -> win::Result<()> {
+            let first = result.len();
+            let polled = (|| -> sys::Result<()> {
                 let mut link = Link::open(short, long)?;
-                let indices: &[u8] = if receiver { &[1, 2, 3, 4, 5, 6] } else { &[0xFF] };
+                let indices: &[u8] = if connection == Connection::Receiver { &[1, 2, 3, 4, 5, 6] } else { &[0xFF] };
                 for &dev in indices {
-                    if let Some(reading) = self.query_slot(&mut link, &channel, dev, receiver, pid)? {
+                    if let Some(reading) = self.query_slot(&mut link, &key, dev, connection, pid)? {
                         result.push(reading);
                     }
                 }
@@ -96,13 +164,32 @@ impl Provider for LogitechProvider {
             if let Err(e) = polled {
                 log::write(&format!("logitech {pid:04X}: {e}"));
             }
+            if connection == Connection::BluetoothLe {
+                self.asked.insert(key, (Instant::now(), result[first..].to_vec()));
+            }
         }
+        self.appeared.retain(|channel, _| bluetooth_channels.contains(channel));
         one_per_id(result, |r| r.online)
     }
 
     fn delay(&self, _last: &[DeviceReading]) -> Duration {
         secs(60)
     }
+}
+
+/// Whether the system shows this Bluetooth LE device's level itself, the Bluetooth provider listing it from there.
+/// Windows reads the battery service of each of them, and they are all left to it.
+#[cfg(windows)]
+fn shown_by_the_system(_: &HidInfo, _since: Instant) -> bool {
+    true
+}
+
+/// Whether the system shows this Bluetooth LE device's level itself, the Bluetooth provider listing it from there,
+/// by a look at what it shows begun `since` then or later. macOS shows it for a device with the standard battery
+/// service; one without is asked here.
+#[cfg(target_os = "macos")]
+fn shown_by_the_system(info: &HidInfo, since: Instant) -> bool {
+    super::bluetooth::level_shown(info.vendor_id, info.product_id, info.product.as_deref(), since)
 }
 
 /// The interface a collection belongs to: Windows numbers collections twice in the path,
@@ -161,9 +248,10 @@ impl LogitechProvider {
         link: &mut Link,
         channel: &str,
         dev: u8,
-        receiver: bool,
+        connection: Connection,
         pid: u16,
-    ) -> win::Result<Option<DeviceReading>> {
+    ) -> sys::Result<Option<DeviceReading>> {
+        let receiver = connection == Connection::Receiver;
         let key = format!("{channel}#{dev}");
         let mut dev = dev;
         let mut ping = link.ping(dev)?;
@@ -181,7 +269,7 @@ impl LogitechProvider {
                 .slots
                 .get(&key)
                 .filter(|s| s.has_battery())
-                .map(|s| reading(s, receiver, None, false, Some(t("d.asleep")), false)));
+                .map(|s| reading(s, connection, None, false, Some(t("d.asleep")), false)));
         }
 
         let slot = match self.slots.get(&key) {
@@ -202,19 +290,19 @@ impl LogitechProvider {
             if slot.hidpp20 {
                 self.slots.remove(&key); // look the feature up again next time
             }
-            return Ok(Some(reading(&slot, receiver, None, false, Some(t("d.readFailed")), false)));
+            return Ok(Some(reading(&slot, connection, None, false, Some(t("d.readFailed")), false)));
         };
         if !b.online {
-            return Ok(Some(reading(&slot, receiver, None, false, Some(t("d.asleep")), false)));
+            return Ok(Some(reading(&slot, connection, None, false, Some(t("d.asleep")), false)));
         }
         let level = if b.full { Some(b.level.unwrap_or(100)) } else { b.level };
-        Ok(Some(reading(&slot, receiver, level, b.charging && !b.full, None, b.full)))
+        Ok(Some(reading(&slot, connection, level, b.charging && !b.full, None, b.full)))
     }
 }
 
 fn reading(
     slot: &Slot,
-    receiver: bool,
+    connection: Connection,
     level: Option<i32>,
     charging: bool,
     detail: Option<String>,
@@ -226,23 +314,12 @@ fn reading(
         charging,
         full_on_charger: full,
         detail,
-        ..DeviceReading::new(
-            format!("logitech:{}", slug(&slot.name)),
-            slot.name.clone(),
-            slot.kind,
-            t(if receiver { "via.24" } else { "via.cable" }),
-        )
+        ..DeviceReading::new(format!("logitech:{}", slug(&slot.name)), slot.name.clone(), slot.kind, connection.label())
     }
 }
 
-fn describe(link: &mut Link, dev: u8, hidpp20: bool, pid: u16) -> win::Result<Option<Slot>> {
-    let mut slot = Slot {
-        name: format!("Logitech {pid:04X}{}", if (1..=6).contains(&dev) { format!(" #{dev}") } else { String::new() }),
-        kind: DeviceKind::Other,
-        hidpp20,
-        feature_index: 0,
-        feature_id: 0,
-    };
+fn describe(link: &mut Link, dev: u8, hidpp20: bool, pid: u16) -> sys::Result<Option<Slot>> {
+    let mut slot = Slot::unnamed(pid, dev, hidpp20);
     if !hidpp20 {
         return Ok(Some(slot));
     }
@@ -288,7 +365,7 @@ fn describe(link: &mut Link, dev: u8, hidpp20: bool, pid: u16) -> win::Result<Op
     Ok(Some(slot))
 }
 
-fn read_feature(link: &mut Link, dev: u8, slot: &Slot) -> win::Result<Option<Battery>> {
+fn read_feature(link: &mut Link, dev: u8, slot: &Slot) -> sys::Result<Option<Battery>> {
     let b = |online, level, charging, full| Some(Battery { online, level, charging, full });
     Ok(match slot.feature_id {
         0x1004 => {
@@ -339,7 +416,7 @@ fn read_feature(link: &mut Link, dev: u8, slot: &Slot) -> win::Result<Option<Bat
 }
 
 /// HID++ 1.0 battery registers: 0x0D (percent), then 0x07 (four levels).
-fn read_registers(link: &mut Link, dev: u8) -> win::Result<Option<Battery>> {
+fn read_registers(link: &mut Link, dev: u8) -> sys::Result<Option<Battery>> {
     if let Some(charge) = link.read_register(dev, 0x0D)? {
         if (1..=100).contains(&charge[0]) {
             return Ok(Some(Battery {
@@ -416,13 +493,13 @@ fn same_device(r: &[u8], dev: u8) -> bool {
 }
 
 impl Link {
-    fn open(short: Option<&HidInfo>, long: Option<&HidInfo>) -> win::Result<Self> {
+    fn open(short: Option<&HidInfo>, long: Option<&HidInfo>) -> sys::Result<Self> {
         let short = short.map(HidDevice::open).transpose()?;
         let long = long.map(HidDevice::open).transpose()?;
         Ok(Self { short, long, mark: 0x5A })
     }
 
-    fn ping(&mut self, dev: u8) -> win::Result<Ping> {
+    fn ping(&mut self, dev: u8) -> sys::Result<Ping> {
         self.mark = self.mark.wrapping_add(1);
         let (mark, f) = (self.mark, 0x10 | SOFTWARE_ID);
         let r = self.request(&[0x10, dev, 0x00, f, 0, 0, mark], &|x| {
@@ -442,12 +519,12 @@ impl Link {
     }
 
     /// The feature's index, 0 when the device doesn't have it, None when it didn't answer.
-    fn get_feature(&mut self, dev: u8, feature_id: u16) -> win::Result<Option<u8>> {
+    fn get_feature(&mut self, dev: u8, feature_id: u16) -> sys::Result<Option<u8>> {
         Ok(self.call(dev, 0x00, 0, &[(feature_id >> 8) as u8, feature_id as u8])?.map(|r| r[0]))
     }
 
     /// A HID++ 2.0 function call; returns the 16 reply parameter bytes, or None on error/timeout.
-    fn call(&mut self, dev: u8, feature_index: u8, function: u8, parameters: &[u8]) -> win::Result<Option<Vec<u8>>> {
+    fn call(&mut self, dev: u8, feature_index: u8, function: u8, parameters: &[u8]) -> sys::Result<Option<Vec<u8>>> {
         let f = (function << 4) | SOFTWARE_ID;
         let mut request = vec![0u8; 20];
         request[0] = 0x11;
@@ -477,7 +554,7 @@ impl Link {
     }
 
     /// HID++ 1.0 short register read; returns the three value bytes.
-    fn read_register(&mut self, dev: u8, register: u8) -> win::Result<Option<Vec<u8>>> {
+    fn read_register(&mut self, dev: u8, register: u8) -> sys::Result<Option<Vec<u8>>> {
         let r = self.request(&[0x10, dev, 0x81, register, 0, 0, 0], &|x| {
             x.len() >= 7
                 && same_device(x, dev)
@@ -486,7 +563,7 @@ impl Link {
         Ok(r.filter(|r| r[2] == 0x81).map(|r| r[4..7].to_vec()))
     }
 
-    fn request(&mut self, request: &[u8], is_reply: &dyn Fn(&[u8]) -> bool) -> win::Result<Option<Vec<u8>>> {
+    fn request(&mut self, request: &[u8], is_reply: &dyn Fn(&[u8]) -> bool) -> sys::Result<Option<Vec<u8>>> {
         let mut request = request.to_vec();
         let target = if request[0] == 0x10 {
             match (&self.short, &self.long) {
@@ -546,6 +623,21 @@ mod tests {
             channel_key(a),
             r"\\?\hid#vid_046d&pid_c539&mi_02#8&2b1a6f3&0#{4d1e55b2-f16f-11cf-88cb-001111000030}"
         );
+    }
+
+    #[test]
+    fn connections_by_path_and_product() {
+        let at =
+            |path: &str, product_id| Connection::of(&HidInfo { path: path.into(), product_id, ..HidInfo::default() });
+        let ble =
+            r"\\?\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&02046d_pid&b01d_rev&0000&col02#m&1&0&0001#{x}";
+        assert_eq!(at(ble, 0xB01D), Connection::BluetoothLe);
+        assert_eq!(at(r"\\?\HID#VID_046D&PID_C539&MI_02&Col01#8&2B1A6F3&0&0000#{x}", 0xC539), Connection::Receiver);
+        assert_eq!(at(r"\\?\hid#vid_046d&pid_c08b&mi_01&col02#8&1&0&0001#{x}", 0xC08B), Connection::Cable);
+        let classic = r"\\?\hid#{00001124-0000-1000-8000-00805f9b34fb}_vid&0002046d_pid&b33f#9&2&0&0000#{x}";
+        assert_eq!(at(classic, 0xB33F), Connection::Cable, "as before: only Bluetooth LE devices are new here");
+        assert_eq!(Slot::unnamed(0xB01D, 0xFF, true).name, "Logitech B01D");
+        assert_eq!(Slot::unnamed(0xC539, 2, true).name, "Logitech C539 #2");
     }
 
     #[test]

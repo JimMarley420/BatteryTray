@@ -52,6 +52,8 @@ export component MainWindow inherits Window {
     in property <int> repeat;
     in property <bool> sound;
     in property <bool> notify-charged;
+    in property <bool> auto-close;
+    in property <int> auto-close-seconds;
     // Settings / Overlay
     in property <bool> overlay-enabled;
     in property <[string]> shortcut-keys;
@@ -91,6 +93,8 @@ export component MainWindow inherits Window {
     callback repeat-changed(value: int);
     callback sound-changed(on: bool);
     callback notify-charged-changed(on: bool);
+    callback auto-close-changed(on: bool);
+    callback auto-close-seconds-changed(value: int);
     callback overlay-enabled-changed(on: bool);
     callback overlay-mode-chosen(mode: int);
     callback overlay-corner-chosen(corner: int);
@@ -376,12 +380,17 @@ export component MainWindow inherits Window {
                     repeat: root.repeat;
                     sound: root.sound;
                     notify-charged: root.notify-charged;
+                    auto-close: root.auto-close;
+                    auto-close-seconds: root.auto-close-seconds;
                     low-changed(v) => { root.low-changed(v); }
                     critical-changed(v) => { root.critical-changed(v); }
                     repeat-changed(v) => { root.repeat-changed(v); }
                     sound-changed(on) => { root.sound-changed(on); }
                     notify-charged-changed(on) => { root.notify-charged-changed(on); }
+                    auto-close-changed(on) => { root.auto-close-changed(on); }
+                    auto-close-seconds-changed(v) => { root.auto-close-seconds-changed(v); }
                     test-alert => { root.test-alert(); }
+                    fields-done => { keys.focus(); }
                 }
                 overlay := OverlayPage {
                     visible: root.settings-tab == 2;
@@ -454,6 +463,7 @@ export component MainWindow inherits Window {
                     DeviceUi.menu-instant = false;
                     root.device-low-changed(DeviceUi.menu-id, v);
                 }
+                levels-done => { keys.focus(); }
                 critical-changed(v) => {
                     DeviceUi.menu-instant = false;
                     root.device-critical-changed(DeviceUi.menu-id, v);

@@ -46,7 +46,7 @@ use crate::providers::{
     group_by, hex_trimmed as hex, no_link_reason, receiver_name, secs, sleep_ms, ClearOnDrop, Provider,
 };
 use crate::reading::{DeviceKind, DeviceReading};
-use crate::win;
+use crate::sys;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -517,7 +517,7 @@ impl Listener {
         // However it ends, a panic included: a listener that isn't running is started again by the next poll
         let _running = ClearOnDrop(&shared.running);
         let started = Instant::now();
-        let result = (|| -> win::Result<()> {
+        let result = (|| -> sys::Result<()> {
             let dev = HidDevice::open_read_only(&info)?;
             let mut lines = Vec::new();
             while !shared.stopped.load(Ordering::Relaxed) {
@@ -540,7 +540,7 @@ impl Listener {
         if let Err(e) = result {
             let mut inner = shared.inner.lock().unwrap_or_else(|e| e.into_inner());
             // Windows' own text ("Access is denied.") rather than "Cannot open <a long device path>"
-            inner.1 = Some(e.code.map(win::system_message).unwrap_or(e.message));
+            inner.1 = Some(e.code.map(sys::system_message).unwrap_or(e.message));
             inner.0.battery = None;
         }
         shared.running.store(false, Ordering::Relaxed);

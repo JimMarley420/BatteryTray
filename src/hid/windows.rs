@@ -1,118 +1,19 @@
-//! HID enumeration and I/O with timeouts. Adapted (by way of the C# app this one was ported from) from
-//! github.com/mehdibouchami/razer-barracuda-x-battery (MIT License, Copyright (c) 2026 Mehdi Bouchami).
+//! HID on Windows: enumeration and I/O with timeouts over hand-declared Win32 calls. Adapted (by way of the C# app
+//! this one was ported from) from github.com/mehdibouchami/razer-barracuda-x-battery (MIT License, Copyright (c) 2026
+//! Mehdi Bouchami).
 //!
 //! Reads and writes are overlapped with a timeout; a read that times out is cancelled with CancelIoEx and waited
 //! for, so no read is ever left pending to swallow the next reply (hidapi leaves it in flight - which is why this
 //! is not built on hidapi).
 
+use super::{parse_ids, HidInfo, UsageValue};
 use crate::log;
 use crate::win::{self, CloseHandle, Error, Result, INVALID_HANDLE};
 use std::ffi::c_void;
-use std::fmt;
 use std::mem::size_of;
 use std::ptr::{null, null_mut};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct HidInfo {
-    pub path: String,
-    pub vendor_id: u16,
-    pub product_id: u16,
-    pub usage_page: u16,
-    pub usage: u16,
-    pub input_length: usize,
-    pub output_length: usize,
-    pub feature_length: usize,
-    pub output_report_id: u8,
-    pub product: Option<String>,
-    /// The collection exists but its security descriptor won't let this process open it.
-    pub access_denied: bool,
-}
-
-impl HidInfo {
-    /// USB interface number from the device path ("...&mi_02..."), or -1.
-    pub fn interface_number(&self) -> i32 {
-        interface_number(&self.path)
-    }
-
-    /// The collection belongs to a device connected over Bluetooth (classic HID or LE), not over USB.
-    pub fn is_bluetooth(&self) -> bool {
-        let path = self.path.to_ascii_lowercase();
-        path.contains("{00001124-") || path.contains("{00001812-")
-    }
-}
-
-impl fmt::Display for HidInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:04X}:{:04X} page=0x{:04X} usage=0x{:04X} in={} out={} feat={} outId=0x{:02X}{}",
-            self.vendor_id,
-            self.product_id,
-            self.usage_page,
-            self.usage,
-            self.input_length,
-            self.output_length,
-            self.feature_length,
-            self.output_report_id,
-            if self.access_denied { " ACCESS DENIED" } else { "" }
-        )
-    }
-}
-
-fn hex_value(s: &[u8]) -> Option<u32> {
-    let text = std::str::from_utf8(s).ok()?;
-    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    u32::from_str_radix(text, 16).ok()
-}
-
-/// USB interface number from a device path ("...&mi_02..."), or -1.
-pub fn interface_number(path: &str) -> i32 {
-    let lower = path.to_ascii_lowercase();
-    let bytes = lower.as_bytes();
-    let mut from = 0;
-    while let Some(at) = lower[from..].find("&mi_") {
-        let start = from + at + 4;
-        if let Some(v) = bytes.get(start..start + 2).and_then(hex_value) {
-            return v as i32;
-        }
-        from = from + at + 1;
-    }
-    -1
-}
-
-/// Vendor and product ID from a device path. USB: vid_1532&pid_0550; Bluetooth HID: _vid&0002054c_pid&0ce6;
-/// Bluetooth LE: _vid&02045e_pid&0b13.
-pub fn parse_ids(path: &str) -> Option<(u16, u16)> {
-    let lower = path.to_ascii_lowercase();
-    let b = lower.as_bytes();
-    let mut from = 0;
-    while let Some(at) = lower[from..].find("vid") {
-        let after = from + at + 3;
-        for prefix in ["_", "&0001", "&0002", "&01", "&02"] {
-            if !lower[after..].starts_with(prefix) {
-                continue;
-            }
-            let v = after + prefix.len();
-            let Some(vid) = b.get(v..v + 4).and_then(hex_value) else { continue };
-            let sep = v + 4;
-            if !matches!(b.get(sep), Some(b'&') | Some(b'_')) || b.get(sep + 1..sep + 4) != Some(b"pid") {
-                continue;
-            }
-            if !matches!(b.get(sep + 4), Some(b'&') | Some(b'_')) {
-                continue;
-            }
-            let p = sep + 5;
-            let Some(pid) = b.get(p..p + 4).and_then(hex_value) else { continue };
-            return Some((vid as u16, pid as u16));
-        }
-        from = from + at + 1;
-    }
-    None
-}
 
 /// Every HID collection of the devices whose IDs `matches` accepts.
 pub fn enumerate(matches: impl Fn(u16, u16) -> bool) -> Vec<HidInfo> {
@@ -152,6 +53,28 @@ fn enumerate_with(matches: impl Fn(u16, u16) -> bool, note_refusals: bool) -> Ve
                 }
                 result.push(info);
             }
+        }
+        ffi::SetupDiDestroyDeviceInfoList(set);
+    }
+    result
+}
+
+/// The paths of every present device interface of a class, given by its interface GUID (the batteries, say).
+pub fn interface_paths(class: &ffi::Guid) -> Vec<String> {
+    let mut result = Vec::new();
+    unsafe {
+        let set = ffi::SetupDiGetClassDevsW(class, null(), 0, ffi::DIGCF_PRESENT | ffi::DIGCF_DEVICEINTERFACE);
+        if set == INVALID_HANDLE {
+            return result;
+        }
+        let mut data = ffi::SpDeviceInterfaceData {
+            cb_size: size_of::<ffi::SpDeviceInterfaceData>() as u32,
+            ..Default::default()
+        };
+        let mut index = 0;
+        while ffi::SetupDiEnumDeviceInterfaces(set, null(), class, index, &mut data) != 0 {
+            index += 1;
+            result.extend(interface_path(set, &data));
         }
         ffi::SetupDiDestroyDeviceInfoList(set);
     }
@@ -488,7 +411,7 @@ impl HidDevice {
         if ok == 0 {
             let err = win::last_error();
             if err != ffi::ERROR_IO_PENDING {
-                return Err(Error::win32(err));
+                return Err(Error::os(err));
             }
             if ffi::WaitForSingleObject(event, timeout_ms) != ffi::WAIT_OBJECT_0 {
                 ffi::CancelIoEx(self.handle, &mut ov);
@@ -501,7 +424,7 @@ impl HidDevice {
             if err == ffi::ERROR_OPERATION_ABORTED {
                 return Ok(0);
             }
-            return Err(Error::win32(err));
+            return Err(Error::os(err));
         }
         Ok(transferred as usize)
     }
@@ -513,6 +436,72 @@ impl Drop for HidDevice {
     }
 }
 
+/// The value of a feature report's field with this usage, and the field's logical range (the first field Windows
+/// lists for it). Zero access rights: feature reports work on collections Windows holds exclusively.
+pub fn feature_value(info: &HidInfo, usage_page: u16, usage: u16) -> Option<UsageValue> {
+    let h = win::open_path(&info.path, 0, 0);
+    if h == INVALID_HANDLE {
+        return None;
+    }
+    let value = unsafe { feature_value_with(h, info, usage_page, usage) };
+    unsafe { CloseHandle(h) };
+    value
+}
+
+unsafe fn feature_value_with(h: isize, info: &HidInfo, usage_page: u16, usage: u16) -> Option<UsageValue> {
+    let mut pre: isize = 0;
+    if ffi::HidD_GetPreparsedData(h, &mut pre) == 0 {
+        return None;
+    }
+    let value = (|| {
+        const MAX_CAPS: u16 = 64; // HIDP_VALUE_CAPS is 72 bytes
+        let mut caps = vec![0u64; 9 * MAX_CAPS as usize];
+        let mut count = MAX_CAPS;
+        if ffi::HidP_GetSpecificValueCaps(
+            ffi::HIDP_FEATURE,
+            usage_page,
+            0,
+            usage,
+            caps.as_mut_ptr() as *mut u8,
+            &mut count,
+            pre,
+        ) != ffi::HIDP_STATUS_SUCCESS
+            || count == 0
+        {
+            return None;
+        }
+        // HIDP_VALUE_CAPS: ReportID at 2, LinkCollection at 6, LogicalMin at 40, LogicalMax at 44
+        let bytes = std::slice::from_raw_parts(caps.as_ptr() as *const u8, 72);
+        let report_id = bytes[2];
+        let link = u16::from_le_bytes([bytes[6], bytes[7]]);
+        let min = i32::from_le_bytes(bytes[40..44].try_into().unwrap());
+        let max = i32::from_le_bytes(bytes[44..48].try_into().unwrap());
+
+        let mut report = vec![0u8; info.feature_length];
+        report[0] = report_id;
+        if ffi::HidD_GetFeature(h, report.as_mut_ptr() as *mut _, report.len() as u32) == 0 {
+            return None;
+        }
+        let mut raw: u32 = 0;
+        if ffi::HidP_GetUsageValue(
+            ffi::HIDP_FEATURE,
+            usage_page,
+            link,
+            usage,
+            &mut raw,
+            pre,
+            report.as_mut_ptr(),
+            report.len() as u32,
+        ) != ffi::HIDP_STATUS_SUCCESS
+        {
+            return None;
+        }
+        Some(UsageValue { raw, min, max })
+    })();
+    ffi::HidD_FreePreparsedData(pre);
+    value
+}
+
 /// A device-node property key (what Device Manager's "Details" tab shows).
 #[derive(Clone, Copy)]
 pub struct PropertyKey {
@@ -520,9 +509,9 @@ pub struct PropertyKey {
     pub id: u32,
 }
 
-/// Every present device node under the given enumerators ("BTHENUM", "BTHLE"...) that has a one-byte value for
-/// `key`: (instance ID, value).
-pub fn byte_property(enumerators: &[&str], key: PropertyKey) -> Vec<(String, u8)> {
+/// Every present device node under the given enumerators ("BTHENUM", "BTHLE"...): its instance ID, and its one-byte
+/// value for `key` when it has one.
+pub fn device_nodes(enumerators: &[&str], key: PropertyKey) -> Vec<(String, Option<u8>)> {
     const DEVPROP_TYPE_BYTE: u32 = 0x3;
     let mut result = Vec::new();
     for enumerator in enumerators {
@@ -539,17 +528,22 @@ pub fn byte_property(enumerators: &[&str], key: PropertyKey) -> Vec<(String, u8)
                 index += 1;
                 let mut value = [0u8; 4];
                 let mut kind: u32 = 0;
-                if ffi::SetupDiGetDevicePropertyW(set, &data, &dev_key, &mut kind, value.as_mut_ptr(), 4, null_mut(), 0)
-                    == 0
-                    || kind != DEVPROP_TYPE_BYTE
-                {
-                    continue;
-                }
+                let has_value = ffi::SetupDiGetDevicePropertyW(
+                    set,
+                    &data,
+                    &dev_key,
+                    &mut kind,
+                    value.as_mut_ptr(),
+                    4,
+                    null_mut(),
+                    0,
+                ) != 0
+                    && kind == DEVPROP_TYPE_BYTE;
                 let mut id = [0u16; 512];
                 if ffi::SetupDiGetDeviceInstanceIdW(set, &data, id.as_mut_ptr(), id.len() as u32, null_mut()) == 0 {
                     continue;
                 }
-                result.push((win::from_wide(&id), value[0]));
+                result.push((win::from_wide(&id), has_value.then_some(value[0])));
             }
             ffi::SetupDiDestroyDeviceInfoList(set);
         }
@@ -784,40 +778,5 @@ mod tests {
         for rights in ["GR", "GXGR", "FR", "0x120089", "", "0xzz"] {
             assert!(!reads_and_writes(rights), "{rights}");
         }
-    }
-
-    #[test]
-    fn ids_from_usb_and_bluetooth_paths() {
-        assert_eq!(
-            parse_ids(r"\\?\hid#vid_1532&pid_0550&mi_03#7&1a2b&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"),
-            Some((0x1532, 0x0550))
-        );
-        assert_eq!(
-            parse_ids(r"\\?\hid#{00001124-0000-1000-8000-00805f9b34fb}_vid&0002054c_pid&0ce6#9&2&0&0000#{4d1e55b2}"),
-            Some((0x054C, 0x0CE6))
-        );
-        assert_eq!(
-            parse_ids(
-                r"\\?\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&02045e_pid&0b13_rev&0509#a&1&0&0000#{x}"
-            ),
-            Some((0x045E, 0x0B13))
-        );
-        assert_eq!(parse_ids(r"\\?\HID#VID_046D&PID_C539&MI_02&Col01#8&abc#{x}"), Some((0x046D, 0xC539)));
-        assert_eq!(parse_ids(r"\\?\hid#acpi0c50#3&1&0#{x}"), None);
-    }
-
-    #[test]
-    fn bluetooth_paths_are_told_from_usb_ones() {
-        let at = |path: &str| HidInfo { path: path.to_string(), ..HidInfo::default() }.is_bluetooth();
-        assert!(at(r"\\?\hid#{00001124-0000-1000-8000-00805f9b34fb}_vid&0002054c_pid&0ce6#9&2&0&0000#{4d1e55b2}"));
-        assert!(at(r"\\?\HID#{00001812-0000-1000-8000-00805F9B34FB}_dev_vid&02045e_pid&0b13_rev&0509#a&1&0&0000#{x}"));
-        assert!(!at(r"\\?\hid#vid_1532&pid_0550&mi_03#7&1a2b&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"));
-    }
-
-    #[test]
-    fn interface_number_from_path() {
-        assert_eq!(interface_number(r"\\?\hid#vid_3151&pid_402d&mi_02#8&1&0&0000#{x}"), 2);
-        assert_eq!(interface_number(r"\\?\HID#VID_046D&PID_C539&MI_0A&Col01#x"), 10);
-        assert_eq!(interface_number(r"\\?\hid#vid_1532&pid_0550#8&1&0&0000#{x}"), -1);
     }
 }

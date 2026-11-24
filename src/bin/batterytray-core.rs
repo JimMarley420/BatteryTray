@@ -8,7 +8,7 @@
 //! It reads the app's state.json but never writes it, and logs to %LOCALAPPDATA%\BatteryTray\rust-core, so it can
 //! run next to the app.
 
-use batterytray::{diag, hid, loc, log, monitor, providers, settings::AppSettings, state::StateStore, win};
+use batterytray::{diag, hid, loc, log, monitor, providers, settings::AppSettings, state::StateStore, sys};
 use std::sync::Arc;
 
 fn usage() -> ! {
@@ -21,7 +21,7 @@ fn main() {
     let Some(command) = args.first().map(String::as_str) else { usage() };
     let option = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
 
-    log::set_folder(win::app_data_folder().join("rust-core"));
+    log::set_folder(sys::app_data_folder().join("rust-core"));
     log::set_echo(true);
     // A dump is in English, as the C# app's (its --dump runs before the language is set), so the two compare line
     // by line; watch shows what the app would
@@ -63,7 +63,7 @@ fn dump(out: Option<String>) {
 
 fn watch() {
     let state = Arc::new(StateStore::load());
-    println!("Polling as the app does; every change is printed. Ctrl+C to stop. elevated={}", win::is_elevated());
+    println!("Polling as the app does; every change is printed. Ctrl+C to stop. elevated={}", sys::is_elevated());
     let _monitor = monitor::Monitor::start(providers::create(&state), state, || {});
     // The polling threads print through the log; this one just waits
     loop {

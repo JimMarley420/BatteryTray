@@ -39,7 +39,7 @@
 use super::{off, off_because, on, Io, Spec, State};
 use crate::hid::HidInfo;
 use crate::providers::{pad, sleep_ms};
-use crate::win;
+use crate::sys;
 use std::sync::Mutex;
 
 const HASTE_2_CABLE: u16 = 0x0D97;
@@ -183,10 +183,10 @@ fn is_cloud_iii_s_collection(info: &HidInfo) -> bool {
 }
 
 /// Three requests a poll and no more: the dongle has been seen to stop answering after bursts of writes.
-fn cloud_iii_s(io: &mut Io) -> win::Result<State> {
+fn cloud_iii_s(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(TIMEOUT_MS);
     // The dongle ignores the same bytes sent as a feature report, so there is no falling back to one
-    let ask = |io: &mut Io, value: u8| -> win::Result<Option<u8>> {
+    let ask = |io: &mut Io, value: u8| -> sys::Result<Option<u8>> {
         let reply = io.ask(&cloud_iii_s_request(value), |d| is_cloud_iii_s_reply(d, value), 16, false)?;
         Ok(reply.map(|r| r[6]))
     };
@@ -233,7 +233,7 @@ fn is_universal_collection(info: &HidInfo) -> bool {
     info.usage_page >= 0xFF00 && info.input_length == 64 && info.output_length == 64
 }
 
-fn universal_ask(io: &mut Io, (command, sub): (u8, u8)) -> win::Result<Option<Vec<u8>>> {
+fn universal_ask(io: &mut Io, (command, sub): (u8, u8)) -> sys::Result<Option<Vec<u8>>> {
     io.ask(&pad(64, &[command, sub]), |d| is_universal_reply(d, command, sub), UNIVERSAL_READS, false)
 }
 
@@ -253,7 +253,7 @@ fn universal_state(d: &[u8]) -> State {
     }
 }
 
-fn cloud_alpha_2(io: &mut Io) -> win::Result<State> {
+fn cloud_alpha_2(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(TIMEOUT_MS);
     // The base station answers the link query by itself, so without that answer nothing else is asked
     match universal_ask(io, UNIVERSAL_LINK)? {
@@ -293,7 +293,7 @@ fn haste_2_is_settled(before: Option<i32>, level: i32) -> bool {
     before.is_some_and(|b| (level - b).abs() <= HASTE_2_STEP)
 }
 
-fn pulsefire_haste_2(io: &mut Io) -> win::Result<State> {
+fn pulsefire_haste_2(io: &mut Io) -> sys::Result<State> {
     io.set_timeout(TIMEOUT_MS);
     let pid = io.product_id();
     // On its cable the mouse answers for itself, and the link query is about the radio
@@ -332,7 +332,7 @@ const NGENUITY2_HEARTBEAT: u8 = 0x51;
 /// The mouse reports every click and every sleep and wake as an event (FF ..) on the same collection.
 const NGENUITY2_READS: usize = 64;
 
-fn ngenuity2_ask(io: &mut Io, command: u8) -> win::Result<Option<Vec<u8>>> {
+fn ngenuity2_ask(io: &mut Io, command: u8) -> sys::Result<Option<Vec<u8>>> {
     // No report IDs: the 00 in front is Windows' and the 64 bytes of the frame follow it
     io.ask(&pad(65, &[0x00, command]), |d| is_ngenuity2_reply(d, command), NGENUITY2_READS, false)
 }
@@ -363,7 +363,7 @@ fn ngenuity2_state(d: &[u8]) -> State {
     }
 }
 
-fn pulsefire_ngenuity2(io: &mut Io, on_cable: bool) -> win::Result<State> {
+fn pulsefire_ngenuity2(io: &mut Io, on_cable: bool) -> sys::Result<State> {
     io.set_timeout(TIMEOUT_MS);
     // The sources don't say what a receiver answers to the heartbeat while its mouse sleeps, so the connection
     // is asked first and the heartbeat only of a mouse that is awake
@@ -407,7 +407,7 @@ fn is_stinger_collection(info: &HidInfo) -> bool {
     info.usage_page == 0xFF00 && info.usage == 0x0001 && info.feature_length >= 32
 }
 
-fn stinger_core(io: &mut Io) -> win::Result<State> {
+fn stinger_core(io: &mut Io) -> sys::Result<State> {
     // Byte 11 of the link answer: 1 = the headset is on (3 was seen with it off)
     match stinger_exchange(io, &STINGER_LINK, is_stinger_answer) {
         Some(link) if link[11] == 0x01 => {}

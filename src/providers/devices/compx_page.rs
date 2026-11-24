@@ -32,7 +32,7 @@ use super::{off, off_because, on, Io, Spec, State};
 use crate::hid::HidInfo;
 use crate::loc::tf;
 use crate::providers::sleep_ms;
-use crate::win;
+use crate::sys;
 
 /// A feature report as Windows counts it: the report ID and the 64 bytes.
 const REPORT_LENGTH: usize = 65;
@@ -364,7 +364,7 @@ fn ask<T>(io: &mut Io, request: &[u8], sends: usize, read: impl Fn(&[u8]) -> Rep
     Reply::Pending
 }
 
-fn page_battery(io: &mut Io) -> win::Result<State> {
+fn page_battery(io: &mut Io) -> sys::Result<State> {
     let id = (io.info().vendor_id, io.product_id());
     let target = if ASKED_AS_ITSELF.contains(&id) { TARGET_SELF } else { TARGET_MOUSE };
     let mut state = state(ask(io, &request(target, 2, PAGE_DEVICE, BATTERY, &[]), SENDS, battery_reply));
@@ -384,7 +384,7 @@ fn page_battery(io: &mut Io) -> win::Result<State> {
     Ok(state)
 }
 
-fn legacy_battery(io: &mut Io) -> win::Result<State> {
+fn legacy_battery(io: &mut Io) -> sys::Result<State> {
     let on_cable = is_cable(io.info().vendor_id, io.product_id());
     Ok(state(ask(io, &legacy_request(on_cable), SENDS, legacy_reply)))
 }

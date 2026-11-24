@@ -19,7 +19,8 @@ use crate::state::StateStore;
 use crate::tray::{self, Tray, MENU_EXIT, MENU_OPEN, MENU_REFRESH, MENU_SETTINGS};
 use crate::update_service::{Event, Status, UpdateService};
 use crate::updater::{self, ReleaseInfo, Version};
-use crate::{diag, gui, log, providers, win};
+pub use crate::view::level_color;
+use crate::{diag, gui, log, providers, view, win};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,8 +34,8 @@ use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex};
 use windows::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, ChangeWindowMessageFilterEx, CreateWindowExW, DefWindowProcW, DestroyWindow,
     FindWindowExW, PostMessageW, RegisterClassExW, RegisterWindowMessageW, ASFW_ANY, HWND_MESSAGE, MSGFLT_ALLOW,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CONTEXTMENU, WM_ENDSESSION, WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP,
-    WNDCLASSEXW,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CONTEXTMENU, WM_DEVICECHANGE, WM_ENDSESSION, WM_HOTKEY, WM_LBUTTONUP,
+    WM_RBUTTONUP, WNDCLASSEXW,
 };
 
 const WM_APP_TRAY: u32 = WM_APP + 2;
@@ -256,6 +257,7 @@ impl App {
         settings.last_run_version = Some(version());
         settings.save();
         loc::set(loc::resolve(Some(&settings.language)));
+        // New devices are always looked for on Windows: the polls when a device connects have no switch here
         let state = Arc::new(StateStore::load());
 
         let monitor = Monitor::start(providers::create(&state), state.clone(), || {
@@ -621,7 +623,11 @@ impl App {
                         let ids = app.alert.as_ref().map(|a| a.ids()).unwrap_or_default();
                         let minutes = app.settings.repeat_minutes;
                         app.alerts.snooze(&ids, Duration::from_secs(minutes as u64 * 60));
-                        log::write(&format!("alert snoozed for {minutes} min"));
+                        if app.alert.as_ref().is_some_and(|a| a.closed_on_its_own()) {
+                            log::write(&format!("alert closed on its own, back in {minutes} min"));
+                        } else {
+                            log::write(&format!("alert snoozed for {minutes} min"));
+                        }
                         app.close_alert();
                     });
                 },
@@ -645,7 +651,7 @@ impl App {
         let names = due.iter().map(|d| format!("{} {}%", d.name, d.level)).collect::<Vec<_>>().join(", ");
         let critical = due.iter().any(|d| d.critical);
         if let Some(alert) = &mut self.alert {
-            alert.set_items(due, self.settings.repeat_minutes);
+            alert.set_items(due, self.settings.repeat_minutes, self.settings.auto_close_after());
             alert.show();
         }
         self.sync_window_open();
@@ -676,7 +682,8 @@ impl App {
                 id: r.id.clone(),
                 name: r.name.clone(),
                 kind: r.kind(),
-                level: if i == 0 { self.settings.low_for(&r.id) - 2 } else { self.settings.critical_for(&r.id) - 1 },
+                level: (if i == 0 { self.settings.low_for(&r.id) - 2 } else { self.settings.critical_for(&r.id) - 1 })
+                    .max(0),
                 critical: i > 0,
             })
             .collect();
@@ -685,7 +692,7 @@ impl App {
                 id: "test".into(),
                 name: t("name.mouse"),
                 kind: crate::reading::DeviceKind::Mouse,
-                level: self.settings.low_percent - 2,
+                level: (self.settings.low_percent - 2).max(0),
                 critical: false,
             });
         }
@@ -699,7 +706,7 @@ impl App {
         };
         match AlertView::new(close, close) {
             Ok(mut view) => {
-                view.set_items(sample, self.settings.repeat_minutes);
+                view.set_items(sample, self.settings.repeat_minutes, self.settings.auto_close_after());
                 view.show();
                 if let Some(old) = self.test_alert.replace(view) {
                     old.close();
@@ -732,57 +739,11 @@ impl App {
     }
 
     fn update_tray(&mut self) {
-        let rows = self.rows();
-        // In the order of the window's list
-        let shown: Vec<&DeviceRow> = rows::list_order(&rows, &self.settings)
-            .into_iter()
-            .filter(|r| r.online() && !self.settings.device(&r.id).hidden)
-            .collect();
-        // A device charging without a readable level is listed too, without a made-up number
-        let lines: Vec<String> = shown
-            .iter()
-            .filter_map(|r| {
-                let c = r.current.as_ref()?;
-                match c.level {
-                    Some(l) => Some(format!(
-                        "{}: {}{l}%{}",
-                        short(&r.name),
-                        if c.estimate { "≈" } else { "" },
-                        if c.charging { " ⚡" } else { "" }
-                    )),
-                    None if c.charging => Some(tf("tray.charging", &[&short(&r.name)])),
-                    None => None,
-                }
-            })
-            .collect();
-        self.tooltip = if lines.is_empty() { t("tray.nodata") } else { lines.join("\n") };
-
-        // The icon shows the device that needs charging most by its own levels: a critical one first, then one
-        // below its reminder level, the least charged among equals; charging ones only when nothing else is left
-        let live: Vec<(&DeviceRow, &DeviceReading, i32)> =
-            shown.iter().filter_map(|r| r.current.as_ref().and_then(|c| c.level.map(|l| (*r, c, l)))).collect();
-        let s = &self.settings;
-        let urgency = |id: &str, level: i32| {
-            if level <= s.critical_for(id) {
-                2
-            } else if level <= s.low_for(id) {
-                1
-            } else {
-                0
-            }
-        };
-        let pick = live
-            .iter()
-            .filter(|(_, c, _)| !c.charging)
-            .min_by_key(|(r, _, l)| (std::cmp::Reverse(urgency(&r.id, *l)), *l))
-            .or_else(|| live.iter().min_by_key(|(_, _, l)| *l));
-        let (label, color) = match pick {
-            None => ("--".to_string(), (0x80, 0x80, 0x80)),
-            Some((r, c, l)) => (l.to_string(), level_color(Some(*l), c.charging, true, &r.id, s)),
-        };
+        let tray = view::tray_view(&self.rows(), &self.settings);
+        self.tooltip = tray.tooltip;
         let tooltip = self.tooltip.clone();
-        if let Some(tray) = &mut self.tray {
-            tray.update(&label, color, &tooltip);
+        if let Some(tray_icon) = &mut self.tray {
+            tray_icon.update(&tray.label, tray.color, &tooltip);
         }
     }
 
@@ -871,31 +832,6 @@ impl App {
     }
 }
 
-/// The level color a device shows at: its own thresholds when set, the global ones otherwise.
-pub fn level_color(level: Option<i32>, charging: bool, online: bool, id: &str, s: &AppSettings) -> (u8, u8, u8) {
-    const GOOD: (u8, u8, u8) = (0x6C, 0xCB, 0x5F);
-    const WARN: (u8, u8, u8) = (0xF7, 0xC0, 0x4A);
-    const BAD: (u8, u8, u8) = (0xFF, 0x6B, 0x6B);
-    const CHARGE: (u8, u8, u8) = (0x60, 0xCD, 0xFF);
-    const OFFLINE: (u8, u8, u8) = (0x7A, 0x7A, 0x7A);
-    match level {
-        _ if !online => OFFLINE,
-        _ if charging => CHARGE,
-        None => OFFLINE,
-        Some(l) if l <= s.critical_for(id) => BAD,
-        Some(l) if l <= s.low_for(id) => WARN,
-        Some(_) => GOOD,
-    }
-}
-
-fn short(name: &str) -> String {
-    if name.chars().count() > 24 {
-        name.chars().take(23).collect::<String>() + "…"
-    } else {
-        name.to_string()
-    }
-}
-
 /// The C# app ran as a single-file .NET exe that unpacked its native DLLs to %TEMP%\.net\BatteryTray, one folder per
 /// build. Nothing uses them any more.
 fn remove_dotnet_leftovers() {
@@ -905,8 +841,8 @@ fn remove_dotnet_leftovers() {
     }
 }
 
-/// A hidden top-level window for the tray and the overlay's shortcut (Explorer broadcasts TaskbarCreated only to
-/// top-level windows), and a message-only one a second launch finds by its title.
+/// A hidden top-level window for the tray and the overlay's shortcut (Explorer broadcasts TaskbarCreated, and Windows
+/// device changes, only to top-level windows), and a message-only one a second launch finds by its title.
 fn create_windows() -> windows::core::Result<(HWND, HWND)> {
     unsafe {
         let instance = GetModuleHandleW(None)?;
@@ -975,6 +911,18 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         WM_HOTKEY => {
             let id = wparam.0 as i32;
             later(move |app| app.on_hotkey(id));
+        }
+        // Windows tells every top-level window when a device comes or goes (DBT_DEVNODES_CHANGED, also for a Bluetooth
+        // headset that connects): the devices are asked again right away rather than on their schedules, unless the
+        // settings say to wait for the schedules (see Monitor::devices_changed)
+        WM_DEVICECHANGE => {
+            later(|app| {
+                if let Some(m) = &app.monitor {
+                    m.devices_changed();
+                }
+            });
+            // Answered as Windows would: nothing here is a reason to refuse a device's removal
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
         WM_ENDSESSION if wparam.0 != 0 => {
             // Windows is shutting down or signing out: what a normal exit saves, now, before this returns

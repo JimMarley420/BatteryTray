@@ -92,7 +92,9 @@ export global Drag {
 }
 
 // One device: a card (pinned and connected devices) or a "Not connected" row, also the lifted copy that follows the
-// pointer during a drag. The card of a device without connection is compact: no level, no bar.
+// pointer during a drag. Every card is as tall as one with a level, a bar and one line under the name, the most usual
+// one: a card without connection (no level, no bar) has its content in the middle, and a card grows only for a text
+// that takes two lines.
 export component DeviceView inherits Rectangle {
     in property <DeviceItem> item;
     // A row of the "Not connected" block rather than a card
@@ -109,6 +111,8 @@ export component DeviceView inherits Rectangle {
     border-color: root.lifted ? Palette.accent
         : root.renaming || root.menu-open ? Palette.popup-stroke : Palette.stroke;
     border-radius: 8px;
+    // 15 + 36 (the name and one line under it, beside the level) + 12 + 4 (the bar) + 15
+    min-height: root.as-row ? 0px : 82px;
 
     property <bool> renaming: !root.lifted && DeviceUi.renaming-id != "" && DeviceUi.renaming-id == root.item.id;
     property <bool> menu-open: !root.lifted && DeviceUi.menu-id != "" && DeviceUi.menu-id == root.item.id;
@@ -368,8 +372,9 @@ component DragCell inherits Rectangle {
     callback wheel(delta: length);
     callback menu-clicked();
     callback rename-done();
-    // As high as the device, lifted or not, so nothing else moves when it is picked up
-    height: view.preferred-height;
+    // As high as the device, lifted or not, so nothing else moves when it is picked up; a card is never lower than its
+    // usual height
+    height: max(view.preferred-height, view.min-height);
 
     property <bool> in-drag: Drag.active && Drag.list == root.list;
     property <bool> lifted: root.in-drag && Drag.source == root.index;
@@ -666,243 +671,262 @@ export component DevicesScreen inherits Rectangle {
             VerticalLayout {
                 alignment: start;
                 padding-right: 6px;
-                spacing: 8px;
-                if root.banner-visible: Dimmable {
-                    dimmed: Drag.active;
-                    Card {
-                        border-color: Palette.accent;
-                        HorizontalLayout {
-                            padding-left: 16px;
-                            padding-right: 16px;
-                            padding-top: 10px;
-                            padding-bottom: 10px;
-                            spacing: 10px;
-                            Glyph {
-                                text: "\u{E896}";
-                                font-size: 16px;
-                                color: Palette.accent;
-                            }
-                            Text {
-                                text: root.banner-text;
-                                color: Palette.text;
-                                vertical-alignment: center;
-                                wrap: word-wrap;
-                                horizontal-stretch: 1;
-                            }
-                            if root.banner-button-visible: Btn {
-                                accent: true;
-                                text: T.t("upd.banner.button");
-                                clicked => { root.install-update(); }
+                // The banners open and close smoothly, each with the gap under it; then the devices, 8px apart
+                Collapsible {
+                    open: root.banner-visible;
+                    VerticalLayout {
+                        padding-bottom: 8px;
+                        Dimmable {
+                            dimmed: Drag.active;
+                            Card {
+                                border-color: Palette.accent;
+                                HorizontalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    spacing: 10px;
+                                    Glyph {
+                                        text: "\u{E896}";
+                                        font-size: 16px;
+                                        color: Palette.accent;
+                                    }
+                                    Text {
+                                        text: root.banner-text;
+                                        color: Palette.text;
+                                        vertical-alignment: center;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
+                                    }
+                                    if root.banner-button-visible: Btn {
+                                        accent: true;
+                                        text: T.t("upd.banner.button");
+                                        clicked => { root.install-update(); }
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 // Windows keeps a device from the app: admin rights would let it in
-                if root.admin-banner: Dimmable {
-                    dimmed: Drag.active;
-                    Card {
-                        border-color: Palette.warn;
-                        VerticalLayout {
-                            padding-top: 13px;
-                            padding-right: 17px;
-                            padding-bottom: 13px;
-                            padding-left: 17px;
-                            spacing: 10px;
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Glyph {
-                                    width: 18px;
-                                    text: "\u{E7EF}";
-                                    font-size: 16px;
-                                    color: Palette.warn;
-                                    horizontal-alignment: center;
+                Collapsible {
+                    open: root.admin-banner;
+                    VerticalLayout {
+                        padding-bottom: 8px;
+                        Dimmable {
+                            dimmed: Drag.active;
+                            Card {
+                                border-color: Palette.warn;
+                                VerticalLayout {
+                                    padding-top: 13px;
+                                    padding-right: 17px;
+                                    padding-bottom: 13px;
+                                    padding-left: 17px;
+                                    spacing: 10px;
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        Glyph {
+                                            width: 18px;
+                                            text: "\u{E7EF}";
+                                            font-size: 16px;
+                                            color: Palette.warn;
+                                            horizontal-alignment: center;
+                                        }
+                                        Text {
+                                            text: T.t("admin.banner");
+                                            color: Palette.text;
+                                            vertical-alignment: center;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Btn {
+                                            min-width: 0px;
+                                            preferred-width: 0px;
+                                            horizontal-stretch: 1;
+                                            padding-x: 10px;
+                                            accent: true;
+                                            text: T.t("admin.banner.grant");
+                                            clicked => { root.grant-admin-asked(); }
+                                        }
+                                        Btn {
+                                            min-width: 0px;
+                                            preferred-width: 0px;
+                                            horizontal-stretch: 1;
+                                            padding-x: 10px;
+                                            text: T.t("autostart.banner.dismiss");
+                                            clicked => { root.dismiss-admin-banner(); }
+                                        }
+                                    }
                                 }
+                            }
+                        }
+                    }
+                }
+                Collapsible {
+                    open: root.autostart-banner;
+                    VerticalLayout {
+                        padding-bottom: 8px;
+                        Dimmable {
+                            dimmed: Drag.active;
+                            Card {
+                                border-color: Palette.warn;
+                                VerticalLayout {
+                                    padding-top: 13px;
+                                    padding-right: 17px;
+                                    padding-bottom: 13px;
+                                    padding-left: 17px;
+                                    spacing: 10px;
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        Glyph {
+                                            width: 18px;
+                                            text: "\u{E7E8}";
+                                            font-size: 16px;
+                                            color: Palette.warn;
+                                            horizontal-alignment: center;
+                                        }
+                                        Text {
+                                            text: T.t("autostart.banner");
+                                            color: Palette.text;
+                                            vertical-alignment: center;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                    // Equal halves: stretch alone shares out only what is left after each button's own
+                                    // width
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Btn {
+                                            min-width: 0px;
+                                            preferred-width: 0px;
+                                            horizontal-stretch: 1;
+                                            padding-x: 10px;
+                                            accent: true;
+                                            text: T.t("autostart.banner.enable");
+                                            clicked => { root.enable-autostart(); }
+                                        }
+                                        Btn {
+                                            min-width: 0px;
+                                            preferred-width: 0px;
+                                            horizontal-stretch: 1;
+                                            padding-x: 10px;
+                                            text: T.t("autostart.banner.dismiss");
+                                            clicked => { root.dismiss-autostart-banner(); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 8px;
+                    if root.pinned.length > 0: Dimmable {
+                        dimmed: Drag.active && Drag.list != 0;
+                        VerticalLayout {
+                            spacing: 8px;
+                            for device[i] in root.pinned: DragCell {
+                                item: device;
+                                list: 0;
+                                index: i;
+                                count: root.pinned.length;
+                                layout-order: self.position;
+                                picked => { root.drag-started(); }
+                                dropped(from, to) => { root.device-moved(root.pinned[from].id, root.pinned[to].id); }
+                                wheel(delta) => { root.scroll-by(delta); }
+                                menu-clicked => { root.open-menu(device.id); }
+                                rename-done => { root.rename-done(); }
+                            }
+                        }
+                    }
+                    if root.connected.length > 0: Dimmable {
+                        dimmed: Drag.active && Drag.list != 1;
+                        VerticalLayout {
+                            spacing: 8px;
+                            for device[i] in root.connected: DragCell {
+                                item: device;
+                                list: 1;
+                                index: i;
+                                count: root.connected.length;
+                                layout-order: self.position;
+                                picked => { root.drag-started(); }
+                                dropped(from, to) => {
+                                    root.device-moved(root.connected[from].id, root.connected[to].id);
+                                }
+                                wheel(delta) => { root.scroll-by(delta); }
+                                menu-clicked => { root.open-menu(device.id); }
+                                rename-done => { root.rename-done(); }
+                            }
+                        }
+                    }
+                    if root.none-online: Dimmable {
+                        dimmed: Drag.active;
+                        Card {
+                            VerticalLayout {
+                                padding: 14px;
                                 Text {
-                                    text: T.t("admin.banner");
-                                    color: Palette.text;
-                                    vertical-alignment: center;
-                                    wrap: word-wrap;
-                                    horizontal-stretch: 1;
-                                }
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Btn {
-                                    min-width: 0px;
-                                    preferred-width: 0px;
-                                    horizontal-stretch: 1;
-                                    padding-x: 10px;
-                                    accent: true;
-                                    text: T.t("admin.banner.grant");
-                                    clicked => { root.grant-admin-asked(); }
-                                }
-                                Btn {
-                                    min-width: 0px;
-                                    preferred-width: 0px;
-                                    horizontal-stretch: 1;
-                                    padding-x: 10px;
-                                    text: T.t("autostart.banner.dismiss");
-                                    clicked => { root.dismiss-admin-banner(); }
-                                }
-                            }
-                        }
-                    }
-                }
-                if root.autostart-banner: Dimmable {
-                    dimmed: Drag.active;
-                    Card {
-                        border-color: Palette.warn;
-                        VerticalLayout {
-                            padding-top: 13px;
-                            padding-right: 17px;
-                            padding-bottom: 13px;
-                            padding-left: 17px;
-                            spacing: 10px;
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Glyph {
-                                    width: 18px;
-                                    text: "\u{E7E8}";
-                                    font-size: 16px;
-                                    color: Palette.warn;
+                                    text: T.t("none.online");
+                                    color: Palette.secondary;
                                     horizontal-alignment: center;
-                                }
-                                Text {
-                                    text: T.t("autostart.banner");
-                                    color: Palette.text;
-                                    vertical-alignment: center;
                                     wrap: word-wrap;
-                                    horizontal-stretch: 1;
-                                }
-                            }
-                            // Equal halves: stretch alone shares out only what is left after each button's own
-                            // width
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Btn {
-                                    min-width: 0px;
-                                    preferred-width: 0px;
-                                    horizontal-stretch: 1;
-                                    padding-x: 10px;
-                                    accent: true;
-                                    text: T.t("autostart.banner.enable");
-                                    clicked => { root.enable-autostart(); }
-                                }
-                                Btn {
-                                    min-width: 0px;
-                                    preferred-width: 0px;
-                                    horizontal-stretch: 1;
-                                    padding-x: 10px;
-                                    text: T.t("autostart.banner.dismiss");
-                                    clicked => { root.dismiss-autostart-banner(); }
                                 }
                             }
                         }
                     }
-                }
-                if root.pinned.length > 0: Dimmable {
-                    dimmed: Drag.active && Drag.list != 0;
-                    VerticalLayout {
-                        spacing: 8px;
-                        for device[i] in root.pinned: DragCell {
-                            item: device;
-                            list: 0;
-                            index: i;
-                            count: root.pinned.length;
-                            layout-order: self.position;
-                            picked => { root.drag-started(); }
-                            dropped(from, to) => { root.device-moved(root.pinned[from].id, root.pinned[to].id); }
-                            wheel(delta) => { root.scroll-by(delta); }
-                            menu-clicked => { root.open-menu(device.id); }
-                            rename-done => { root.rename-done(); }
-                        }
-                    }
-                }
-                // 8 + 0 + 8: twice the usual gap between the pinned devices and whatever follows them
-                if root.pinned.length > 0 && (root.connected.length > 0 || root.none-online
-                    || root.offline.length > 0 || root.hidden.length > 0): Rectangle {
-                    height: 0px;
-                }
-                if root.connected.length > 0: Dimmable {
-                    dimmed: Drag.active && Drag.list != 1;
-                    VerticalLayout {
-                        spacing: 8px;
-                        for device[i] in root.connected: DragCell {
-                            item: device;
-                            list: 1;
-                            index: i;
-                            count: root.connected.length;
-                            layout-order: self.position;
-                            picked => { root.drag-started(); }
-                            dropped(from, to) => {
-                                root.device-moved(root.connected[from].id, root.connected[to].id);
-                            }
-                            wheel(delta) => { root.scroll-by(delta); }
-                            menu-clicked => { root.open-menu(device.id); }
-                            rename-done => { root.rename-done(); }
-                        }
-                    }
-                }
-                if root.none-online: Dimmable {
-                    dimmed: Drag.active;
-                    Card {
+                    if root.offline.length > 0: Dimmable {
+                        dimmed: Drag.active && Drag.list != 2;
                         VerticalLayout {
-                            padding: 14px;
-                            Text {
-                                text: T.t("none.online");
-                                color: Palette.secondary;
-                                horizontal-alignment: center;
-                                wrap: word-wrap;
+                            padding-top: 6px;
+                            padding-left: 2px;
+                            SectionHeader {
+                                text: T.t("offline.header");
                             }
                         }
                     }
-                }
-                if root.offline.length > 0: Dimmable {
-                    dimmed: Drag.active && Drag.list != 2;
-                    VerticalLayout {
-                        padding-top: 6px;
-                        padding-left: 2px;
-                        SectionHeader {
-                            text: T.t("offline.header");
+                    if root.offline.length > 0: Dimmable {
+                        dimmed: Drag.active && Drag.list != 2;
+                        VerticalLayout {
+                            spacing: 8px;
+                            for device[i] in root.offline: DragCell {
+                                item: device;
+                                as-row: true;
+                                list: 2;
+                                index: i;
+                                count: root.offline.length;
+                                layout-order: self.position;
+                                picked => { root.drag-started(); }
+                                dropped(from, to) => { root.device-moved(root.offline[from].id, root.offline[to].id); }
+                                wheel(delta) => { root.scroll-by(delta); }
+                                menu-clicked => { root.open-menu(device.id); }
+                                rename-done => { root.rename-done(); }
+                            }
                         }
                     }
-                }
-                if root.offline.length > 0: Dimmable {
-                    dimmed: Drag.active && Drag.list != 2;
-                    VerticalLayout {
-                        spacing: 8px;
-                        for device[i] in root.offline: DragCell {
-                            item: device;
-                            as-row: true;
-                            list: 2;
-                            index: i;
-                            count: root.offline.length;
-                            layout-order: self.position;
-                            picked => { root.drag-started(); }
-                            dropped(from, to) => { root.device-moved(root.offline[from].id, root.offline[to].id); }
-                            wheel(delta) => { root.scroll-by(delta); }
-                            menu-clicked => { root.open-menu(device.id); }
-                            rename-done => { root.rename-done(); }
+                    if root.hidden.length > 0: Dimmable {
+                        dimmed: Drag.active;
+                        HorizontalLayout {
+                            alignment: start;
+                            HiddenToggle {
+                                count: root.hidden.length;
+                                open <=> root.hidden-open;
+                            }
                         }
                     }
-                }
-                if root.hidden.length > 0: Dimmable {
-                    dimmed: Drag.active;
-                    HorizontalLayout {
-                        alignment: start;
-                        HiddenToggle {
-                            count: root.hidden.length;
-                            open <=> root.hidden-open;
-                        }
-                    }
-                }
-                if root.hidden-open && root.hidden.length > 0: Dimmable {
-                    dimmed: Drag.active;
-                    VerticalLayout {
-                        spacing: 8px;
-                        for device in root.hidden: HiddenRowView {
-                            item: device;
-                            shown => { root.device-shown(device.id); }
+                    Collapsible {
+                        open: root.hidden-open && root.hidden.length > 0;
+                        Dimmable {
+                            dimmed: Drag.active;
+                            VerticalLayout {
+                                spacing: 8px;
+                                for device in root.hidden: HiddenRowView {
+                                    item: device;
+                                    shown => { root.device-shown(device.id); }
+                                }
+                            }
                         }
                     }
                 }
@@ -1003,6 +1027,8 @@ export component DeviceMenu inherits Rectangle {
     callback alerts-toggled();
     callback low-changed(int);
     callback critical-changed(int);
+    // Return applied a level: the window takes the focus back
+    callback levels-done();
     callback levels-reset();
     visible: DeviceUi.menu-id != "";
 
@@ -1107,10 +1133,10 @@ export component DeviceMenu inherits Rectangle {
                             compact: true;
                             label: T.t("device.low");
                             value: root.device.low;
-                            minimum: 10;
-                            maximum: 50;
+                            minimum: 1;
                             unit: "%";
                             changed(v) => { root.low-changed(v); }
+                            submitted => { root.levels-done(); }
                         }
                     }
                     LevelRow {
@@ -1119,10 +1145,11 @@ export component DeviceMenu inherits Rectangle {
                             compact: true;
                             label: T.t("device.critical");
                             value: root.device.critical;
-                            minimum: 5;
-                            maximum: max(5, root.device.low - 5);
+                            minimum: 1;
+                            maximum: root.device.low;
                             unit: "%";
                             changed(v) => { root.critical-changed(v); }
+                            submitted => { root.levels-done(); }
                         }
                     }
                 }
