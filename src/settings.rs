@@ -21,9 +21,10 @@ pub const MOD_SHIFT: i32 = 0x0004;
 pub const MOD_WIN: i32 = 0x0008;
 /// Ctrl+Alt+V (⌃⌥V on macOS)
 pub const DEFAULT_HOTKEY: (i32, i32) = (0x56, MOD_ALT | MOD_CONTROL);
-/// The reminder closes on its own after this many seconds at the least and at the most. The field and the slider in
-/// Settings > Reminders (RemindersPage in ui/settings.slint) have the same bounds.
-pub const AUTO_CLOSE_SECONDS: (i32, i32) = (5, 15);
+/// The reminder closes on its own after this many seconds at the least and at the most: what the field in Settings >
+/// Reminders takes (RemindersPage in ui/settings.slint, ReminderSettings in macos/BatteryTray/SettingsWindow.swift).
+/// Its slider runs from 1 to 15 seconds and stands at its end for a typed value past that, as the repeat's does.
+pub const AUTO_CLOSE_SECONDS: (i32, i32) = (1, 3600);
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -767,10 +768,14 @@ mod tests {
         assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(10)));
         let (s, _) = AppSettings::from_value(&serde_json::json!({ "AutoClose": false }));
         assert_eq!(s.auto_close_after(), None);
+        // A typed value past the slider's end is kept; past an hour it is an hour
         let (mut s, clean) = AppSettings::from_value(&serde_json::json!({ "AutoClose": true, "AutoCloseSeconds": 60 }));
         assert!(clean);
         s.normalize();
-        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(15)));
+        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(60)));
+        let (mut s, _) = AppSettings::from_value(&serde_json::json!({ "AutoCloseSeconds": 99999 }));
+        s.normalize();
+        assert_eq!(s.auto_close_after(), Some(std::time::Duration::from_secs(3600)));
     }
 
     #[test]
@@ -791,10 +796,12 @@ mod tests {
         assert_eq!(s.repeat_minutes, 1);
         s.set_repeat(500);
         assert_eq!(s.repeat_minutes, 120);
-        s.set_auto_close_seconds(1);
-        assert_eq!(s.auto_close_seconds, 5);
-        s.set_auto_close_seconds(60);
-        assert_eq!(s.auto_close_seconds, 15);
+        s.set_auto_close_seconds(0);
+        assert_eq!(s.auto_close_seconds, 1);
+        s.set_auto_close_seconds(45);
+        assert_eq!(s.auto_close_seconds, 45, "the field takes more than the slider's 15");
+        s.set_auto_close_seconds(5000);
+        assert_eq!(s.auto_close_seconds, 3600);
         assert_eq!((s.low_for("own"), s.critical_for("own")), (30, 10), "a device's own levels stay out of it");
     }
 

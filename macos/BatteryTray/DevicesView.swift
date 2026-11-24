@@ -45,6 +45,7 @@ struct DevicesView: View {
                             }
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -421,10 +422,11 @@ struct DeviceMenu: View {
                             Label("\(model.t("device.levels.reset")) · \(s.low)% / \(s.critical)%",
                                   systemImage: "arrow.uturn.backward")
                                 .font(.caption)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.borderless)
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.leading, 36)

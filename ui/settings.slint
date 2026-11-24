@@ -472,8 +472,6 @@ export component RemindersPage inherits Page {
             Divider { }
             SwitchRow {
                 text: T.t("alerts.autoclose");
-                hint: T.t("alerts.autoclose.hint");
-                hint-label: T.t("alerts.autoclose.info");
                 checked: root.auto-close;
                 toggled(on) => {
                     root.close-field-focused = false;
@@ -481,9 +479,10 @@ export component RemindersPage inherits Page {
                 }
             }
             if root.auto-close: close := VerticalLayout {
-                // The bounds of AUTO_CLOSE_SECONDS in settings.rs, which keeps any value within them
-                property <int> fewest: 5;
-                property <int> most: 15;
+                // The field takes what AUTO_CLOSE_SECONDS in settings.rs does (any value up to an hour); the slider
+                // runs from 1 to 15 seconds and stands at its end for a value past that, as the repeat's does
+                property <int> fewest: 1;
+                property <int> most: 3600;
                 padding-right: 16px;
                 padding-bottom: 12px;
                 padding-left: 16px;
@@ -510,8 +509,8 @@ export component RemindersPage inherits Page {
                     }
                 }
                 StepSlider {
-                    minimum: close.fewest;
-                    maximum: close.most;
+                    minimum: 1;
+                    maximum: 15;
                     step: 1;
                     label: T.t("alerts.autoclose.after");
                     value: root.auto-close-seconds;

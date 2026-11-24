@@ -67,15 +67,81 @@ extension Array {
     }
 }
 
-/// An ⓘ that shows its hint while the pointer rests on it.
+/// An ⓘ after a label. Its hint opens next to it a moment after the pointer comes (and goes when the pointer leaves),
+/// or at once on a click, and then stays until a click on the ⓘ or anywhere else. macOS' own tooltip comes after a
+/// second or two and never on a click.
 struct Hint: View {
     let text: String
+    @StateObject private var state = HintState()
 
     var body: some View {
-        Image(systemName: "info.circle")
-            .foregroundStyle(.secondary)
-            .help(text)
-            .accessibilityLabel(text)
+        Button { state.click() } label: {
+            Image(systemName: "info.circle")
+                .foregroundStyle(state.hovering || state.shown ? Color.accentColor : Color.secondary)
+                .padding(2)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { state.hover($0) }
+        .popover(isPresented: $state.shown, arrowEdge: .bottom) {
+            Text(text)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 260, alignment: .leading)
+                .padding(12)
+        }
+        .accessibilityLabel(text)
+    }
+}
+
+/// Whether a hint is open, and whether a click opened it (then the pointer leaving doesn't close it).
+@MainActor
+final class HintState: ObservableObject {
+    private static let delay: TimeInterval = 0.3
+    @Published var shown = false {
+        didSet {
+            if !shown { pinned = false }
+        }
+    }
+    @Published private(set) var hovering = false
+    private var pinned = false
+    private var pending: DispatchWorkItem?
+
+    func hover(_ inside: Bool) {
+        hovering = inside
+        pending?.cancel()
+        if inside {
+            let open = DispatchWorkItem { [weak self] in
+                guard let self, self.hovering else { return }
+                self.shown = true
+            }
+            pending = open
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.delay, execute: open)
+        } else if !pinned {
+            shown = false
+        }
+    }
+
+    func click() {
+        pending?.cancel()
+        if shown && pinned {
+            shown = false
+        } else {
+            shown = true
+            pinned = true
+        }
+    }
+}
+
+/// A button that is a whole row of a settings list, clicked anywhere on it: its text and symbol in the accent color,
+/// as a link's.
+struct RowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color.accentColor)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
 
@@ -184,7 +250,7 @@ struct GeneralSettings: View {
                         }
                     }
                 }
-                .buttonStyle(.link)
+                .buttonStyle(RowButtonStyle())
             }
             .formStyle(.grouped)
             .fixedSize(horizontal: false, vertical: true)
@@ -211,16 +277,12 @@ struct ReminderSettings: View {
                                  current: { model.snapshot?.settings.repeatMinutes ?? s.repeatMinutes }) { model.set("repeat", $0) }
                 }
                 Section {
-                    Toggle(isOn: Binding(get: { s.autoClose }, set: { model.set("auto_close", $0) })) {
-                        HStack(spacing: 6) {
-                            Text(model.t("alerts.autoclose"))
-                            Hint(text: model.t("alerts.autoclose.hint"))
-                        }
-                    }
+                    Toggle(model.t("alerts.autoclose"), isOn: Binding(get: { s.autoClose }, set: { model.set("auto_close", $0) }))
                     if s.autoClose {
-                        // The bounds of AUTO_CLOSE_SECONDS in settings.rs, which keeps any value within them
+                        // The slider runs from 1 to 15 seconds; the field takes any value up to an hour
+                        // (AUTO_CLOSE_SECONDS in settings.rs)
                         LevelSetting(title: model.t("alerts.autoclose.after"), hint: nil, value: s.autoCloseSeconds,
-                                     range: 5...15, unit: model.t("alerts.autoclose.unit"), step: 1,
+                                     range: 1...15, unit: model.t("alerts.autoclose.unit"), step: 1,
                                      current: { model.snapshot?.settings.autoCloseSeconds ?? s.autoCloseSeconds }) {
                             model.set("auto_close_seconds", $0)
                         }
@@ -241,7 +303,7 @@ struct ReminderSettings: View {
                     } label: {
                         Label(model.t("alerts.test"), systemImage: "bell.badge")
                     }
-                    .buttonStyle(.link)
+                    .buttonStyle(RowButtonStyle())
                 }
             }
             .formStyle(.grouped)
@@ -343,7 +405,7 @@ struct OverlaySettings: View {
                     } label: {
                         Label(model.t("overlay.preview"), systemImage: "eye")
                     }
-                    .buttonStyle(.link)
+                    .buttonStyle(RowButtonStyle())
                 }
             }
             .formStyle(.grouped)

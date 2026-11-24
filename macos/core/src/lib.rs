@@ -288,8 +288,10 @@ mod tests {
         let alert = waits["effects"].as_array().unwrap().iter().find(|e| e["type"] == "alert").cloned().unwrap();
         assert!(alert["auto_close"].is_null());
         run(json!({ "cmd": "set", "key": "auto_close", "value": true }));
-        run(json!({ "cmd": "set", "key": "auto_close_seconds", "value": 60 }));
-        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["auto_close_seconds"], 15, "kept within 5-15");
+        run(json!({ "cmd": "set", "key": "auto_close_seconds", "value": 45 }));
+        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["auto_close_seconds"], 45, "past the slider's 15");
+        run(json!({ "cmd": "set", "key": "auto_close_seconds", "value": 99999 }));
+        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["auto_close_seconds"], 3600, "an hour at the most");
         let closed = run(json!({ "cmd": "snooze", "auto": true }));
         assert_eq!(closed["effects"][0]["type"], "alert_close");
 

@@ -64,5 +64,8 @@ MainActor.assumeIsolated {
         app.appearance = NSAppearance(named: arguments[at + 3] == "light" ? .aqua : .darkAqua)
     }
     app.setActivationPolicy(.accessory)
+    // The tooltips of the icon buttons (⋯, the cross, the shortcut's reset) half a second after the pointer comes, as
+    // on Windows, not after macOS' second or two
+    UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 500])
     app.run()
 }

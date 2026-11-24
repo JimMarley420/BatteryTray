@@ -133,6 +133,8 @@ export component TipLayer inherits Rectangle {
 // scrolls, the layout changes): the pointer is told about the element under it only when it moves itself.
 component TipArea inherits TouchArea {
     in property <string> tip;
+    // A press shows the tooltip at once (the ⓘ, which does nothing else) instead of taking it back (a button's press)
+    in property <bool> show-on-press;
     property <Point> place: self.absolute-position;
     changed place => {
         if (self.has-hover) {
@@ -148,7 +150,12 @@ component TipArea inherits TouchArea {
     }
     pointer-event(e) => {
         if (e.kind == PointerEventKind.down) {
-            Tip.cancel();
+            if (root.show-on-press) {
+                Tip.arm(root.tip, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
+                Tip.shown = true;
+            } else {
+                Tip.cancel();
+            }
         }
     }
     // The list under the pointer is about to move: the wheel itself is left to the list
@@ -189,7 +196,8 @@ export component TipButton inherits Rectangle {
     }
 }
 
-// The ⓘ after a label: its hint shows as a tooltip, and a screen reader reads it as the description
+// The ⓘ after a label: its hint shows as a tooltip, half a second after the pointer comes or at once on a click, and a
+// screen reader reads it as the description
 export component InfoTip inherits Rectangle {
     in property <string> hint;
     in property <string> label;
@@ -207,6 +215,7 @@ export component InfoTip inherits Rectangle {
     }
     touch := TipArea {
         tip: root.hint;
+        show-on-press: true;
         mouse-cursor: help;
     }
 }

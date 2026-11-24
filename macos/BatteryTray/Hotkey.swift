@@ -98,6 +98,8 @@ struct ShortcutRecorder: View {
             .padding(.vertical, 3)
             .frame(minWidth: 120)
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(recording ? Color.accentColor : .clear, lineWidth: 2))
+            // Clicked anywhere on it, also between the keys
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(model.t("overlay.shortcut")): \(shortcut.label)")
