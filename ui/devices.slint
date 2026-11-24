@@ -111,8 +111,9 @@ export component DeviceView inherits Rectangle {
     border-color: root.lifted ? Palette.accent
         : root.renaming || root.menu-open ? Palette.popup-stroke : Palette.stroke;
     border-radius: 8px;
-    // 15 + 36 (the name and one line under it, beside the level) + 12 + 4 (the bar) + 15
-    min-height: root.as-row ? 0px : 82px;
+    // 15 + 36 (the name and one line under it, beside the level) + 12 + 4 (the bar) + 15, and the border's 1 + 1: as
+    // tall as a card with a level bar, so a card without one (not connected) is no shorter
+    min-height: root.as-row ? 0px : 84px;
 
     property <bool> renaming: !root.lifted && DeviceUi.renaming-id != "" && DeviceUi.renaming-id == root.item.id;
     property <bool> menu-open: !root.lifted && DeviceUi.menu-id != "" && DeviceUi.menu-id == root.item.id;
