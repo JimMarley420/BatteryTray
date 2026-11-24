@@ -1,10 +1,9 @@
 import AppKit
 
-/// `--snapshot <folder> [ru|en|zh]`: the app with the demo's devices draws each of its windows to a PNG file and quits
-/// - the device list, a device's menu, a name being edited, the menu bar item's menu, each settings tab, the reminder
-/// and the overlay - for the
-/// README's pictures and for checking a layout. An app may always take pictures of its own windows, so no Screen
-/// Recording permission is needed.
+/// `--snapshot <folder> [ru|en|zh] [light|dark]`: the app with the demo's devices draws each of its windows to a PNG
+/// file and quits - the device list, a device's menu, a name being edited, the menu bar item's menu, each settings tab,
+/// the reminder and the overlay - in that appearance (the system's without it), for the README's pictures and for
+/// checking a layout. An app may always take pictures of its own windows, so no Screen Recording permission is needed.
 @MainActor
 final class Snapshots {
     private let folder: URL

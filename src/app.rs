@@ -19,8 +19,7 @@ use crate::state::StateStore;
 use crate::tray::{self, Tray, MENU_EXIT, MENU_OPEN, MENU_REFRESH, MENU_SETTINGS};
 use crate::update_service::{Event, Status, UpdateService};
 use crate::updater::{self, ReleaseInfo, Version};
-pub use crate::view::level_color;
-use crate::{diag, gui, log, providers, view, win};
+use crate::{diag, gui, log, providers, theme, view, win};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -242,7 +241,7 @@ impl App {
             log::write(&format!("cannot start the UI: {e}"));
             return 1;
         }
-        tray::use_dark_menus();
+        tray::set_menu_mode(theme::current().taskbar_light);
         let (hwnd, activator) = match create_windows() {
             Ok(windows) => windows,
             Err(e) => {
@@ -274,6 +273,8 @@ impl App {
             let _ = sender.send(event);
             later(|app| app.on_update_events());
         });
+        // Light or dark: followed while the app runs, also with no window open (the tray icon's number)
+        theme::watch(|| later(|app| app.on_theme_changed()));
         let tray = Tray::new(hwnd, WM_APP_TRAY);
         let mut overlay = Overlay::new(hwnd);
         overlay.apply_settings(&settings);
@@ -743,7 +744,21 @@ impl App {
         self.tooltip = tray.tooltip;
         let tooltip = self.tooltip.clone();
         if let Some(tray_icon) = &mut self.tray {
-            tray_icon.update(&tray.label, tray.color, &tooltip);
+            tray_icon.update(&tray.label, tray.tone.rgb(theme::current().taskbar_light), &tooltip);
+        }
+    }
+
+    /// Windows' light or dark mode changed: the tray icon's number (drawn again, whatever the levels) and menu, the
+    /// windows and the main window's title bar follow it at once.
+    fn on_theme_changed(&mut self) {
+        let Some(mode) = theme::reread() else { return };
+        tray::set_menu_mode(mode.taskbar_light);
+        self.update_tray();
+        if let Some(view) = &self.main {
+            view.follow_theme();
+        }
+        for alert in [&self.alert, &self.test_alert].into_iter().flatten() {
+            alert.follow_theme();
         }
     }
 

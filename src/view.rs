@@ -12,20 +12,60 @@ use chrono::{DateTime, Local};
 
 pub type Rgb = (u8, u8, u8);
 
-/// The level color a device shows at: its own thresholds when set, the global ones otherwise.
-pub fn level_color(level: Option<i32>, charging: bool, online: bool, id: &str, s: &AppSettings) -> Rgb {
-    const GOOD: Rgb = (0x6C, 0xCB, 0x5F);
-    const WARN: Rgb = (0xF7, 0xC0, 0x4A);
-    const BAD: Rgb = (0xFF, 0x6B, 0x6B);
-    const CHARGE: Rgb = (0x60, 0xCD, 0xFF);
-    const OFFLINE: Rgb = (0x7A, 0x7A, 0x7A);
+/// What a level says, which picks its color: each app draws a tone in the color its theme (light or dark) has for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Tone {
+    Good,
+    Warn,
+    Bad,
+    Charge,
+    Offline,
+}
+
+impl Tone {
+    /// The Windows app's color for the tone: Windows 11's own, the dark theme's bright ones, the light theme's dark
+    /// enough to read as text on a light background (4.5:1 on its cards).
+    pub fn rgb(self, light: bool) -> Rgb {
+        match (self, light) {
+            (Tone::Good, false) => (0x6C, 0xCB, 0x5F),
+            (Tone::Warn, false) => (0xF7, 0xC0, 0x4A),
+            (Tone::Bad, false) => (0xFF, 0x6B, 0x6B),
+            (Tone::Charge, false) => (0x60, 0xCD, 0xFF),
+            (Tone::Offline, false) => (0x7A, 0x7A, 0x7A),
+            (Tone::Good, true) => (0x0F, 0x7B, 0x0F),
+            (Tone::Warn, true) => (0x9D, 0x5D, 0x00),
+            (Tone::Bad, true) => (0xC4, 0x2B, 0x1C),
+            (Tone::Charge, true) => (0x00, 0x5F, 0xB8),
+            (Tone::Offline, true) => (0x8A, 0x8A, 0x8A),
+        }
+    }
+
+    /// Its name for the macOS app
+    pub fn name(self) -> &'static str {
+        match self {
+            Tone::Good => "good",
+            Tone::Warn => "warn",
+            Tone::Bad => "bad",
+            Tone::Charge => "charge",
+            Tone::Offline => "offline",
+        }
+    }
+
+    /// Its number for the Windows windows (Slint has no Rust enums): the order of the variants
+    pub fn index(self) -> i32 {
+        self as i32
+    }
+}
+
+/// The tone a device's level shows in: its own thresholds when set, the global ones otherwise.
+pub fn level_tone(level: Option<i32>, charging: bool, online: bool, id: &str, s: &AppSettings) -> Tone {
     match level {
-        _ if !online => OFFLINE,
-        _ if charging => CHARGE,
-        None => OFFLINE,
-        Some(l) if l <= s.critical_for(id) => BAD,
-        Some(l) if l <= s.low_for(id) => WARN,
-        Some(_) => GOOD,
+        _ if !online => Tone::Offline,
+        _ if charging => Tone::Charge,
+        None => Tone::Offline,
+        Some(l) if l <= s.critical_for(id) => Tone::Bad,
+        Some(l) if l <= s.low_for(id) => Tone::Warn,
+        Some(_) => Tone::Good,
     }
 }
 
@@ -40,7 +80,7 @@ pub struct DeviceView {
     pub connected: bool,
     pub pinned: bool,
     pub level_text: String,
-    pub color: Rgb,
+    pub tone: Tone,
     pub charging: bool,
     /// Charging with no readable level: the bar is drawn full and faint, the lightning alone says it all
     pub indeterminate: bool,
@@ -108,7 +148,7 @@ pub fn device_lists(rows: &[DeviceRow], s: &AppSettings, now: DateTime<Local>) -
 pub fn device_view(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> DeviceView {
     let mut parts = Vec::new();
     let (mut level, mut estimate, mut unknown, mut charging) = (None, false, false, false);
-    let mut color = (0x7A, 0x7A, 0x7A);
+    let mut tone = Tone::Offline;
     if row.online() {
         let cur = row.current.as_ref().expect("online rows have a reading");
         level = cur.level;
@@ -124,7 +164,7 @@ pub fn device_view(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> De
             parts.push(detail.clone());
         }
         charging = cur.charging;
-        color = level_color(level, cur.charging, true, &row.id, s);
+        tone = level_tone(level, cur.charging, true, &row.id, s);
     } else {
         // The reason, when the provider knows it ("asleep or off"), reads better than a bare "Not connected"
         let why = row.current.as_ref().and_then(|c| c.detail.clone()).filter(|d| !d.is_empty());
@@ -156,7 +196,7 @@ pub fn device_view(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> De
             None if unknown => String::new(),
             None => "—".into(),
         },
-        color,
+        tone,
         charging,
         indeterminate: unknown,
         fill: (level.unwrap_or(0) as f32 / 100.0).clamp(0.0, 1.0),
@@ -253,7 +293,7 @@ pub fn update_view(u: &Status) -> UpdateView {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayView {
     pub label: String,
-    pub color: Rgb,
+    pub tone: Tone,
     /// One line per device on the air, in the list's order; empty when no level is known
     pub lines: Vec<String>,
     /// The lines joined, or "no data"
@@ -301,11 +341,11 @@ pub fn tray_view(rows: &[DeviceRow], s: &AppSettings) -> TrayView {
         .filter(|(_, charging, _)| !charging)
         .min_by_key(|(r, _, l)| (std::cmp::Reverse(urgency(&r.id, *l)), *l))
         .or_else(|| live.iter().min_by_key(|(_, _, l)| *l));
-    let (label, color) = match pick {
-        None => ("--".to_string(), (0x80, 0x80, 0x80)),
-        Some((r, charging, l)) => (l.to_string(), level_color(Some(*l), *charging, true, &r.id, s)),
+    let (label, tone) = match pick {
+        None => ("--".to_string(), Tone::Offline),
+        Some((r, charging, l)) => (l.to_string(), level_tone(Some(*l), *charging, true, &r.id, s)),
     };
-    TrayView { label, color, lines, tooltip }
+    TrayView { label, tone, lines, tooltip }
 }
 
 /// A name as the tooltip has room for it.
@@ -336,7 +376,7 @@ pub struct OverlayEntryView {
     pub name: String,
     pub show_name: bool,
     pub level: String,
-    pub color: Rgb,
+    pub tone: Tone,
     /// Charging or full on its charger: the lightning follows the level
     pub power: bool,
 }
@@ -356,7 +396,7 @@ pub fn overlay_entries(rows: &[DeviceRow], s: &AppSettings) -> Vec<OverlayEntryV
                     None if power => String::new(),
                     None => "—".into(),
                 },
-                color: level_color(c.level, power, true, &row.id, s),
+                tone: level_tone(c.level, power, true, &row.id, s),
                 power,
             }
         })
@@ -403,7 +443,7 @@ mod tests {
         assert_eq!((pad.connected, pad.pinned, pad.level_text.as_str()), (false, true, "—"));
         assert!(pad.subtitle.starts_with("Not connected · last: 50%"), "{}", pad.subtitle);
         let keyboard = &lists.connected[0];
-        assert_eq!((keyboard.level_text.as_str(), keyboard.fill, keyboard.color), ("50%", 0.5, (0x6C, 0xCB, 0x5F)));
+        assert_eq!((keyboard.level_text.as_str(), keyboard.fill, keyboard.tone), ("50%", 0.5, Tone::Good));
     }
 
     #[test]
@@ -433,7 +473,7 @@ mod tests {
         assert_eq!(tray_view(&[], &s).tooltip, "Device Battery: no data");
         let rows = [at("a", 60, false), at("b", 15, false), at("c", 5, true)];
         let tray = tray_view(&rows, &s);
-        assert_eq!((tray.label.as_str(), tray.color), ("15", (0xF7, 0xC0, 0x4A)));
+        assert_eq!((tray.label.as_str(), tray.tone), ("15", Tone::Warn));
         assert_eq!(tray.lines, ["a: 60%", "b: 15%", "c: 5% ⚡"]);
         // Its own reminder level makes the fuller one the more urgent
         s.device_mut("a").low_percent = Some(70);

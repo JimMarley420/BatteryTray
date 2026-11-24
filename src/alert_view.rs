@@ -10,6 +10,7 @@ use crate::gui::{self, AlertRow, AlertWindow, Kind};
 use crate::loc::tf;
 use crate::overlay::Rect;
 use crate::rows::AlertItem;
+use crate::theme;
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::cell::Cell;
@@ -22,8 +23,6 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect};
 
-/// The window's border: neutral, the severity is in the levels' color
-const BORDER: (u8, u8, u8) = (0x3F, 0x3F, 0x3F);
 /// How often the line of the time left moves
 const TICK: Duration = Duration::from_millis(33);
 /// No keyboard or mouse input for this long: nobody is at the computer, unless a full-screen app runs
@@ -75,6 +74,7 @@ impl AlertView {
     pub fn new(snooze: impl Fn() + 'static, mute: impl Fn() + 'static) -> Result<Self, slint::PlatformError> {
         let ui = gui::create(Kind::Reminder, AlertWindow::new)?;
         gui::setup_texts(&ui.global::<gui::T>());
+        gui::set_theme(&ui, theme::current().apps_light);
         let rows = Rc::new(VecModel::default());
         ui.set_items(ModelRc::from(rows.clone()));
         ui.on_snooze(snooze);
@@ -213,7 +213,15 @@ impl AlertView {
     }
 
     fn style(&self) {
-        gui::set_border(self.ui.window(), Some(BORDER));
+        gui::set_border(self.ui.window(), Some(border()));
+    }
+
+    /// Windows' app mode changed: the window follows it, its border too once it is seen.
+    pub fn follow_theme(&self) {
+        gui::set_theme(&self.ui, theme::current().apps_light);
+        if self.ui.window().is_visible() && !self.revealing.get() {
+            self.style();
+        }
     }
 
     /// Where it is on the screen, for the overlay to stay clear of it.
@@ -228,6 +236,16 @@ impl AlertView {
     pub fn close(&self) {
         self.tick.stop();
         let _ = self.ui.hide();
+    }
+}
+
+/// The window's border: neutral, the severity is in the levels' color. Light: WinUI's stroke around a surface (#757575
+/// at 40%) over the window's colour.
+fn border() -> (u8, u8, u8) {
+    if theme::current().apps_light {
+        (0xC5, 0xC5, 0xC5)
+    } else {
+        (0x3F, 0x3F, 0x3F)
     }
 }
 
@@ -283,7 +301,7 @@ fn reveal_after(timer: &Rc<slint::Timer>, ui: &AlertWindow, revealing: &Rc<Cell<
         }
         place(&ui);
         if revealing.replace(false) {
-            gui::set_border(ui.window(), Some(BORDER));
+            gui::set_border(ui.window(), Some(border()));
             gui::set_alpha(ui.window(), 255);
         }
     });

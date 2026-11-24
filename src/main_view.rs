@@ -14,6 +14,7 @@ use crate::loc::{self, t};
 use crate::reading::DeviceKind;
 use crate::rows::DeviceRow;
 use crate::settings::AppSettings;
+use crate::theme;
 use crate::update_service::Status;
 use crate::updater::Version;
 use crate::view::{self, DeviceView};
@@ -37,10 +38,6 @@ pub fn glyph(kind: DeviceKind) -> &'static str {
     }
 }
 
-fn color((r, g, b): (u8, u8, u8)) -> slint::Color {
-    slint::Color::from_rgb_u8(r, g, b)
-}
-
 pub struct MainView {
     pub ui: MainWindow,
     pinned: Rc<VecModel<DeviceItem>>,
@@ -58,6 +55,7 @@ impl MainView {
     pub fn open(app: &App) -> Result<Self, slint::PlatformError> {
         let ui = gui::create(Kind::Normal, MainWindow::new)?;
         gui::setup_texts(&ui.global::<gui::T>());
+        gui::set_theme(&ui, theme::current().apps_light);
         let view = Self {
             pinned: Rc::new(VecModel::default()),
             connected: Rc::new(VecModel::default()),
@@ -92,6 +90,13 @@ impl MainView {
             area.bottom - h as i32 - (12.0 * scale) as i32,
         ));
         Ok(view)
+    }
+
+    /// Windows' app mode changed: the window and its title bar follow it.
+    pub fn follow_theme(&self) {
+        let light = theme::current().apps_light;
+        gui::set_theme(&self.ui, light);
+        gui::set_title_bar(self.ui.window(), light);
     }
 
     /// Everything from the settings, as the window opens and after any change: the controls only ever show what the
@@ -251,7 +256,7 @@ pub fn device_item(d: DeviceView) -> DeviceItem {
         connected: d.connected,
         pinned: d.pinned,
         level_text: d.level_text.into(),
-        color: color(d.color),
+        tone: d.tone.index(),
         charging: d.charging,
         indeterminate: d.indeterminate,
         fill: d.fill,

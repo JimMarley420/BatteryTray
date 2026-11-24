@@ -24,7 +24,7 @@ slint::include_modules!();
 /// What kind of window the next component created is: winit is told before the window exists.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// The main window: dark title bar, app icon, a taskbar button.
+    /// The main window: a title bar in the app mode, the app icon, a taskbar button.
     Normal,
     /// The low battery reminder: shown without taking focus, no taskbar button, no frame.
     Reminder,
@@ -69,7 +69,7 @@ pub fn init() -> Result<(), slint::PlatformError> {
             };
             match NEXT.with(|n| n.get()) {
                 Kind::Normal => attributes
-                    .with_theme(Some(winit::window::Theme::Dark))
+                    .with_theme(Some(title_bar(crate::theme::current().apps_light)))
                     .with_window_icon(icon.clone())
                     .with_taskbar_icon(icon),
                 Kind::Reminder => popup(attributes, REMINDER_CLASS),
@@ -116,6 +116,40 @@ pub fn setup_texts(t: &T<'_>) {
     t.on_tr(|language, key| loc::t_in(&language, &key).into());
     t.set_lang(loc::current().into());
     t.set_icon_font(icon_font().into());
+}
+
+/// Gives a window the light or the dark colours: the app's palette, and the std widgets' (its scroll bars). Without
+/// this a window stays dark, as the overlay does.
+pub fn set_theme<C>(ui: &C, light: bool)
+where
+    C: ComponentHandle,
+    for<'a> Palette<'a>: slint::Global<'a, C>,
+    for<'a> WidgetPalette<'a>: slint::Global<'a, C>,
+{
+    use slint::language::ColorScheme;
+    ui.global::<Palette>().set_light(light);
+    ui.global::<WidgetPalette>().set_color_scheme(if light { ColorScheme::Light } else { ColorScheme::Dark });
+}
+
+fn title_bar(light: bool) -> winit::window::Theme {
+    if light {
+        winit::window::Theme::Light
+    } else {
+        winit::window::Theme::Dark
+    }
+}
+
+/// Switches an open window's title bar to the light or the dark mode. Its frame is drawn again right away: the new
+/// colours could otherwise wait for the window's next activation.
+pub fn set_title_bar(window: &slint::Window, light: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{SWP_FRAMECHANGED, SWP_NOZORDER};
+    window.with_winit_window(|w| w.set_theme(Some(title_bar(light))));
+    if let Some(hwnd) = hwnd(window) {
+        unsafe {
+            let flags = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+            let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, flags);
+        }
+    }
 }
 
 /// Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on Windows 10.

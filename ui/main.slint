@@ -426,7 +426,7 @@ export component MainWindow inherits Window {
                 lifted: true;
                 drop-shadow-offset-y: 12px;
                 drop-shadow-blur: 28px;
-                drop-shadow-color: rgba(0, 0, 0, 0.55);
+                drop-shadow-color: Palette.lift-shadow;
             }
             menu := DeviceMenu {
                 general-low: root.low;
@@ -482,7 +482,7 @@ export component MainWindow inherits Window {
             DropdownLayer { }
             // Over everything, the rest of the window out of reach until it is answered
             if root.admin-dialog: Rectangle {
-                background: #000000A0;
+                background: Palette.dialog-scrim;
                 TouchArea { }
                 Card {
                     x: 20px;
@@ -493,7 +493,7 @@ export component MainWindow inherits Window {
                     border-color: Palette.popup-stroke;
                     drop-shadow-offset-y: 8px;
                     drop-shadow-blur: 24px;
-                    drop-shadow-color: rgba(0, 0, 0, 0.5);
+                    drop-shadow-color: Palette.shadow;
                     dialog := VerticalLayout {
                         padding: 20px;
                         spacing: 12px;

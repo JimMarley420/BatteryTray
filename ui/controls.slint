@@ -15,7 +15,7 @@ export component SwitchMark inherits Rectangle {
     height: 20px;
     border-radius: 10px;
     border-width: 1px;
-    border-color: root.checked ? Palette.accent : #9A9A9A;
+    border-color: root.checked ? Palette.accent : Palette.switch-stroke;
     background: root.checked ? Palette.accent : transparent;
     animate border-color, background { duration: root.instant ? 0ms : 120ms; easing: ease-out; }
     // The middle of the knob. Animating this instead of the knob's x keeps the hover growth where it is: x depends
@@ -28,7 +28,7 @@ export component SwitchMark inherits Rectangle {
         width: root.hovered ? 14px : 12px;
         height: self.width;
         border-radius: self.width / 2;
-        background: root.checked ? #1A1A1A : #CFCFCF;
+        background: root.checked ? Palette.knob-on : Palette.knob-off;
         animate background { duration: root.instant ? 0ms : 120ms; easing: ease-out; }
     }
 }
@@ -113,7 +113,7 @@ export component TipLayer inherits Rectangle {
         border-radius: 4px;
         drop-shadow-offset-y: 6px;
         drop-shadow-blur: 16px;
-        drop-shadow-color: rgba(0, 0, 0, 0.45);
+        drop-shadow-color: Palette.tip-shadow;
         label := Text {
             x: 11px;
             y: 8px;
@@ -372,7 +372,7 @@ export component NumberField inherits Rectangle {
             vertical-alignment: center;
             input-type: number;
             selection-background-color: Palette.accent;
-            selection-foreground-color: #000000;
+            selection-foreground-color: Palette.on-accent;
             // The field around it is the spin box a screen reader sees
             accessible-role: none;
             accepted => {
@@ -579,7 +579,7 @@ export component DropdownLayer inherits Rectangle {
         border-radius: 8px;
         drop-shadow-offset-y: 8px;
         drop-shadow-blur: 24px;
-        drop-shadow-color: rgba(0, 0, 0, 0.5);
+        drop-shadow-color: Palette.shadow;
         accessible-role: list;
         accessible-label: DropdownList.options[DropdownList.current];
 

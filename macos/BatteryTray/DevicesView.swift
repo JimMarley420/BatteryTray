@@ -178,7 +178,7 @@ struct KindIcon: View {
             .overlay(alignment: .bottomTrailing) {
                 if connected {
                     Circle()
-                        .fill(Color(red: 0x6C / 255, green: 0xCB / 255, blue: 0x5F / 255))
+                        .fill(Tone.color("good"))
                         .frame(width: 9, height: 9)
                         .overlay(Circle().stroke(Color(nsColor: .controlBackgroundColor), lineWidth: 2))
                         .offset(x: -1, y: -1)
@@ -271,7 +271,7 @@ struct DeviceRowView: View {
                             Image(systemName: "bolt.fill").font(.system(size: 16, weight: .semibold))
                         }
                     }
-                    .foregroundStyle(device.color.color)
+                    .foregroundStyle(Tone.color(device.tone))
                     .fixedSize()
                 }
                 Button { model.menuID = device.id } label: {
@@ -288,7 +288,7 @@ struct DeviceRowView: View {
                 }
             }
             if card && device.connected {
-                LevelBar(fill: device.indeterminate ? 1 : device.fill, color: device.color.color,
+                LevelBar(fill: device.indeterminate ? 1 : device.fill, color: Tone.color(device.tone),
                          faint: device.indeterminate)
                     .padding(.leading, 44)
             }

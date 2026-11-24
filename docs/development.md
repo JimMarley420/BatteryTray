@@ -95,11 +95,12 @@ does nothing for a target other than Windows.
   menu bar item's menu, each settings tab, the reminder and the overlay (an app may take pictures of its own windows,
   no Screen Recording permission needed). `--demo` runs the app with those devices, with settings of its own in the
   temporary folder. The README's Mac pictures (`docs/macos-*.png`) come from `--snapshot`.
-- `cargo run --example snapshot -- <folder> [ru|en|zh] [scale]` (Windows) - renders the windows with sample data to PNG files,
-  off screen, to check a layout without running the app: the device list (with the update banner, and without it for
-  the README; a device's menu, a smaller one, a name being edited, the hidden devices shown, and the empty list with
-  the autostart banner), each settings tab (and the update card with a newer version), the reminder and the overlay. A
-  drag, a tooltip and an open dropdown need a real pointer and are not drawn.
+- `cargo run --example snapshot -- <folder> [ru|en|zh] [scale] [light|dark]` (Windows) - renders the windows with sample data
+  to PNG files, off screen, in the dark theme unless told otherwise (the overlay is dark in both), to check a layout without
+  running the app: the device list (with the update banner, and without it for the README; a device's menu, a smaller
+  one, a name being edited, the hidden devices shown, and the empty list with the autostart banner), each settings tab
+  (and the update card with a newer version), the reminder and the overlay. A drag, a tooltip and an open dropdown need
+  a real pointer and are not drawn.
 - `cargo run --example popup_probe` (Windows) - opens the reminder and the overlay as the app does and prints where their windows
   are every 5 ms, with their extended styles: for catching a popup that jumps, can be clicked, takes focus or doesn't
   follow its contents' size.

@@ -1,31 +1,73 @@
-// The app's look: the Windows 11 dark palette, and the few controls the windows share. The main window's own
-// controls are in controls.slint.
+// The app's look: the Windows 11 palette, dark or light, and the few controls the windows share. The main window's
+// own controls are in controls.slint.
 
+// The light values are Windows 11's light theme flattened over the surface they sit on; every text colour reads at
+// 4.5:1 at least on the window, a card, a popup and a field.
 export global Palette {
-    out property <color> window: #202020;
-    out property <color> card: #2B2B2B;
-    out property <color> stroke: #363636;
-    out property <color> control: #323232;
-    out property <color> control-hover: #3B3B3B;
-    out property <color> control-pressed: #2A2A2A;
-    out property <color> input: #1F1F1F;
-    out property <color> text: #F3F3F3;
-    out property <color> secondary: #9E9E9E;
-    out property <color> track: #404040;
-    out property <color> accent: #60CDFF;
-    out property <color> accent-hover: #85D9FF;
-    out property <color> good: #6CCB5F;
-    out property <color> warn: #F7C04A;
-    out property <color> bad: #FF6B6B;
-    out property <color> offline: #7A7A7A;
+    // Windows' light app mode: Rust sets it for each window and follows a change. The overlay never gets it: it
+    // stays dark over games.
+    in property <bool> light;
+    out property <color> window: light ? #F3F3F3 : #202020;
+    out property <color> card: light ? #FBFBFB : #2B2B2B;
+    out property <color> stroke: light ? #E5E5E5 : #363636;
+    out property <color> control: light ? #FEFEFE : #323232;
+    // Light: see-through black rather than a grey, so a hover shows the same on the window, a card and a popup. A
+    // control's fill gives way to them, and what shows through is only what the control sits on.
+    out property <color> control-hover: light ? #0000000A : #3B3B3B;
+    out property <color> control-pressed: light ? #00000006 : #2A2A2A;
+    out property <color> input: light ? #FFFFFF : #1F1F1F;
+    out property <color> text: light ? #1A1A1A : #F3F3F3;
+    out property <color> secondary: light ? #5F5F5F : #9E9E9E;
+    out property <color> track: light ? #E0E0E0 : #404040;
+    out property <color> accent: light ? #005FB8 : #60CDFF;
+    out property <color> accent-hover: light ? #1A6FBF : #85D9FF;
+    // Text and glyphs on an accent fill (the accent buttons, selected text)
+    out property <color> on-accent: light ? #FFFFFF : #000000;
+    // The levels' colours; view::Tone::rgb has the same for the tray
+    out property <color> good: light ? #0F7B0F : #6CCB5F;
+    out property <color> warn: light ? #9D5D00 : #F7C04A;
+    out property <color> bad: light ? #C42B1C : #FF6B6B;
+    out property <color> offline: light ? #8A8A8A : #7A7A7A;
     // Menus, dropdown lists, tooltips and key caps
-    out property <color> popup: #2C2C2C;
-    out property <color> popup-stroke: #4A4A4A;
+    out property <color> popup: light ? #F9F9F9 : #2C2C2C;
+    out property <color> popup-stroke: light ? #DEDEDE : #4A4A4A;
+    // Under what floats over the window: menus, dropdown lists and the dialog; the tooltip; the lifted card
+    out property <color> shadow: light ? rgba(0, 0, 0, 0.14) : rgba(0, 0, 0, 0.5);
+    out property <color> tip-shadow: light ? rgba(0, 0, 0, 0.14) : rgba(0, 0, 0, 0.45);
+    out property <color> lift-shadow: light ? rgba(0, 0, 0, 0.14) : rgba(0, 0, 0, 0.55);
     // The name of a device without connection
-    out property <color> dim-text: #B4B4B4;
+    out property <color> dim-text: light ? #474747 : #B4B4B4;
     // The window's colour at half strength: laid over a block it fades it as a whole, which `opacity` doesn't do
     // with the software renderer (it fades every shape on its own, and overlapping ones show through each other)
-    out property <color> scrim: #20202080;
+    out property <color> scrim: light ? #F3F3F380 : #20202080;
+    // Behind the dialog: the window steps back
+    out property <color> dialog-scrim: light ? #0000004D : #000000A0;
+    // The place a dragged device would drop into
+    out property <color> accent-wash: light ? rgba(0, 95, 184, 0.06) : rgba(96, 205, 255, 0.06);
+    // A switch: the frame and the knob when off, the knob when on (on the accent)
+    out property <color> switch-stroke: light ? #8B8B8B : #9A9A9A;
+    out property <color> knob-off: light ? #5F5F5F : #CFCFCF;
+    out property <color> knob-on: light ? #FFFFFF : #1A1A1A;
+    // A slider's knob and its frame
+    out property <color> thumb: light ? #FFFFFF : #454545;
+    out property <color> thumb-stroke: light ? #CCCCCC : #555555;
+
+    // A level's colour by its tone (view::Tone::index): good, warn, bad, charging, no level
+    public pure function tone(index: int) -> color {
+        if (index == 0) {
+            return self.good;
+        }
+        if (index == 1) {
+            return self.warn;
+        }
+        if (index == 2) {
+            return self.bad;
+        }
+        if (index == 3) {
+            return self.accent;
+        }
+        self.offline
+    }
 }
 
 // The app's texts: Rust answers T.tr(language, key); a binding that reads `lang` follows a change of language.
@@ -93,7 +135,7 @@ export component Btn inherits Rectangle {
         padding-bottom: 6px;
         label := Text {
             text: root.text;
-            color: root.accent ? #000000 : Palette.text;
+            color: root.accent ? Palette.on-accent : Palette.text;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -181,8 +223,8 @@ export component StepSlider {
         width: 20px;
         height: 20px;
         border-radius: 10px;
-        background: #454545;
-        border-color: #555555;
+        background: Palette.thumb;
+        border-color: Palette.thumb-stroke;
         border-width: 1px;
         Rectangle {
             width: touch.has-hover ? 13px : 10px;

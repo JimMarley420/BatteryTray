@@ -1,5 +1,7 @@
 // Everything Rust uses from the UI.
 export { T, Palette } from "theme.slint";
+// The std widgets' own palette: the scroll bars, the only std widget the windows use, follow its colour scheme
+export { Palette as WidgetPalette } from "std-widgets.slint";
 export { MainWindow } from "main.slint";
 export { DeviceItem } from "devices.slint";
 export { AlertWindow, AlertRow } from "alert.slint";

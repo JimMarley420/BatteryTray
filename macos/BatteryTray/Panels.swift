@@ -279,9 +279,6 @@ final class Presence {
 struct ReminderView: View {
     @ObservedObject var state: ReminderState
     let answer: (Bool) -> Void
-    /// The levels' colors, as the Windows app has them
-    static let warn = Color(red: 0xF7 / 255, green: 0xC0 / 255, blue: 0x4A / 255)
-    static let bad = Color(red: 1, green: 0x6B / 255, blue: 0x6B / 255)
     static let width: CGFloat = 340
 
     var body: some View {
@@ -309,7 +306,7 @@ struct ReminderView: View {
             .padding(.top, 6)
             VStack(spacing: 12) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    let color = item["critical"] as? Bool == true ? Self.bad : Self.warn
+                    let color = Tone.color(item["critical"] as? Bool == true ? "bad" : "warn")
                     HStack(spacing: 12) {
                         Image(systemName: symbol(item["kind"] as? String ?? ""))
                             .font(.system(size: 18))
@@ -639,7 +636,8 @@ struct OverlayView: View {
                 FlowLayout(limit: state.rowLimit) {
                     ForEach(Array(state.entries.enumerated()), id: \.offset) { _, entry in
                         HStack(spacing: 7) {
-                            Image(systemName: symbol(entry.kind)).font(.system(size: 17)).foregroundStyle(entry.color.color)
+                            Image(systemName: symbol(entry.kind)).font(.system(size: 17))
+                                .foregroundStyle(Tone.color(entry.tone, alwaysDark: true))
                             if entry.showName {
                                 Text(entry.name).lineLimit(1).truncationMode(.tail).frame(maxWidth: 140, alignment: .leading)
                             }
@@ -649,7 +647,7 @@ struct OverlayView: View {
                                     Image(systemName: "bolt.fill").font(.system(size: 15, weight: .semibold))
                                 }
                             }
-                            .foregroundStyle(entry.color.color)
+                            .foregroundStyle(Tone.color(entry.tone, alwaysDark: true))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)

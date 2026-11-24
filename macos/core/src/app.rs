@@ -16,7 +16,7 @@ use batterytray::settings::{hotkey_valid, AppSettings, DEFAULT_HOTKEY};
 use batterytray::state::StateStore;
 use batterytray::update_service::{Event, Stage, Status, UpdateService};
 use batterytray::updater::{ReleaseInfo, Version};
-use batterytray::view::{self, DeviceView, Rgb};
+use batterytray::view::{self, DeviceView};
 use batterytray::{feedback, sys};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -487,7 +487,7 @@ impl MacApp {
                     "name": r.name,
                     "kind": kind(r.kind()),
                     "level": level,
-                    "color": rgb(view::level_color(c.level, c.charging, true, &r.id, s)),
+                    "tone": view::level_tone(c.level, c.charging, true, &r.id, s).name(),
                     "charging": c.charging,
                 }))
             })
@@ -498,7 +498,7 @@ impl MacApp {
             .map(|e| {
                 json!({
                     "kind": kind(e.kind), "name": e.name, "show_name": e.show_name, "level": e.level,
-                    "color": rgb(e.color), "power": e.power,
+                    "tone": e.tone.name(), "power": e.power,
                 })
             })
             .collect();
@@ -513,7 +513,7 @@ impl MacApp {
                 "hidden": lists.hidden, "none_online": lists.none_online,
             },
             "updated_text": view::updated_text(&rows),
-            "tray": { "label": tray.label, "color": rgb(tray.color), "tooltip": tray.tooltip, "items": menu },
+            "tray": { "label": tray.label, "tone": tray.tone.name(), "tooltip": tray.tooltip, "items": menu },
             "settings": {
                 "low": s.low_percent, "critical": s.critical_percent, "repeat": s.repeat_minutes, "sound": s.sound,
                 "notify_charged": s.notify_charged, "auto_close": s.auto_close,
@@ -593,7 +593,7 @@ fn alert(due: &[AlertItem], settings: &AppSettings, test: bool) -> Value {
 fn device(d: &DeviceView) -> Value {
     json!({
         "id": d.id, "name": d.name, "kind": kind(d.kind), "subtitle": d.subtitle, "connected": d.connected,
-        "pinned": d.pinned, "level_text": d.level_text, "color": rgb(d.color), "charging": d.charging,
+        "pinned": d.pinned, "level_text": d.level_text, "tone": d.tone.name(), "charging": d.charging,
         "indeterminate": d.indeterminate, "fill": d.fill, "custom_name": d.custom_name, "own_name": d.own_name,
         "source": d.source, "alerts": d.alerts, "low": d.low, "critical": d.critical, "own_levels": d.own_levels,
     })
@@ -620,8 +620,4 @@ pub fn kind(kind: DeviceKind) -> &'static str {
         DeviceKind::Phone => "phone",
         DeviceKind::Tablet => "tablet",
     }
-}
-
-fn rgb((r, g, b): Rgb) -> Value {
-    json!([r, g, b])
 }
