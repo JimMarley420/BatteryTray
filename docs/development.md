@@ -49,10 +49,17 @@ joins the two into one app, draws the icon (`macos/make-icon.swift`), writes the
 Info.plist, signs the app and zips it (a release's universal build also makes the disk image). The signature is the
 project's own certificate, "BatteryTray Code Signing" (a self-signed code signing certificate, valid until 2046): the
 same one for every version, so macOS keeps the permissions it gave the app (Bluetooth, Input Monitoring) across updates, which it doesn't for an app signed ad hoc. `build.sh` takes it from the keychain or from
-`BATTERYTRAY_SIGNING_IDENTITY`, and falls back to ad hoc with a warning when there is none (a release must not go out
-so). CI has it in the repository secrets `MACOS_SIGNING_P12` (the .p12, base64) and `MACOS_SIGNING_PASSWORD`, imported
-into a keychain of its own. Losing the certificate isn't fatal: a new one makes every Mac ask for the permissions once
-more. Keep a copy: Keychain Access → login → My Certificates → "BatteryTray Code Signing" → Export. Windows' build dependencies (Slint's compiler, the resource compiler) are
+`BATTERYTRAY_SIGNING_IDENTITY`, and falls back to ad hoc with a warning when there is none. A build for a release
+refuses that: with `BATTERYTRAY_REQUIRE_SIGNING=1` it fails without the certificate, and with `BATTERYTRAY_SIGNING_ROOT`
+(the certificate's SHA-1, `d8322e30…0dba`) it fails when the app is signed by another one; CI sets both for main and
+for tags. CI has the certificate in the repository secrets `MACOS_SIGNING_P12` (the .p12, base64) and
+`MACOS_SIGNING_PASSWORD`, which only the step that imports it gets, once the crates' code has run: into a keychain of
+the run, the key marked as not exportable, the keychain deleted at the end; the workflow's actions are pinned to a
+commit. The app updates itself only to a version that meets its own designated requirement (`codesign --verify -R`),
+that is, one signed by the same certificate; a copy signed ad hoc takes any release. So a new certificate means a
+release that the copies out there refuse: changing it needs a plan (a version that trusts both). Losing the certificate
+is fatal for updates in the same way. Keep a copy: Keychain Access → login → My Certificates → "BatteryTray Code
+Signing" → Export. Windows' build dependencies (Slint's compiler, the resource compiler) are
 built on a Mac too - Cargo picks a build dependency by the machine that builds, not by the target - but `build.rs`
 does nothing for a target other than Windows.
 
@@ -120,8 +127,9 @@ version resource, the `BatteryTray.SingleInstance` mutex, the `BatteryTray.Activ
 the `BatteryTray` logon task, the `--background`, `--update`, `--register-task`, `--unregister-task` and `--dump`
 switches, and the format of `settings.json` and `state.json` (values the app doesn't know are kept).
 
-Copies on a Mac update themselves from the "BatteryTray-macOS.zip" asset in the same way (size, SHA-256, and the
-CFBundleShortVersionString of the BatteryTray.app inside it, which must equal the release's version). They rely on the
+Copies on a Mac update themselves from the "BatteryTray-macOS.zip" asset in the same way (size, SHA-256, the
+CFBundleShortVersionString of the BatteryTray.app inside it, which must equal the release's version, and its
+signature, which must meet the running copy's designated requirement). They rely on the
 bundle identifier `io.github.qu1ncky.BatteryTray` (one copy at a time, and the name of the login item
 `~/Library/LaunchAgents/io.github.qu1ncky.BatteryTray.plist`), the `--background`, `--update` and `--dump` switches,
 and the same `settings.json` and `state.json`. The overlay's shortcut is kept as on Windows (a Win32 virtual key and

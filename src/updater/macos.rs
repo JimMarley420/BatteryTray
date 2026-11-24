@@ -1,8 +1,8 @@
 //! Updates on macOS: the "BatteryTray-macOS.zip" asset of the latest release holds BatteryTray.app, which replaces the
 //! running app bundle. The zip is downloaded next to the bundle and checked, unpacked there by ditto (which keeps the
-//! bundle's signature and attributes), and the new bundle must carry the release's version; then the running bundle
-//! is renamed to "BatteryTray.old.app" (a running app may be renamed) and the new one takes its name. What is left is
-//! deleted on the next start.
+//! bundle's signature and attributes), and the new bundle must carry the release's version and be signed as the
+//! running one is; then the running bundle is renamed to "BatteryTray.old.app" (a running app may be renamed) and the
+//! new one takes its name. What is left is deleted on the next start.
 
 use super::{check_digest, user_agent, ReleaseInfo, Version};
 use crate::loc::{t, tf};
@@ -57,7 +57,12 @@ pub fn install(release: &ReleaseInfo, progress: &dyn Fn(i32)) -> Result<()> {
     http::download(&release.exe_url, &user_agent(), &zip, release.exe_size, progress)?;
     let fresh = check_digest(&zip, release).and_then(|_| unpack(&zip, &unpacked));
     let _ = fs::remove_file(&zip);
-    let fresh = match fresh.and_then(|app| verify(&app, release).map(|_| app)) {
+    let checked = fresh.and_then(|app| {
+        verify(&app, release)?;
+        verify_signature(&app, &bundle)?;
+        Ok(app)
+    });
+    let fresh = match checked {
         Ok(app) => app,
         Err(e) => {
             let _ = fs::remove_dir_all(&unpacked);
@@ -97,6 +102,45 @@ fn verify(app: &Path, release: &ReleaseInfo) -> Result<()> {
         return Err(Error::other(tf("upd.err.version", &[&release.tag, &version.unwrap_or_default()])));
     }
     Ok(())
+}
+
+/// The new app is signed as the running one is. macOS ties the permissions it gave the app (Bluetooth, Input
+/// Monitoring) to the app's signature, the project's own certificate: a version signed otherwise would lose them on
+/// every Mac it reached. A copy of the app signed ad hoc (a developer's build, whose requirement is its own code
+/// hash) has nothing to compare, and any release may replace it.
+fn verify_signature(app: &Path, running: &Path) -> Result<()> {
+    match designated_requirement(running) {
+        Some(requirement) if requirement.contains("certificate") => {
+            if satisfies(app, &requirement) {
+                Ok(())
+            } else {
+                log::write(&format!("update: {} isn't signed to satisfy {requirement}", app.display()));
+                Err(Error::other(t("upd.err.signature")))
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
+/// What a bundle's signature requires of the code that may stand for it ("designated => ..." of `codesign -d -r-`;
+/// "# designated => cdhash ..." when it is only implied, as for an ad hoc signature).
+fn designated_requirement(bundle: &Path) -> Option<String> {
+    let out = Command::new("/usr/bin/codesign").args(["-d", "-r-"]).arg(bundle).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    text.lines()
+        .find_map(|line| line.trim_start_matches("# ").strip_prefix("designated => "))
+        .map(|r| r.trim().to_string())
+}
+
+/// The bundle's signature is valid and meets the requirement.
+fn satisfies(bundle: &Path, requirement: &str) -> bool {
+    let status = Command::new("/usr/bin/codesign")
+        .args(["--verify", "--strict", "-R"])
+        .arg(format!("={requirement}"))
+        .arg(bundle)
+        .stderr(std::process::Stdio::null())
+        .status();
+    status.is_ok_and(|s| s.success())
 }
 
 /// The CFBundleShortVersionString of an app bundle's Info.plist.
@@ -194,6 +238,46 @@ mod tests {
         assert!(verify(&app, &older).is_err(), "a bundle of another version is refused");
         let wrong = ReleaseInfo { sha256: "00".into(), ..release };
         assert!(check_digest(&zip, &wrong).is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A bundle signed ad hoc with this identifier.
+    fn signed_bundle(root: &Path, name: &str, identifier: &str) -> PathBuf {
+        let app = root.join(format!("{name}.app"));
+        let macos = app.join("Contents").join("MacOS");
+        fs::create_dir_all(&macos).unwrap();
+        fs::write(
+            app.join("Contents").join("Info.plist"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
+                <key>CFBundleIdentifier</key><string>{identifier}</string>
+                <key>CFBundleExecutable</key><string>{name}</string></dict></plist>"#
+            ),
+        )
+        .unwrap();
+        fs::copy("/usr/bin/true", macos.join(name)).unwrap();
+        let signed = Command::new("/usr/bin/codesign").args(["--force", "--sign", "-"]).arg(&app).status().unwrap();
+        assert!(signed.success());
+        app
+    }
+
+    /// The new version must meet the running app's requirement when that names a certificate; an ad hoc build's
+    /// requirement (its own code hash) asks nothing of it.
+    #[test]
+    fn an_update_must_be_signed_as_the_running_app() {
+        let root = std::env::temp_dir().join(format!("bt-signature-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let running = signed_bundle(&root, "Running", "io.test.batterytray");
+        let fresh = signed_bundle(&root, "Fresh", "io.test.batterytray");
+        assert!(satisfies(&fresh, r#"identifier "io.test.batterytray""#));
+        assert!(!satisfies(&fresh, r#"identifier "io.test.other""#));
+        let ad_hoc = designated_requirement(&running).unwrap();
+        assert!(ad_hoc.starts_with("cdhash"), "{ad_hoc}");
+        verify_signature(&fresh, &running).unwrap();
+        // A certificate the new one isn't signed with
+        let wanted =
+            r#"identifier "io.test.batterytray" and certificate root = H"0000000000000000000000000000000000000000""#;
+        assert!(!satisfies(&fresh, wanted));
         let _ = fs::remove_dir_all(&root);
     }
 

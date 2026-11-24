@@ -3,6 +3,7 @@ import AppKit
 // BatteryTray for macOS: the battery levels of wireless headsets, mice, keyboards and gamepads in the menu bar.
 // The switches are the Windows app's where they mean the same:
 //   --background   started at login: no window
+//   --moved [--autostart]   started by the copy that moved itself into Applications (and turns on the login item)
 //   --update       install the latest release over this app; exit 0 = updated, 2 = up to date, 1 = failed
 //   --dump [file]  poll every device once and write what was read
 //   --demo         the devices of the README's pictures instead of the real ones, with settings of their own

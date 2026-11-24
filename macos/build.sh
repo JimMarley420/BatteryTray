@@ -1,5 +1,6 @@
 #!/bin/sh
-# Builds BatteryTray.app for macOS 13 and later, signed ad hoc, and the zip a release carries:
+# Builds BatteryTray.app for macOS 13 and later, signed by the project's certificate (see below), and the zip a release
+# carries:
 #   macos/build.sh [native|universal]     (default: universal, Apple Silicon and Intel in one app)
 # Out: target/macos/BatteryTray.app and target/macos/BatteryTray-macOS.zip. Needs Rust with the
 # aarch64-apple-darwin and x86_64-apple-darwin targets, the Xcode command line tools, and cargo-about for the crates'
@@ -64,18 +65,30 @@ fi
 # certificate, "BatteryTray Code Signing" (in the keychain, or the identity in BATTERYTRAY_SIGNING_IDENTITY), is the
 # same for every version, so the permissions stay from one version to the next. It isn't Apple's Developer ID: macOS
 # still wants "Open Anyway" once for an app downloaded from the internet. Without it the app is signed ad hoc, and
-# macOS sees each build as another app and asks for the permissions again.
+# macOS sees each build as another app and asks for the permissions again; the app updates only to a version signed
+# as it is. So a build a release takes (BATTERYTRAY_REQUIRE_SIGNING=1) fails without the certificate, and with
+# BATTERYTRAY_SIGNING_ROOT (its SHA-1) one signed by another certificate fails too.
 SIGN="${BATTERYTRAY_SIGNING_IDENTITY:-}"
 if [ -z "$SIGN" ]; then
   SIGN=$(security find-identity -p codesigning 2>/dev/null | awk '/"BatteryTray Code Signing"/ { print $2; exit }')
 fi
 if [ -z "$SIGN" ]; then
+  if [ -n "${BATTERYTRAY_REQUIRE_SIGNING:-}" ]; then
+    echo "error: no \"BatteryTray Code Signing\" identity, and this build is for a release: it must not be signed ad hoc" >&2
+    exit 1
+  fi
   echo "warning: no \"BatteryTray Code Signing\" identity: signed ad hoc, a release must not go out so" >&2
   SIGN=-
 fi
 codesign --force --sign "$SIGN" "$APP"
 codesign --verify --strict "$APP"
-echo "== signed: $(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')"
+REQUIREMENT=$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')
+echo "== signed: ${REQUIREMENT:-ad hoc}"
+if [ "$SIGN" != "-" ] && [ -n "${BATTERYTRAY_SIGNING_ROOT:-}" ] \
+  && ! printf '%s' "$REQUIREMENT" | grep -qi "certificate root = H\"$BATTERYTRAY_SIGNING_ROOT\""; then
+  echo "error: the app isn't signed by the certificate $BATTERYTRAY_SIGNING_ROOT" >&2
+  exit 1
+fi
 
 rm -f "$OUT/BatteryTray-macOS.zip"
 ditto -c -k --keepParent "$APP" "$OUT/BatteryTray-macOS.zip"

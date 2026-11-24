@@ -60,8 +60,19 @@ pub fn agent_plist(exe: &str) -> String {
     )
 }
 
+/// A copy that may be gone at the next login: the read-only copy macOS runs an app downloaded from the internet from
+/// until it is moved (App Translocation, a new random folder at every start), one on a disk image or another drive.
+/// A login item must not point at it; the app offers to move into Applications instead.
+pub fn temporary_place(exe: &str) -> bool {
+    exe.contains("/AppTranslocation/") || exe.starts_with("/Volumes/")
+}
+
 pub fn register() -> bool {
     let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
+    if temporary_place(&exe) {
+        log::write(&format!("register login agent: not for a copy that may be gone at the next login ({exe})"));
+        return false;
+    }
     let path = agent();
     let result = path.parent().map_or(Ok(()), fs::create_dir_all).and_then(|_| fs::write(&path, agent_plist(&exe)));
     log::write(&format!("register login agent: {}", result.as_ref().map_or_else(|e| e.to_string(), |_| "ok".into())));
@@ -70,11 +81,12 @@ pub fn register() -> bool {
 
 /// The login item starts the copy that wrote it. When this copy runs from somewhere else (it was moved to Applications,
 /// or another copy was started by hand), the item is pointed at this one: the one the user runs now is the one they
-/// mean to start at login.
+/// mean to start at login. Not a copy that may be gone at the next login (a disk image opened to try a version): the
+/// item stays with the copy it has.
 pub fn follow_this_copy() {
     let Ok(text) = fs::read_to_string(agent()) else { return };
     let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
-    if !exe.is_empty() && !text.contains(&format!("<string>{}</string>", escape(&exe))) {
+    if !exe.is_empty() && !temporary_place(&exe) && !text.contains(&format!("<string>{}</string>", escape(&exe))) {
         log::write(&format!("login agent: now for {exe}"));
         register();
     }
@@ -93,6 +105,16 @@ pub fn unregister() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_login_item_for_a_copy_that_may_be_gone_at_the_next_login() {
+        assert!(temporary_place(
+            "/private/var/folders/x/T/AppTranslocation/1F2E/d/BatteryTray.app/Contents/MacOS/BatteryTray"
+        ));
+        assert!(temporary_place("/Volumes/BatteryTray/BatteryTray.app/Contents/MacOS/BatteryTray"));
+        assert!(!temporary_place("/Applications/BatteryTray.app/Contents/MacOS/BatteryTray"));
+        assert!(!temporary_place("/Users/me/Applications/BatteryTray.app/Contents/MacOS/BatteryTray"));
+    }
 
     #[test]
     fn the_agent_starts_the_app_in_the_background() {

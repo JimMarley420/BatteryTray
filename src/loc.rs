@@ -363,4 +363,6 @@ static MAC: &[(&str, &str, &str, &str)] = &[
     ("upd.err.translocated", "переместите BatteryTray в папку «Программы», тогда она сможет обновляться",
         "move BatteryTray to the Applications folder so it can update itself", "请将 BatteryTray 移到“应用程序”文件夹，以便它能自动更新"),
     ("upd.err.unpack", "не удалось распаковать архив", "couldn't unpack the archive", "无法解压更新包"),
+    ("upd.err.signature", "новая версия подписана не так, как эта, поэтому не установлена",
+        "the new version isn't signed as this one is, so it wasn't installed", "新版本的签名与当前版本不一致，因此未安装"),
 ];

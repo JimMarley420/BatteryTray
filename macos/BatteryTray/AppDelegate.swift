@@ -47,15 +47,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlay.apply(model.snapshot)
         Notifier.shared.setUp()
         gameControllers.start()
-        // The demo's pictures need no Bluetooth: it would ask for the permission
-        if !demo {
-            bleBatteries.start()
-        }
         deviceWatch.start()
         perform(started["effects"] as? [[String: Any]] ?? [])
         // Opened from the disk image or Downloads: once, the offer to move into Applications (this copy then quits)
         if !demo, snapshot == nil, Installer.offerToMove(model) {
             return
+        }
+        // Bluetooth asks for its permission once, from the copy that stays. The demo's pictures need no Bluetooth
+        if !demo {
+            bleBatteries.start()
+        }
+        // Moved into Applications because the login item was turned on from a place that may be gone at the next login
+        if !demo, CommandLine.arguments.contains("--autostart") {
+            model.send(["cmd": "autostart", "on": true])
         }
 
         // Snoozes run out between polls
@@ -221,6 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tearDown() {
         if quitting { return }
         quitting = true
+        bleBatteries.stop()
         alertTimer?.invalidate()
         saveTimer?.invalidate()
         overlay.hide()

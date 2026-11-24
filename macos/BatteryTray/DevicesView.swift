@@ -106,7 +106,7 @@ struct DevicesView: View {
         }
         if !s.autostart && !s.settings.autostartBannerDismissed {
             Banner(symbol: "power", tint: .orange, text: model.t("autostart.banner")) {
-                Button(model.t("autostart.banner.enable")) { model.send(["cmd": "autostart", "on": true]) }
+                Button(model.t("autostart.banner.enable")) { Installer.enableAutostart(model) }
                     .buttonStyle(.borderedProminent)
                 Button(model.t("autostart.banner.dismiss")) { model.send(["cmd": "dismiss_autostart_banner"]) }
             }

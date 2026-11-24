@@ -94,7 +94,13 @@ struct GeneralSettings: View {
         if let s = model.snapshot {
             Form {
                 Section {
-                    Toggle(isOn: Binding(get: { s.autostart }, set: { model.send(["cmd": "autostart", "on": $0]) })) {
+                    Toggle(isOn: Binding(get: { s.autostart }, set: { on in
+                        if on {
+                            Installer.enableAutostart(model)
+                        } else {
+                            model.send(["cmd": "autostart", "on": false])
+                        }
+                    })) {
                         Label(model.t("autostart"), systemImage: "power")
                     }
                 }
