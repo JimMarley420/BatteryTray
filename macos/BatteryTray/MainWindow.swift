@@ -60,6 +60,11 @@ final class MainWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate 
         }
     }
 
+    /// Another window or app comes to the front: a name being typed is kept, as on Windows.
+    func windowDidResignKey(_ notification: Notification) {
+        window.makeFirstResponder(nil)
+    }
+
     func windowWillClose(_ notification: Notification) {
         // A name being typed is kept, as when the window loses the focus
         window.makeFirstResponder(nil)

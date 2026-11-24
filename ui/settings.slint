@@ -3,7 +3,7 @@
 
 import { ScrollView } from "std-widgets.slint";
 import { Palette, T, Glyph, Card, SectionHeader, Hint, Btn, StepSlider } from "theme.slint";
-import { SwitchRow, TipButton, InfoTip, NumberField, Dropdown, WideButton, ShortcutField, Divider, OverlayTabGlyph } from "controls.slint";
+import { SwitchRow, TipButton, InfoTip, NumberField, Dropdown, WideButton, ShortcutField, Divider, OverlayTabGlyph, Collapsible } from "controls.slint";
 
 // One of the three tabs: a glyph and a label, centred, and a bar along the bottom, in the accent colour under the
 // current one
@@ -336,9 +336,7 @@ export component RemindersPage inherits Page {
     in property <int> auto-close-seconds;
     // One of the number fields has the keyboard focus
     out property <bool> field-focused: low-field.has-focus || critical-field.has-focus || repeat-field.has-focus
-        || close-field-focused;
-    // The seconds' field is there only while the reminder closes on its own
-    property <bool> close-field-focused;
+        || close-field.has-focus;
     callback low-changed(int);
     callback critical-changed(int);
     callback repeat-changed(int);
@@ -347,12 +345,15 @@ export component RemindersPage inherits Page {
     callback auto-close-changed(bool);
     callback auto-close-seconds-changed(int);
     callback test-alert();
+    // A field is done with (Return, or its block closes under it): the window takes the focus back
+    callback fields-done();
 
     // Drops what was typed into the fields: they lose the focus afterwards with nothing to apply
     public function reset-fields() {
         low-field.reset();
         critical-field.reset();
         repeat-field.reset();
+        close-field.reset();
     }
 
     Card {
@@ -382,6 +383,7 @@ export component RemindersPage inherits Page {
                         unit: "%";
                         value-color: Palette.accent;
                         changed(v) => { root.low-changed(v); }
+                        submitted => { root.fields-done(); }
                     }
                 }
                 StepSlider {
@@ -425,6 +427,7 @@ export component RemindersPage inherits Page {
                         unit: "%";
                         value-color: Palette.accent;
                         changed(v) => { root.critical-changed(v); }
+                        submitted => { root.fields-done(); }
                     }
                 }
                 StepSlider {
@@ -459,6 +462,7 @@ export component RemindersPage inherits Page {
                         unit-gap: 4px;
                         value-color: Palette.accent;
                         changed(v) => { root.repeat-changed(v); }
+                        submitted => { root.fields-done(); }
                     }
                 }
                 StepSlider {
@@ -475,47 +479,52 @@ export component RemindersPage inherits Page {
                 text: T.t("alerts.autoclose");
                 checked: root.auto-close;
                 toggled(on) => {
-                    root.close-field-focused = false;
+                    // Closing under a field that has the focus: it applies what it holds and gives the focus up
+                    if (!on && close-field.has-focus) {
+                        close-field.flush();
+                        root.fields-done();
+                    }
                     root.auto-close-changed(on);
                 }
             }
-            if root.auto-close: close := VerticalLayout {
-                // The field takes what AUTO_CLOSE_SECONDS in settings.rs does; the slider runs from 3 to 15 seconds
-                // and stands at an end for a value past that, as the repeat's does
-                property <int> fewest: 1;
-                property <int> most: 99999;
-                padding-right: 16px;
-                padding-bottom: 12px;
-                padding-left: 16px;
-                spacing: 6px;
-                HorizontalLayout {
-                    spacing: 12px;
-                    Text {
-                        text: T.t("alerts.autoclose.after");
-                        color: Palette.text;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                        wrap: word-wrap;
+            // Opens and closes smoothly with the switch. The field takes what AUTO_CLOSE_SECONDS in settings.rs does;
+            // the slider runs from 1 to 15 seconds and stands at an end for a value past that, as the repeat's does
+            Collapsible {
+                open: root.auto-close;
+                VerticalLayout {
+                    padding-right: 16px;
+                    padding-bottom: 12px;
+                    padding-left: 16px;
+                    spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Text {
+                            text: T.t("alerts.autoclose.after");
+                            color: Palette.text;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            wrap: word-wrap;
+                        }
+                        close-field := NumberField {
+                            label: T.t("alerts.autoclose.after");
+                            value: root.auto-close-seconds;
+                            minimum: 1;
+                            maximum: 99999;
+                            unit: T.t("alerts.autoclose.unit");
+                            unit-gap: 4px;
+                            value-color: Palette.accent;
+                            changed(v) => { root.auto-close-seconds-changed(v); }
+                            submitted => { root.fields-done(); }
+                        }
                     }
-                    NumberField {
+                    StepSlider {
+                        minimum: 1;
+                        maximum: 15;
+                        step: 1;
                         label: T.t("alerts.autoclose.after");
                         value: root.auto-close-seconds;
-                        minimum: close.fewest;
-                        maximum: close.most;
-                        unit: T.t("alerts.autoclose.unit");
-                        unit-gap: 4px;
-                        value-color: Palette.accent;
                         changed(v) => { root.auto-close-seconds-changed(v); }
-                        changed has-focus => { root.close-field-focused = self.has-focus; }
                     }
-                }
-                StepSlider {
-                    minimum: 3;
-                    maximum: 15;
-                    step: 1;
-                    label: T.t("alerts.autoclose.after");
-                    value: root.auto-close-seconds;
-                    changed(v) => { root.auto-close-seconds-changed(v); }
                 }
             }
             Divider { }

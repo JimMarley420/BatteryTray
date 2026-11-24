@@ -2,44 +2,85 @@ import AppKit
 import SwiftUI
 
 /// The settings, as a Mac app has them: a window of their own (⌘,) with the tabs in its toolbar - General, Reminders,
-/// Overlay - each one as tall as its contents.
+/// Overlay - each one as tall as its contents. The window follows its page's height smoothly, over the moment the page
+/// animates the same change: a part that opens or closes (a row, a section), another tab. Its top edge stays put.
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
+    static let duration: TimeInterval = 0.22
     private let window: NSWindow
-    private let tabs = NSTabViewController()
+    private let tabs = SettingsTabs()
     private let model: AppModel
     private let closed: () -> Void
+    /// Each page's height, as it last told it
+    private var heights: [Int: CGFloat] = [:]
 
     init(model: AppModel, closed: @escaping () -> Void) {
         self.model = model
         self.closed = closed
         tabs.tabStyle = .toolbar
-        let pages: [(AnyView, String)] = [
-            (AnyView(GeneralSettings()), "gearshape"),
-            (AnyView(ReminderSettings()), "bell"),
-            (AnyView(OverlaySettings()), "rectangle.inset.topright.filled"),
-        ]
-        for (page, symbol) in pages {
-            let host = NSHostingController(rootView: page.environmentObject(model).frame(width: 500))
-            host.sizingOptions = [.preferredContentSize]
-            let item = NSTabViewItem(viewController: host)
-            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-            tabs.addTabViewItem(item)
-        }
         window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         // Comes up where the user is, over an app in full screen too, also when it was opened before in another space
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         super.init()
+        let pages: [(AnyView, String)] = [
+            (AnyView(GeneralSettings()), "gearshape"),
+            (AnyView(ReminderSettings()), "bell"),
+            (AnyView(OverlaySettings()), "rectangle.inset.topright.filled"),
+        ]
+        for (index, (page, symbol)) in pages.enumerated() {
+            let measured = MeasuredPage(page: page.environmentObject(model)) { [weak self] height in
+                self?.pageHeight(index, height)
+            }
+            let host = NSHostingController(rootView: measured)
+            // The window's size is this controller's to set, smoothly: the page's own would set it at once
+            host.sizingOptions = []
+            let item = NSTabViewItem(viewController: host)
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            tabs.addTabViewItem(item)
+        }
+        tabs.selected = { [weak self] index in
+            guard let self, let height = self.heights[index] else { return }
+            self.resize(to: height)
+        }
         window.delegate = self
         languageChanged()
+        // Opens as tall as its first page
+        if let first = tabs.tabViewItems.first?.viewController?.view.fittingSize, first.height > 0 {
+            window.setContentSize(NSSize(width: 500, height: first.height))
+        }
         window.center()
     }
 
     func show() {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    private func pageHeight(_ index: Int, _ height: CGFloat) {
+        heights[index] = height
+        if index == tabs.selectedTabViewItemIndex {
+            resize(to: height)
+        }
+    }
+
+    /// The window as tall as the open page, its top edge where it was; smoothly while it is seen.
+    private func resize(to height: CGFloat) {
+        let content = window.contentRect(forFrameRect: window.frame)
+        guard height > 0, abs(content.height - height) > 0.5 else { return }
+        var frame = window.frameRect(forContentRect: NSRect(x: content.minX, y: content.minY, width: content.width,
+                                                            height: height))
+        frame.origin.y = window.frame.maxY - frame.height
+        guard window.isVisible else {
+            window.setFrame(frame, display: false)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(frame, display: true)
+        }
     }
 
     func languageChanged() {
@@ -58,6 +99,45 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         // A value being typed is kept, as when the field is left
         window.makeFirstResponder(nil)
         closed()
+    }
+
+    /// Another window or app comes to the front: a value being typed is applied, as on Windows.
+    func windowDidResignKey(_ notification: Notification) {
+        window.makeFirstResponder(nil)
+    }
+}
+
+/// The tabs; they say which one was chosen, for the window to take its height.
+final class SettingsTabs: NSTabViewController {
+    var selected: (Int) -> Void = { _ in }
+
+    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        super.tabView(tabView, didSelect: tabViewItem)
+        selected(selectedTabViewItemIndex)
+    }
+}
+
+/// A settings page that tells its height, at the top of the window while the window catches up with it.
+private struct MeasuredPage<Page: View>: View {
+    let page: Page
+    let height: (CGFloat) -> Void
+
+    var body: some View {
+        page
+            .frame(width: 500)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: PageHeight.self, value: proxy.size.height)
+            })
+            .onPreferenceChange(PageHeight.self) { height($0) }
+            .frame(maxHeight: .infinity, alignment: .top)
+    }
+}
+
+private struct PageHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -254,6 +334,8 @@ struct GeneralSettings: View {
             }
             .formStyle(.grouped)
             .fixedSize(horizontal: false, vertical: true)
+            .animation(.easeInOut(duration: SettingsWindowController.duration), value: s.needsPermission)
+            .animation(.easeInOut(duration: SettingsWindowController.duration), value: s.update)
         }
     }
 }
@@ -280,7 +362,7 @@ struct ReminderSettings: View {
                     Toggle(model.t("alerts.autoclose"), isOn: Binding(get: { s.autoClose }, set: { model.set("auto_close", $0) }))
                     if s.autoClose {
                         LevelSetting(title: model.t("alerts.autoclose.after"), hint: nil, value: s.autoCloseSeconds,
-                                     range: 3...15, unit: model.t("alerts.autoclose.unit"), step: 1,
+                                     range: 1...15, unit: model.t("alerts.autoclose.unit"), step: 1,
                                      current: { model.snapshot?.settings.autoCloseSeconds ?? s.autoCloseSeconds }) {
                             model.set("auto_close_seconds", $0)
                         }
@@ -306,6 +388,8 @@ struct ReminderSettings: View {
             }
             .formStyle(.grouped)
             .fixedSize(horizontal: false, vertical: true)
+            // "Close after" opens and closes smoothly with its switch
+            .animation(.easeInOut(duration: SettingsWindowController.duration), value: s.autoClose)
         }
     }
 }
@@ -413,6 +497,8 @@ struct OverlaySettings: View {
             }
             .formStyle(.grouped)
             .fixedSize(horizontal: false, vertical: true)
+            // Why a shortcut doesn't work comes and goes smoothly
+            .animation(.easeInOut(duration: SettingsWindowController.duration), value: model.shortcutError)
         }
     }
 }

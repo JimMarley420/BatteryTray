@@ -390,6 +390,7 @@ export component MainWindow inherits Window {
                     auto-close-changed(on) => { root.auto-close-changed(on); }
                     auto-close-seconds-changed(v) => { root.auto-close-seconds-changed(v); }
                     test-alert => { root.test-alert(); }
+                    fields-done => { keys.focus(); }
                 }
                 overlay := OverlayPage {
                     visible: root.settings-tab == 2;
@@ -462,6 +463,7 @@ export component MainWindow inherits Window {
                     DeviceUi.menu-instant = false;
                     root.device-low-changed(DeviceUi.menu-id, v);
                 }
+                levels-done => { keys.focus(); }
                 critical-changed(v) => {
                     DeviceUi.menu-instant = false;
                     root.device-critical-changed(DeviceUi.menu-id, v);

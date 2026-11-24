@@ -37,7 +37,7 @@ struct DevicesView: View {
                     }
                     if !snapshot.devices.hidden.isEmpty {
                         // Not a disclosure group: a list with one keeps a column for its arrow on the left of every row
-                        Button { hiddenExpanded.value.toggle() } label: {
+                        Button { withAnimation(.easeInOut(duration: 0.2)) { hiddenExpanded.value.toggle() } } label: {
                             HStack(spacing: 5) {
                                 Text("\(model.t("hidden.header")) · \(snapshot.devices.hidden.count)")
                                 Image(systemName: hiddenExpanded.value ? "chevron.up" : "chevron.down")
@@ -64,6 +64,12 @@ struct DevicesView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .environment(\.defaultMinListRowHeight, 10)
+                // A banner that comes or goes moves the list smoothly
+                .animation(.easeInOut(duration: 0.2), value: [
+                    snapshot.update.bannerVisible,
+                    !snapshot.autostart && !snapshot.settings.autostartBannerDismissed,
+                    snapshot.needsPermission,
+                ])
                 footer(snapshot)
             }
         }
@@ -516,10 +522,21 @@ struct NumberField: View {
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)
                 .monospacedDigit()
-                .frame(width: 52)
+                .lineLimit(1)
+                // A form would lay a field with a label (an empty one too) out as label and field, and put a long
+                // value's field on a line of its own under the unit
+                .labelsHidden()
+                .frame(width: Self.width(text.value))
                 .focused($focused)
                 .accessibilityLabel(label)
-                .onSubmit(apply)
+                .onSubmit {
+                    apply()
+                    // Return is done with the field, as a click elsewhere is: its window takes the focus back, once
+                    // the field has finished with Return (it would take the focus again, its text selected)
+                    let window = NSApp.keyWindow
+                        ?? NSApp.windows.first { ($0.firstResponder as? NSTextView)?.isFieldEditor == true }
+                    DispatchQueue.main.async { window?.makeFirstResponder(nil) }
+                }
                 .onExitCommand { text.value = "\(current())" }
                 .onChange(of: focused) { isFocused in
                     if !isFocused { apply() }
@@ -528,8 +545,15 @@ struct NumberField: View {
                     text.value = "\(fresh)"
                 }
                 .onAppear { text.value = "\(value)" }
-            Text(unit).foregroundStyle(.secondary)
+            Text(unit).foregroundStyle(.secondary).fixedSize()
         }
+        // As wide and as tall as it needs: a row never wraps it under its label or puts the unit above it
+        .fixedSize()
+    }
+
+    /// Wide enough for the digits it holds, three at the least (100%), up to the five a repeat or a closing time has.
+    private static func width(_ text: String) -> CGFloat {
+        CGFloat(min(max(text.count, 3), 6)) * 8 + 22
     }
 
     private func apply() {

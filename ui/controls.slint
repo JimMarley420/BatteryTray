@@ -298,6 +298,8 @@ export component NumberField inherits Rectangle {
     in property <bool> compact;
     out property <bool> has-focus: input.has-focus;
     callback changed(int);
+    // Return applied what was typed: whoever owns the field takes the focus away from it (the window, mostly)
+    callback submitted();
     height: root.compact ? 30px : 32px;
     // focus() on the field goes to its text
     forward-focus: input;
@@ -373,7 +375,10 @@ export component NumberField inherits Rectangle {
             selection-foreground-color: #000000;
             // The field around it is the spin box a screen reader sees
             accessible-role: none;
-            accepted => { root.commit(); }
+            accepted => {
+                root.commit();
+                root.submitted();
+            }
             changed has-focus => {
                 if (!self.has-focus) {
                     root.commit();

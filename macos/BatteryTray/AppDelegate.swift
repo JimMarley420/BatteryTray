@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var alertTimer: Timer?
     private var saveTimer: Timer?
     private var clockTimer: Timer?
+    private var clickMonitor: Any?
     private var quitting = false
     /// `--snapshot`: the folder the windows are drawn into, and the language
     var snapshot: (String, String?)?
@@ -38,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.perform = { [weak self] effects in self?.perform(effects) }
+        endTypingOnClicksElsewhere()
         let started = Core.call(["cmd": "start", "demo": demo])
         model.loadTexts()
         model.refresh()
@@ -104,6 +106,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         tearDown()
         return .terminateNow
+    }
+
+    /// A click outside the field being typed into ends the typing, as on Windows: the field gives up the focus and
+    /// applies what it holds (a level, a repeat, a name). A Mac leaves the focus in the field when the click lands on
+    /// something that takes none, so what was typed seemed not to be taken until Return.
+    private func endTypingOnClicksElsewhere() {
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+            if let window = event.window, let editor = window.firstResponder as? NSTextView, editor.isFieldEditor,
+               let field = editor.delegate as? NSView, field.window === window,
+               !field.convert(field.bounds, to: nil).contains(event.locationInWindow) {
+                window.makeFirstResponder(nil)
+            }
+            return event
+        }
     }
 
     /// The polling threads or the update service have news.
