@@ -79,8 +79,8 @@ struct Hint: View {
     }
 }
 
-/// General: the login item and the polls when a device connects, the Input Monitoring permission when a device waits
-/// for it, the language, the updates, the folder of the log and settings, a suggestion.
+/// General: the login item, the Input Monitoring permission when a device waits for it, the language, the updates, the
+/// folder of the log and settings, a suggestion.
 struct GeneralSettings: View {
     @EnvironmentObject var model: AppModel
 
@@ -96,17 +96,6 @@ struct GeneralSettings: View {
                 Section {
                     Toggle(isOn: Binding(get: { s.autostart }, set: { model.send(["cmd": "autostart", "on": $0]) })) {
                         Label(model.t("autostart"), systemImage: "power")
-                    }
-                    Toggle(isOn: Binding(get: { s.settings.refreshOnConnect },
-                                         set: { model.set("refresh_on_connect", $0) })) {
-                        Label {
-                            HStack(spacing: 6) {
-                                Text(model.t("refresh.onConnect"))
-                                Hint(text: model.t("refresh.onConnect.hint"))
-                            }
-                        } icon: {
-                            Image(systemName: "arrow.clockwise")
-                        }
                     }
                 }
                 if s.needsPermission {
@@ -197,8 +186,8 @@ struct GeneralSettings: View {
     }
 }
 
-/// Reminders: the low and critical levels and how often a reminder comes back, its sound, the "charged" notice, a
-/// sample.
+/// Reminders: the low and critical levels and how often a reminder comes back, whether it closes on its own and after
+/// how many seconds, its sound, the "charged" notice, a sample.
 struct ReminderSettings: View {
     @EnvironmentObject var model: AppModel
 
@@ -214,6 +203,22 @@ struct ReminderSettings: View {
                     LevelSetting(title: model.t("alerts.repeat"), hint: nil, value: s.repeatMinutes, range: 5...60,
                                  unit: model.t("alerts.repeat.unit"),
                                  current: { model.snapshot?.settings.repeatMinutes ?? s.repeatMinutes }) { model.set("repeat", $0) }
+                }
+                Section {
+                    Toggle(isOn: Binding(get: { s.autoClose }, set: { model.set("auto_close", $0) })) {
+                        HStack(spacing: 6) {
+                            Text(model.t("alerts.autoclose"))
+                            Hint(text: model.t("alerts.autoclose.hint"))
+                        }
+                    }
+                    if s.autoClose {
+                        // The bounds of AUTO_CLOSE_SECONDS in settings.rs, which keeps any value within them
+                        LevelSetting(title: model.t("alerts.autoclose.after"), hint: nil, value: s.autoCloseSeconds,
+                                     range: 5...15, unit: model.t("alerts.autoclose.unit"), step: 1,
+                                     current: { model.snapshot?.settings.autoCloseSeconds ?? s.autoCloseSeconds }) {
+                            model.set("auto_close_seconds", $0)
+                        }
+                    }
                 }
                 Section {
                     Toggle(model.t("alerts.sound"), isOn: Binding(get: { s.sound }, set: { model.set("sound", $0) }))
@@ -239,14 +244,15 @@ struct ReminderSettings: View {
     }
 }
 
-/// A level: the number as typed (accent colored) and a slider that moves in steps of 5. A typed value may be any the
-/// app accepts (it keeps it in range); the slider then stands where it falls.
+/// A level: the number as typed (accent colored) and a slider that moves in steps (of 5 unless told otherwise). A typed
+/// value may be any the app accepts (it keeps it in range); the slider then stands where it falls.
 struct LevelSetting: View {
     let title: String
     let hint: String?
     let value: Int
     let range: ClosedRange<Int>
     let unit: String
+    var step = 5
     let current: () -> Int
     let change: (Int) -> Void
 
@@ -269,7 +275,7 @@ struct LevelSetting: View {
                         if stepped != current() { change(stepped) }
                     }),
                 in: Double(range.lowerBound)...Double(range.upperBound),
-                step: 5
+                step: Double(step)
             ) {
                 Text(title)
             }

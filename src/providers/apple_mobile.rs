@@ -9,7 +9,7 @@ use super::Provider;
 use crate::loc::t;
 use crate::log;
 use crate::mac::{bool_of, number_of, string_of, value_of, CFRetain, CFTypeRef, Cf};
-use crate::monitor::{self, Pusher};
+use crate::monitor::Pusher;
 use crate::reading::{DeviceKind, DeviceReading};
 use std::collections::HashSet;
 use std::ffi::{c_char, c_void, CString};
@@ -171,11 +171,9 @@ extern "C" fn on_note(note: *const Note, _context: *mut c_void) {
                 devices.push(Device(unsafe { CFRetain(note.device) }));
             }
             drop(devices);
-            // Read now rather than within a minute, unless the settings say to wait for the schedule
-            if monitor::polls_on_connect() {
-                if let Some(push) = PUSH.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
-                    push();
-                }
+            // Read now rather than within a minute
+            if let Some(push) = PUSH.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                push();
             }
         }
         DETACHED => {

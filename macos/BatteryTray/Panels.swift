@@ -32,19 +32,39 @@ final class FloatingPanel: NSPanel {
 
 // MARK: - The reminder
 
-/// What the reminder shows.
+/// What the reminder shows, and how much of its time is left when it closes on its own.
 final class ReminderState: ObservableObject {
     @Published var effect: [String: Any] = [:]
+    /// It closes on its own: the line along its bottom edge shows the share of its time left, 1 to 0
+    @Published var autoClose = false
+    @Published var remaining: Double = 1
 }
 
 /// The low battery reminder: in the top right corner, where macOS shows its notifications, on top of everything and
-/// never taking the focus, until the user snoozes it or mutes it. The sample (`test`) only closes.
+/// never taking the focus, until the user snoozes it or mutes it, or, when the settings say so, until it closes on its
+/// own as if snoozed. Its time runs only while someone is at the Mac, so it is still there for a user who was away, and
+/// while the pointer is off it, so it doesn't close under a hand on its way to a button. The sample (`test`) only
+/// closes.
 @MainActor
 final class ReminderController {
+    /// How often the line of the time left moves
+    private static let tick: TimeInterval = 1.0 / 30
+    /// The README's pictures: the line stands still at this share of the time
+    static var pictureRemaining: Double?
+
     private let test: Bool
     private var panel: FloatingPanel?
     private let state = ReminderState()
     private var keepOnTop: Timer?
+    /// The devices shown, each with its severity: one it didn't show starts its time again
+    private var shown: Set<String> = []
+    /// Its whole time when it closes on its own (nil: it waits for an answer), the time left, and when the time last
+    /// ran
+    private var total: TimeInterval?
+    private var left: TimeInterval = 0
+    private var lastTick: TimeInterval?
+    private var countdown: Timer?
+    private let presence = Presence()
 
     init(test: Bool) {
         self.test = test
@@ -56,7 +76,28 @@ final class ReminderController {
     }
 
     func show(_ effect: [String: Any]) {
+        let items = effect["items"] as? [[String: Any]] ?? []
+        let keys = Set(items.map { "\($0["id"] as? String ?? "")|\($0["critical"] as? Bool ?? false)" })
+        let autoClose = (effect["auto_close"] as? NSNumber)?.doubleValue
+        if !keys.isSubset(of: shown) || autoClose != total {
+            total = autoClose
+            left = autoClose ?? 0
+            lastTick = nil
+            state.remaining = 1
+        }
+        shown = keys
+        state.autoClose = autoClose != nil
         state.effect = effect
+        if let picture = Self.pictureRemaining {
+            state.remaining = picture
+        } else if autoClose == nil {
+            stopCountdown()
+        } else if countdown == nil {
+            countdown = Timer.scheduledTimer(withTimeInterval: Self.tick, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.runCountdown() }
+            }
+        }
+
         let panel = self.panel ?? makePanel()
         self.panel = panel
         if let host = panel.contentView {
@@ -77,19 +118,51 @@ final class ReminderController {
     func close() {
         keepOnTop?.invalidate()
         keepOnTop = nil
+        stopCountdown()
+        shown = []
+        total = nil
+        lastTick = nil
         panel?.orderOut(nil)
+    }
+
+    private func stopCountdown() {
+        countdown?.invalidate()
+        countdown = nil
+    }
+
+    /// The time runs while the reminder is seen, someone is at the Mac and the pointer is off it; at its end the
+    /// reminder snoozes, as by the button.
+    private func runCountdown() {
+        guard let total, let panel else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let last = lastTick
+        lastTick = now
+        guard panel.isVisible, !panel.frame.contains(NSEvent.mouseLocation), presence.someoneThere(now),
+              let last
+        else { return }
+        left = max(0, left - (now - last))
+        state.remaining = left / total
+        if left == 0 {
+            self.total = nil
+            stopCountdown()
+            DispatchQueue.main.async { [weak self] in self?.answer(snooze: true, onItsOwn: true) }
+        }
+    }
+
+    /// "Remind me in N min" (also when its time ran out) or "Don't remind me until it's charged".
+    private func answer(snooze: Bool, onItsOwn: Bool = false) {
+        if test {
+            close()
+        } else if snooze {
+            AppModel.shared.send(["cmd": "snooze", "auto": onItsOwn])
+        } else {
+            AppModel.shared.send(["cmd": "mute"])
+        }
     }
 
     private func makePanel() -> FloatingPanel {
         let panel = FloatingPanel(clickThrough: false)
-        let view = ReminderView(state: state, test: test) { [weak self] snooze in
-            guard let self else { return }
-            if self.test {
-                self.close()
-            } else {
-                AppModel.shared.send(["cmd": snooze ? "snooze" : "mute"])
-            }
-        }
+        let view = ReminderView(state: state) { [weak self] snooze in self?.answer(snooze: snooze) }
         let host = NSHostingView(rootView: view.environmentObject(AppModel.shared))
         panel.contentView = host
         return panel
@@ -104,71 +177,202 @@ final class ReminderController {
     }
 }
 
+/// Whether someone is at the Mac, for the reminder's time: not while the screen is locked, the screen saver runs, the
+/// displays sleep or another user has the screen; yes while an app in front fills a screen (a game played with a
+/// controller, whose buttons macOS doesn't count as the user's input, or a film); otherwise when the keyboard, the
+/// mouse or the trackpad was used in the last half minute. Asked of macOS at most once a second.
+@MainActor
+final class Presence {
+    private static let awayAfter: TimeInterval = 30
+    private var asked: (at: TimeInterval, there: Bool)?
+    private var screenSaver = false
+    private var locked = false
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        let names = ["com.apple.screensaver.didstart", "com.apple.screensaver.didstop", "com.apple.screenIsLocked",
+                     "com.apple.screenIsUnlocked"]
+        for name in names {
+            observers.append(DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name(name), object: nil, queue: .main
+            ) { [weak self] note in
+                let heard = note.name.rawValue
+                MainActor.assumeIsolated { self?.heard(heard) }
+            })
+        }
+    }
+
+    private func heard(_ name: String) {
+        switch name {
+        case "com.apple.screensaver.didstart": screenSaver = true
+        case "com.apple.screensaver.didstop": screenSaver = false
+        case "com.apple.screenIsLocked": locked = true
+        case "com.apple.screenIsUnlocked": locked = false
+        default: return
+        }
+        asked = nil
+    }
+
+    func someoneThere(_ now: TimeInterval) -> Bool {
+        if let asked, now - asked.at < 1 {
+            return asked.there
+        }
+        let there = ask()
+        asked = (now, there)
+        return there
+    }
+
+    private func ask() -> Bool {
+        if locked || screenSaver {
+            return false
+        }
+        if let session = CGSessionCopyCurrentDictionary() as? [String: Any] {
+            if session["CGSSessionScreenIsLocked"] as? Bool == true {
+                return false
+            }
+            if session[kCGSessionOnConsoleKey as String] as? Bool == false {
+                return false
+            }
+        }
+        if CGDisplayIsAsleep(CGMainDisplayID()) != 0 {
+            return false
+        }
+        if Self.fullScreenAppInFront() {
+            return true
+        }
+        // kCGAnyInputEventType
+        guard let anyInput = CGEventType(rawValue: ~0) else { return true }
+        return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput) < Self.awayAfter
+    }
+
+    /// The app in front has a window that fills one of the screens (in full screen, the part under the camera housing
+    /// of a notched display stays out of it).
+    private static func fullScreenAppInFront() -> Bool {
+        guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != getpid(),
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]],
+              let primary = NSScreen.screens.first
+        else { return false }
+        for window in windows {
+            guard (window[kCGWindowOwnerPID as String] as? pid_t) == app.processIdentifier,
+                  (window[kCGWindowLayer as String] as? Int) == 0,
+                  let b = window[kCGWindowBounds as String] as? [String: CGFloat]
+            else { continue }
+            let bounds = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
+            for screen in NSScreen.screens {
+                // Window bounds count down from the top of the main display; screens count up from its bottom
+                let frame = screen.frame
+                let top = primary.frame.maxY - frame.maxY
+                if abs(bounds.minX - frame.minX) < 1, abs(bounds.width - frame.width) < 1,
+                   bounds.minY <= top + screen.safeAreaInsets.top + 1, bounds.maxY >= top + frame.height - 1 {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+}
+
+/// The reminder, as on Windows: a header with the app's name and the cross (which snoozes); each device due on a tile,
+/// its level bar under its name and its level in the severity's color; the two answers. The border stays neutral; a
+/// line along the bottom edge shows the time left when it closes on its own.
 struct ReminderView: View {
     @ObservedObject var state: ReminderState
-    let test: Bool
     let answer: (Bool) -> Void
     /// The levels' colors, as the Windows app has them
     static let warn = Color(red: 0xF7 / 255, green: 0xC0 / 255, blue: 0x4A / 255)
     static let bad = Color(red: 1, green: 0x6B / 255, blue: 0x6B / 255)
+    static let width: CGFloat = 340
 
     var body: some View {
-        let critical = state.effect["critical"] as? Bool ?? false
-        let accent: Color = critical ? Self.bad : Self.warn
         let items = state.effect["items"] as? [[String: Any]] ?? []
-        HStack(spacing: 0) {
-            Rectangle().fill(accent).frame(width: 4)
-            // Only what is due and the answers: a header with the cross (which snoozes) over the levels, the devices
-            // with their levels, the two buttons
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Spacer()
-                    Button { answer(true) } label: {
-                        // The glyph ends where the levels end
-                        Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .semibold))
-                            .frame(width: 24, height: 24, alignment: .trailing)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                    .help(AppModel.shared.t("alert.snooze.tip"))
-                    .accessibilityLabel(AppModel.shared.t("alert.snooze.tip"))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 7) {
+                Image(systemName: "battery.100")
+                    .font(.system(size: 12))
+                Text("BatteryTray")
+                    .font(.system(size: 12))
+                Spacer()
+                Button { answer(true) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
                 }
-                VStack(spacing: 6) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                        HStack(spacing: 10) {
-                            Image(systemName: symbol(item["kind"] as? String ?? ""))
-                                .font(.system(size: 15))
-                                .frame(width: 24)
-                            Text(item["name"] as? String ?? "").lineLimit(1).truncationMode(.tail)
-                            Spacer()
-                            Text(item["level"] as? String ?? "")
-                                .font(.system(size: 18, weight: .semibold))
-                                .monospacedDigit()
-                                .foregroundStyle(item["critical"] as? Bool == true ? Self.bad : Self.warn)
-                        }
-                    }
-                }
-                .padding(.top, 2)
-                VStack(spacing: 6) {
-                    Button { answer(true) } label: {
-                        Text(state.effect["snooze"] as? String ?? "").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    Button { answer(false) } label: {
-                        Text(AppModel.shared.t("alert.mute")).frame(maxWidth: .infinity)
-                    }
-                    .controlSize(.large)
-                }
-                .padding(.top, 16)
+                .buttonStyle(.borderless)
+                .help(AppModel.shared.t("alert.snooze.tip"))
+                .accessibilityLabel(AppModel.shared.t("alert.snooze.tip"))
             }
-            .padding(EdgeInsets(top: 8, leading: 16, bottom: 16, trailing: 14))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 16)
+            .padding(.trailing, 7)
+            .padding(.top, 6)
+            VStack(spacing: 12) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    let color = item["critical"] as? Bool == true ? Self.bad : Self.warn
+                    HStack(spacing: 12) {
+                        Image(systemName: symbol(item["kind"] as? String ?? ""))
+                            .font(.system(size: 18))
+                            .frame(width: 40, height: 40)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.08)))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(item["name"] as? String ?? "")
+                                .font(.system(size: 13, weight: .semibold))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            LevelBar(fill: ((item["percent"] as? NSNumber)?.doubleValue ?? 0) / 100, color: color, faint: false)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(item["level"] as? String ?? "")
+                            .font(.system(size: 24, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(color)
+                            .frame(minWidth: 56, alignment: .trailing)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            VStack(spacing: 8) {
+                Button { answer(true) } label: { Text(state.effect["snooze"] as? String ?? "") }
+                    .buttonStyle(ReminderButtonStyle(prominent: true))
+                Button { answer(false) } label: { Text(AppModel.shared.t("alert.mute")) }
+                    .buttonStyle(ReminderButtonStyle(prominent: false))
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
         }
-        .frame(width: 340)
+        .padding(.bottom, 16)
+        .frame(width: Self.width)
         .background(VisualEffect())
+        .overlay(alignment: .bottomLeading) {
+            if state.autoClose {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: Self.width * min(max(state.remaining, 0), 1), height: 3)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(accent.opacity(0.9), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.18), lineWidth: 1))
+    }
+}
+
+/// The reminder's two buttons, the snooze one in the accent color. Drawn by hand: the panel is never the key window,
+/// and macOS shows a prominent button of a window that isn't grey.
+struct ReminderButtonStyle: ButtonStyle {
+    let prominent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: prominent ? .semibold : .regular))
+            .foregroundStyle(prominent ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(prominent ? Color.accentColor : Color.primary.opacity(0.1))
+            )
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .contentShape(Rectangle())
     }
 }
 

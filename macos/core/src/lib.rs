@@ -143,8 +143,9 @@ fn call(command: &Value) -> Value {
                 "repeat" => app.edit(|s| s.set_repeat(n)),
                 "sound" => app.edit(|s| s.sound = on),
                 "notify_charged" => app.edit(|s| s.notify_charged = on),
+                "auto_close" => app.edit(|s| s.auto_close = on),
+                "auto_close_seconds" => app.edit(|s| s.set_auto_close_seconds(n)),
                 "auto_update" => app.edit(|s| s.auto_update = on),
-                "refresh_on_connect" => app.edit(|s| s.refresh_on_connect = on),
                 "overlay_enabled" => app.edit(|s| s.overlay_enabled = on),
                 "overlay_mode" => app.edit(|s| s.overlay_mode = n.clamp(0, 1)),
                 "overlay_corner" => app.edit(|s| s.overlay_corner = n.clamp(0, 3)),
@@ -176,7 +177,7 @@ fn call(command: &Value) -> Value {
             };
         }
         "set_shortcut" => app.set_shortcut(int_of(command, "key"), int_of(command, "modifiers")),
-        "snooze" => app.snooze(),
+        "snooze" => app.snooze(bool_of(command, "auto")),
         "mute" => app.mute(),
         "test_alert" => app.test_alert(),
         "update_install" => {
@@ -280,7 +281,16 @@ mod tests {
         let due = run(json!({ "cmd": "device_low", "id": demo::BARRACUDA, "value": 40 }));
         let alert = due["effects"].as_array().unwrap().iter().find(|e| e["type"] == "alert").cloned().unwrap();
         assert_eq!(alert["items"][0]["name"], "Razer Barracuda X");
-        let closed = run(json!({ "cmd": "snooze" }));
+        assert_eq!(alert["items"][0]["percent"], 37, "the level bar's share");
+        assert_eq!(alert["auto_close"], 10, "closes on its own after 10 seconds unless told otherwise");
+        // Waiting for an answer instead: the open reminder hears it at once
+        let waits = run(json!({ "cmd": "set", "key": "auto_close", "value": false }));
+        let alert = waits["effects"].as_array().unwrap().iter().find(|e| e["type"] == "alert").cloned().unwrap();
+        assert!(alert["auto_close"].is_null());
+        run(json!({ "cmd": "set", "key": "auto_close", "value": true }));
+        run(json!({ "cmd": "set", "key": "auto_close_seconds", "value": 60 }));
+        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["auto_close_seconds"], 15, "kept within 5-15");
+        let closed = run(json!({ "cmd": "snooze", "auto": true }));
         assert_eq!(closed["effects"][0]["type"], "alert_close");
 
         // Settings: kept within range, saved half a second later by the app

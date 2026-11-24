@@ -19,20 +19,6 @@ pub fn no_push() -> Pusher {
     Arc::new(|| {})
 }
 
-/// Settings > General, "Look for new devices automatically": whether a device the system reports, or one a provider
-/// sees arrive by itself, brings the polls forward. Off, a new device waits for the schedules or a refresh; the levels
-/// of the devices already found are polled either way. Only the macOS app sets it, from its settings; on Windows it
-/// stays on.
-static ON_CONNECT: AtomicBool = AtomicBool::new(true);
-
-pub fn set_polls_on_connect(on: bool) {
-    ON_CONNECT.store(on, Ordering::Relaxed);
-}
-
-pub fn polls_on_connect() -> bool {
-    ON_CONNECT.load(Ordering::Relaxed)
-}
-
 /// Why a polling thread is woken before its time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Reason {
@@ -240,12 +226,8 @@ impl Monitor {
     /// The system says a device came or went (plugged in, connected over Bluetooth, gone): the providers poll a
     /// second later and twice more over the next 15 seconds, rather than when their schedules say - all but those that
     /// keep a pace of their own while they have a device (keyboards that a request keeps awake). Cheap to call often:
-    /// a burst of changes is one set of rounds, and rounds are 5 seconds apart at least. Nothing when the settings
-    /// say to wait for the schedules (`polls_on_connect`).
+    /// a burst of changes is one set of rounds, and rounds are 5 seconds apart at least.
     pub fn devices_changed(&self) {
-        if !polls_on_connect() {
-            return;
-        }
         let mut rounds = self.changes.rounds.lock().unwrap_or_else(|e| e.into_inner());
         rounds.change = Some(Instant::now());
         rounds.done = 0;

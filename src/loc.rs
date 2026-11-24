@@ -175,15 +175,6 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
     ("updates.check", "Проверить", "Check now", "立即检查"),
     ("updates.auto", "Обновлять автоматически", "Install updates automatically", "自动安装更新"),
     ("autostart", "Запускать при входе в Windows", "Start with Windows", "开机自动启动"),
-    ("refresh.onConnect", "Автоматически искать новые устройства", "Look for new devices automatically",
-        "自动查找新设备"),
-    ("refresh.onConnect.hint",
-        "Программа сама ищет новые устройства в фоне. Если функция выключена, необходимо нажать «Обновить заряд», \
-         чтобы найти новое устройство. Заряд уже найденных устройств обновляется автоматически в любом случае.",
-        "The app looks for new devices in the background. When this is off, press Refresh to find a new device. The \
-         levels of the devices already found update automatically either way.",
-        "程序会在后台自动查找新设备。关闭后，请点击“刷新电量”查找新设备。已找到设备的电量始终会自动更新。"),
-    ("refresh.onConnect.info", "Что меняет этот переключатель", "What this setting changes", "此选项的作用"),
     ("open.folder", "Открыть папку с логом и настройками", "Open the log and settings folder", "打开日志和设置文件夹"),
     ("feedback", "Предложить улучшение", "Suggest an improvement", "提出改进建议"),
     ("feedback.browser", "Откроется в браузере", "Opens in the browser", "将在浏览器中打开"),

@@ -21,6 +21,8 @@ final class Snapshots {
     func run() {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let model = AppModel.shared
+        // A reminder that closes on its own, with 40% of its time gone, as the Windows pictures have it
+        ReminderController.pictureRemaining = 0.6
         steps = [
             { if let language = self.language { model.send(["cmd": "language", "value": language]) } },
             { self.app?.openMain() },
@@ -53,9 +55,11 @@ final class Snapshots {
     private func lowReminder(_ model: AppModel) -> [String: Any] {
         let devices = (model.snapshot?.devices.pinned ?? []) + (model.snapshot?.devices.connected ?? [])
         let items: [[String: Any]] = devices.filter { $0.connected && !$0.levelText.isEmpty }.map {
-            ["id": $0.id, "name": $0.name, "kind": $0.kind, "level": "\($0.low - 2)%", "critical": false]
+            ["id": $0.id, "name": $0.name, "kind": $0.kind, "level": "\($0.low - 2)%", "percent": $0.low - 2,
+             "critical": false]
         }
-        return ["type": "alert", "test": true, "critical": false, "snooze": model.tf("alert.snooze", 10), "items": items]
+        return ["type": "alert", "test": true, "critical": false, "snooze": model.tf("alert.snooze", 10),
+                "auto_close": 10, "items": items]
     }
 
     /// One step, then the next one once the windows have drawn.

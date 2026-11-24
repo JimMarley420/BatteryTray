@@ -8,7 +8,7 @@ use batterytray::autostart;
 use batterytray::hid;
 use batterytray::loc::{self, t, tf};
 use batterytray::log;
-use batterytray::monitor::{self, Monitor, Pusher};
+use batterytray::monitor::{Monitor, Pusher};
 use batterytray::providers::{self, Provider};
 use batterytray::reading::{DeviceKind, DeviceReading};
 use batterytray::rows::{self, AlertItem, AlertManager, ChargeDoneWatcher, DeviceRow};
@@ -107,7 +107,6 @@ impl MacApp {
         settings.last_run_version = Some(version.clone());
         settings.save_to(&settings_path);
         loc::set(loc::resolve(Some(&settings.language)));
-        monitor::set_polls_on_connect(settings.refresh_on_connect);
         let state = Arc::new(StateStore::load_from(folder.join("state.json")));
 
         let external = External::default();
@@ -182,7 +181,6 @@ impl MacApp {
     }
 
     fn settings_changed(&mut self) -> Effects {
-        monitor::set_polls_on_connect(self.settings.refresh_on_connect);
         if let Some(u) = &self.updates {
             u.set_auto_update(self.settings.auto_update);
         }
@@ -257,7 +255,7 @@ impl MacApp {
         let shown = self.alert.as_deref().unwrap_or_default();
         let fresh =
             self.alert.is_none() || due.iter().any(|d| !shown.iter().any(|s| s.id == d.id && s.critical == d.critical));
-        let mut effects = vec![alert(&due, self.settings.repeat_minutes, false)];
+        let mut effects = vec![alert(&due, &self.settings, false)];
         if fresh {
             let names = due.iter().map(|d| format!("{} {}%", d.name, d.level)).collect::<Vec<_>>().join(", ");
             log::write(&format!("alert: {names}"));
@@ -276,11 +274,17 @@ impl MacApp {
         was.then(|| json!({ "type": "alert_close" }))
     }
 
-    pub fn snooze(&mut self) -> Effects {
+    /// The answer "remind me in N min", or the reminder's time ran out (`on_its_own`): it comes back after N minutes
+    /// either way.
+    pub fn snooze(&mut self, on_its_own: bool) -> Effects {
         let ids: Vec<String> = self.alert.iter().flatten().map(|a| a.id.clone()).collect();
         let minutes = self.settings.repeat_minutes;
         self.alerts.snooze(&ids, Duration::from_secs(minutes as u64 * 60));
-        log::write(&format!("alert snoozed for {minutes} min"));
+        if on_its_own {
+            log::write(&format!("alert closed on its own, back in {minutes} min"));
+        } else {
+            log::write(&format!("alert snoozed for {minutes} min"));
+        }
         self.close_alert().into_iter().collect()
     }
 
@@ -316,7 +320,7 @@ impl MacApp {
                 critical: false,
             });
         }
-        let mut effects = vec![alert(&sample, self.settings.repeat_minutes, true)];
+        let mut effects = vec![alert(&sample, &self.settings, true)];
         if self.settings.sound {
             effects.push(json!({ "type": "sound", "critical": sample.iter().any(|s| s.critical) }));
         }
@@ -343,8 +347,7 @@ impl MacApp {
         }
     }
 
-    /// The system says a device came or went: the devices are asked again right away, unless the settings say to wait
-    /// for their schedules (see Monitor::devices_changed).
+    /// The system says a device came or went: the devices are asked again right away (see Monitor::devices_changed).
     pub fn devices_changed(&self) {
         if let Some(m) = &self.monitor {
             m.devices_changed();
@@ -357,7 +360,7 @@ impl MacApp {
         let mut effects = self.settings_changed();
         // The reminder's texts are in the language too
         if let Some(due) = &self.alert {
-            effects.push(alert(due, self.settings.repeat_minutes, false));
+            effects.push(alert(due, &self.settings, false));
         }
         self.refresh_now(); // the devices' details come from the providers
         effects
@@ -512,8 +515,8 @@ impl MacApp {
             "tray": { "label": tray.label, "color": rgb(tray.color), "tooltip": tray.tooltip, "items": menu },
             "settings": {
                 "low": s.low_percent, "critical": s.critical_percent, "repeat": s.repeat_minutes, "sound": s.sound,
-                "notify_charged": s.notify_charged, "auto_update": s.auto_update,
-                "refresh_on_connect": s.refresh_on_connect,
+                "notify_charged": s.notify_charged, "auto_close": s.auto_close,
+                "auto_close_seconds": s.auto_close_seconds, "auto_update": s.auto_update,
                 "overlay_enabled": s.overlay_enabled, "overlay_mode": s.overlay_mode,
                 "overlay_corner": s.overlay_corner, "overlay_names": s.overlay_show_names,
                 "language": s.language, "autostart_banner_dismissed": s.autostart_banner_dismissed,
@@ -563,18 +566,25 @@ fn notice(title: &str, text: &str) -> Value {
     json!({ "type": "notice", "title": title, "text": text })
 }
 
-/// The reminder with these devices; `test`: the sample, which a click only closes.
-fn alert(due: &[AlertItem], repeat_minutes: i32, test: bool) -> Value {
+/// The reminder with these devices; `test`: the sample, which a click only closes. "auto_close": the seconds after
+/// which it closes on its own as if snoozed, null while it waits for an answer.
+fn alert(due: &[AlertItem], settings: &AppSettings, test: bool) -> Value {
     let critical = due.iter().any(|d| d.critical);
     let items: Vec<Value> = due
         .iter()
-        .map(|d| json!({ "id": d.id, "name": d.name, "kind": kind(d.kind), "level": format!("{}%", d.level), "critical": d.critical }))
+        .map(|d| {
+            json!({
+                "id": d.id, "name": d.name, "kind": kind(d.kind), "level": format!("{}%", d.level),
+                "percent": d.level, "critical": d.critical,
+            })
+        })
         .collect();
     json!({
         "type": "alert",
         "test": test,
         "critical": critical,
-        "snooze": tf("alert.snooze", &[&repeat_minutes]),
+        "snooze": tf("alert.snooze", &[&settings.repeat_minutes]),
+        "auto_close": settings.auto_close_after().map(|d| d.as_secs()),
         "items": items,
     })
 }

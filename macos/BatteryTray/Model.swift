@@ -66,8 +66,9 @@ struct Settings: Decodable, Equatable {
     var repeatMinutes: Int
     var sound: Bool
     var notifyCharged: Bool
+    var autoClose: Bool
+    var autoCloseSeconds: Int
     var autoUpdate: Bool
-    var refreshOnConnect: Bool
     var overlayEnabled: Bool
     var overlayMode: Int
     var overlayCorner: Int
@@ -76,7 +77,7 @@ struct Settings: Decodable, Equatable {
     var autostartBannerDismissed: Bool
 
     enum CodingKeys: String, CodingKey {
-        case low, critical, sound, notifyCharged, autoUpdate, refreshOnConnect, overlayEnabled, overlayMode,
+        case low, critical, sound, notifyCharged, autoClose, autoCloseSeconds, autoUpdate, overlayEnabled, overlayMode,
              overlayCorner, overlayNames, language, autostartBannerDismissed
         case repeatMinutes = "repeat"
     }
