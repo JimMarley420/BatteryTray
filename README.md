@@ -341,7 +341,7 @@ cargo test --workspace              # tests (no hardware polling or access to yo
 ### Releasing a version
 
 1. Raise `version` in `Cargo.toml`.
-2. `powershell -File build-release.ps1`.
+2. `powershell -File build-release.ps1` on Windows, or from any computer: Actions → **Release files** → Run workflow on that commit, and take `BatteryTray.exe` and the zip from its `BatteryTray-release-windows` artifact.
 3. Take `BatteryTray-macOS.zip` and `BatteryTray-macOS.dmg` from the `BatteryTray-macOS` artifact of the macOS workflow on that commit (or build them with `macos/build.sh` on a Mac).
 4. `gh release create vX.Y.Z dist\BatteryTray-X.Y.Z-win-x64.zip dist\BatteryTray.exe BatteryTray-macOS.zip BatteryTray-macOS.dmg --title "BatteryTray X.Y.Z" --notes "what's new"`.
 

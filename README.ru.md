@@ -321,12 +321,12 @@ cargo test --workspace              # тесты (без опроса устро
 ### Как выпустить новую версию
 
 1. Поднимите `version` в `Cargo.toml` (например, `1.2.0`).
-2. `powershell -File build-release.ps1`.
+2. `powershell -File build-release.ps1` на Windows или с любого компьютера: Actions → **Release files** → Run workflow на этом коммите, `BatteryTray.exe` и zip — в его артефакте `BatteryTray-release-windows`.
 3. Возьмите `BatteryTray-macOS.zip` и `BatteryTray-macOS.dmg` из артефакта `BatteryTray-macOS` сборки macOS на этом коммите (или соберите их `macos/build.sh` на Mac).
 4. `gh release create v1.2.0 dist\BatteryTray-1.2.0-win-x64.zip dist\BatteryTray.exe BatteryTray-macOS.zip BatteryTray-macOS.dmg --title "BatteryTray 1.2.0" --notes "что нового"`
 5. Менеджеры пакетов: новая версия и SHA-256 exe — в `bucket/batterytray.json` (Scoop), а в winget — `komac update qu1ncky.BatteryTray --version 1.2.0 --urls https://github.com/qu1ncky/BatteryTray/releases/download/v1.2.0/BatteryTray.exe --submit`.
 
-Кнопки скачивания в начале README берут `BatteryTray.exe` и `BatteryTray-macOS.dmg` из последнего релиза, поэтому оба файла должны быть в каждом релизе..
+Кнопки скачивания в начале README берут `BatteryTray.exe` и `BatteryTray-macOS.dmg` из последнего релиза, поэтому оба файла должны быть в каждом релизе.
 
 Автообновление берёт из последнего релиза файл именно с именем `BatteryTray.exe` (Windows) или `BatteryTray-macOS.zip` (macOS), а номер в теге должен совпадать с версией внутри exe или приложения — иначе обновление откажется ставиться. Текст релиза программа показывает в «Настройках» как «что нового». Черновики и пре-релизы автообновление не видит — ими удобно проверять сборку до выпуска.
 
