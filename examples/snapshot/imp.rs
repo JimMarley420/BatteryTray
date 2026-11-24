@@ -185,6 +185,7 @@ pub fn main() {
         main.set_autostart(true);
 
         main.set_language(language.into());
+        main.set_theme(settings.theme.clone().into());
         main.set_update_status(tf("upd.uptodate", &[&version]).into());
         main.set_update_checked_text(tf("upd.checked", &[&now.format("%H:%M")]).into());
         main.set_install_text(tf("upd.install", &[&latest]).into());

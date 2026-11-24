@@ -225,8 +225,8 @@ struct RowButtonStyle: ButtonStyle {
     }
 }
 
-/// General: the login item, the Input Monitoring permission when a device waits for it, the language, the updates, the
-/// folder of the log and settings, a suggestion.
+/// General: the login item, the Input Monitoring permission when a device waits for it, the language and the theme, the
+/// updates, the folder of the log and settings, a suggestion.
 struct GeneralSettings: View {
     @EnvironmentObject var model: AppModel
 
@@ -273,6 +273,13 @@ struct GeneralSettings: View {
                         Text("中文").tag("zh")
                     } label: {
                         Label(model.t("lang.header"), systemImage: "globe")
+                    }
+                    Picker(selection: Binding(get: { s.settings.theme }, set: { model.send(["cmd": "theme", "value": $0]) })) {
+                        Text(model.t("theme.auto")).tag("auto")
+                        Text(model.t("theme.light")).tag("light")
+                        Text(model.t("theme.dark")).tag("dark")
+                    } label: {
+                        Label(model.t("theme.header"), systemImage: "circle.lefthalf.filled")
                     }
                 }
                 Section(model.t("updates.header")) {

@@ -92,7 +92,7 @@ impl MainView {
         Ok(view)
     }
 
-    /// Windows' app mode changed: the window and its title bar follow it.
+    /// The app mode changed (Windows', or the theme picked in the settings): the window and its title bar follow it.
     pub fn follow_theme(&self) {
         let light = theme::current().apps_light;
         gui::set_theme(&self.ui, light);
@@ -128,6 +128,7 @@ impl MainView {
         ui.set_overlay_corner(s.overlay_corner);
         ui.set_overlay_names(s.overlay_show_names);
         ui.set_language(s.language.clone().into());
+        ui.set_theme(s.theme.clone().into());
         ui.set_autostart_banner_dismissed(s.autostart_banner_dismissed);
         self.refresh_overlay_status(s, app.overlay.shortcut_available());
     }
@@ -294,6 +295,9 @@ fn connect(ui: &MainWindow) {
     });
     ui.on_language_chosen(|l| {
         with_app(|a| a.set_language(&l));
+    });
+    ui.on_theme_chosen(|setting| {
+        with_app(|a| a.set_theme(&setting));
     });
     ui.on_test_alert(|| {
         with_app(|a| a.show_test_alert());

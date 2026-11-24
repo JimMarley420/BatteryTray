@@ -256,6 +256,8 @@ impl App {
         settings.last_run_version = Some(version());
         settings.save();
         loc::set(loc::resolve(Some(&settings.language)));
+        // The theme picked in the settings, before any window: each one is made in the theme it shows
+        theme::choose(&settings.theme);
         // New devices are always looked for on Windows: the polls when a device connects have no switch here
         let state = Arc::new(StateStore::load());
 
@@ -514,6 +516,16 @@ impl App {
         self.refresh_now(); // the devices' details come from the providers
     }
 
+    /// A theme picked in the settings ("auto" follows Windows): the windows switch right away. The tray icon's number
+    /// and menu keep the taskbar's mode.
+    pub fn set_theme(&mut self, setting: &str) {
+        self.settings.theme = setting.to_string();
+        if theme::choose(setting) {
+            self.windows_follow_theme();
+        }
+        self.settings_changed();
+    }
+
     pub fn set_autostart(&mut self, on: bool) {
         autostart::set(on);
         let registered = autostart::is_registered();
@@ -754,6 +766,11 @@ impl App {
         let Some(mode) = theme::reread() else { return };
         tray::set_menu_mode(mode.taskbar_light);
         self.update_tray();
+        self.windows_follow_theme();
+    }
+
+    /// The open windows, and the main window's title bar, in the app mode as it is now.
+    fn windows_follow_theme(&self) {
         if let Some(view) = &self.main {
             view.follow_theme();
         }

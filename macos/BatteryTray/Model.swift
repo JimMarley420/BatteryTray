@@ -75,11 +75,13 @@ struct Settings: Decodable, Equatable {
     var overlayCorner: Int
     var overlayNames: Bool
     var language: String
+    /// "light", "dark", or "auto" to follow the system's appearance
+    var theme: String
     var autostartBannerDismissed: Bool
 
     enum CodingKeys: String, CodingKey {
         case low, critical, sound, notifyCharged, autoClose, autoCloseSeconds, autoUpdate, overlayEnabled, overlayMode,
-             overlayCorner, overlayNames, language, autostartBannerDismissed
+             overlayCorner, overlayNames, language, theme, autostartBannerDismissed
         case repeatMinutes = "repeat"
     }
 }

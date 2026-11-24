@@ -355,6 +355,13 @@ impl MacApp {
         }
     }
 
+    /// A theme picked in the settings: "light", "dark", or "auto" to follow the system. The app sets its appearance
+    /// from the settings it is sent.
+    pub fn set_theme(&mut self, setting: &str) -> Effects {
+        self.settings.theme = setting.to_string();
+        self.settings_changed()
+    }
+
     pub fn set_language(&mut self, setting: &str) -> Effects {
         self.settings.language = setting.to_string();
         loc::set(loc::resolve(Some(setting)));
@@ -520,7 +527,7 @@ impl MacApp {
                 "auto_close_seconds": s.auto_close_seconds, "auto_update": s.auto_update,
                 "overlay_enabled": s.overlay_enabled, "overlay_mode": s.overlay_mode,
                 "overlay_corner": s.overlay_corner, "overlay_names": s.overlay_show_names,
-                "language": s.language, "autostart_banner_dismissed": s.autostart_banner_dismissed,
+                "language": s.language, "theme": s.theme, "autostart_banner_dismissed": s.autostart_banner_dismissed,
             },
             "autostart": autostart::is_registered(),
             "update": {

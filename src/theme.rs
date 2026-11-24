@@ -34,23 +34,50 @@ impl Mode {
 }
 
 thread_local! {
-    /// The mode the app shows, on the UI thread
+    /// Windows' mode as last read, on the UI thread
     static SHOWN: Cell<Option<Mode>> = const { Cell::new(None) };
+    /// The theme picked in the settings for the app's windows: light (true), dark (false), or None to follow Windows
+    static CHOSEN: Cell<Option<bool>> = const { Cell::new(None) };
 }
 
-/// The mode the app shows: read when first asked, then changed only by `reread`, so every part of the app agrees.
+/// The mode the app shows: Windows' as read when first asked and then changed only by `reread`, so every part of the
+/// app agrees; the windows in the theme picked in the settings, if one is. The taskbar's is always Windows' own: the
+/// tray icon's number and menu sit on it.
 pub fn current() -> Mode {
-    SHOWN.with(|shown| {
+    let system = SHOWN.with(|shown| {
         let mode = shown.get().unwrap_or_else(read);
         shown.set(Some(mode));
         mode
-    })
+    });
+    chosen(system)
 }
 
-/// Reads the mode again: the new one when it changed.
+/// Reads Windows' mode again: the mode to show when it changed.
 pub fn reread() -> Option<Mode> {
     let mode = read();
-    SHOWN.with(|shown| (shown.replace(Some(mode)) != Some(mode)).then_some(mode))
+    SHOWN.with(|shown| (shown.replace(Some(mode)) != Some(mode)).then(|| chosen(mode)))
+}
+
+/// The theme setting ("light", "dark", anything else follows Windows): whether the windows' mode changed with it.
+pub fn choose(setting: &str) -> bool {
+    let before = current();
+    CHOSEN.with(|c| c.set(choice(setting)));
+    current() != before
+}
+
+fn choice(setting: &str) -> Option<bool> {
+    match setting {
+        "light" => Some(true),
+        "dark" => Some(false),
+        _ => None,
+    }
+}
+
+fn chosen(mut mode: Mode) -> Mode {
+    if let Some(light) = CHOSEN.with(Cell::get) {
+        mode.apps_light = light;
+    }
+    mode
 }
 
 fn read() -> Mode {
@@ -124,5 +151,18 @@ mod tests {
         assert_eq!(mode(Some(1), Some(0)), (true, false));
         assert_eq!(mode(Some(0), Some(1)), (false, true));
         assert_eq!(mode(None, None), (true, false));
+    }
+
+    #[test]
+    fn a_picked_theme_is_the_windows_but_not_the_taskbars() {
+        assert_eq!(
+            (choice("light"), choice("dark"), choice("auto"), choice("")),
+            (Some(true), Some(false), None, None)
+        );
+        let windows = Mode::from_values(Some(0), Some(0));
+        CHOSEN.with(|c| c.set(Some(true)));
+        assert_eq!(chosen(windows), Mode { apps_light: true, taskbar_light: false });
+        CHOSEN.with(|c| c.set(None));
+        assert_eq!(chosen(windows), windows);
     }
 }

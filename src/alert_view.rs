@@ -216,7 +216,8 @@ impl AlertView {
         gui::set_border(self.ui.window(), Some(border()));
     }
 
-    /// Windows' app mode changed: the window follows it, its border too once it is seen.
+    /// The app mode changed (Windows', or the theme picked in the settings): the window follows it, its border too once
+    /// it is seen.
     pub fn follow_theme(&self) {
         gui::set_theme(&self.ui, theme::current().apps_light);
         if self.ui.window().is_visible() && !self.revealing.get() {

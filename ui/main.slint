@@ -39,6 +39,7 @@ export component MainWindow inherits Window {
 
     // Settings / General
     in property <string> language;
+    in property <string> theme;
     in property <string> update-status;
     in property <string> update-checked-text;
     in property <string> update-notes;
@@ -80,6 +81,7 @@ export component MainWindow inherits Window {
     callback install-update();
     callback check-updates();
     callback language-chosen(language: string);
+    callback theme-chosen(theme: string);
     callback test-alert();
     callback open-folder();
     callback suggest-improvement();
@@ -358,6 +360,7 @@ export component MainWindow inherits Window {
                     visible: root.settings-tab == 0;
                     autostart: root.autostart;
                     language: root.language;
+                    theme: root.theme;
                     update-status: root.update-status;
                     update-checked-text: root.update-checked-text;
                     update-notes: root.update-notes;
@@ -367,6 +370,7 @@ export component MainWindow inherits Window {
                     auto-update: root.auto-update;
                     autostart-changed(on) => { root.autostart-changed(on); }
                     language-chosen(language) => { root.language-chosen(language); }
+                    theme-chosen(theme) => { root.theme-chosen(theme); }
                     install-update => { root.install-update(); }
                     check-updates => { root.check-updates(); }
                     auto-update-changed(on) => { root.auto-update-changed(on); }
