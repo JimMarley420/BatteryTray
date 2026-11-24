@@ -92,6 +92,11 @@ pub fn watch(changed: impl Fn() + Send + 'static) {
                 .is_ok()
         };
         let mut armed = arm();
+        // Once now: a change made while the app started, before the watch was armed, would otherwise wait for the
+        // next one (a theme scheduler switching at logon, as the app starts with Windows)
+        if armed {
+            changed();
+        }
         while armed && WaitForSingleObject(event, INFINITE) == WAIT_OBJECT_0 {
             armed = arm();
             changed();

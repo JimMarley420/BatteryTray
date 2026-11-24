@@ -96,7 +96,18 @@ impl MainView {
     pub fn follow_theme(&self) {
         let light = theme::current().apps_light;
         gui::set_theme(&self.ui, light);
-        gui::set_title_bar(self.ui.window(), light);
+        if gui::hwnd(self.ui.window()).is_some() {
+            gui::set_title_bar(self.ui.window(), light);
+        } else {
+            // Just opened: winit makes the window only once the event loop gets to it, with the mode the window was
+            // opened in
+            let ui = self.ui.as_weak();
+            slint::Timer::single_shot(Duration::from_millis(100), move || {
+                if let Some(ui) = ui.upgrade() {
+                    gui::set_title_bar(ui.window(), theme::current().apps_light);
+                }
+            });
+        }
     }
 
     /// Everything from the settings, as the window opens and after any change: the controls only ever show what the

@@ -110,7 +110,7 @@ export component DeviceView inherits Rectangle {
     background: root.lifted ? Palette.control : root.as-row ? transparent : Palette.card;
     border-width: root.lifted || !root.as-row ? 1px : 0px;
     border-color: root.lifted ? Palette.accent
-        : root.renaming || root.menu-open ? Palette.popup-stroke : Palette.stroke;
+        : root.renaming || root.menu-open ? Palette.stroke-strong : Palette.stroke;
     border-radius: 8px;
     // 15 + 36 (the name and one line under it, beside the level) + 12 + 4 (the bar) + 15
     min-height: root.as-row ? 0px : 82px;

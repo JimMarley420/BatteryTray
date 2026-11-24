@@ -73,7 +73,8 @@ pub fn init() -> Result<(), slint::PlatformError> {
                     .with_window_icon(icon.clone())
                     .with_taskbar_icon(icon),
                 Kind::Reminder => popup(attributes, REMINDER_CLASS),
-                Kind::Overlay => popup(attributes, OVERLAY_CLASS),
+                // Dark in any mode, as its contents: also the frame Windows 11 draws around a rounded window
+                Kind::Overlay => popup(attributes, OVERLAY_CLASS).with_theme(Some(winit::window::Theme::Dark)),
             }
         })
         .select()
@@ -140,14 +141,21 @@ fn title_bar(light: bool) -> winit::window::Theme {
 }
 
 /// Switches an open window's title bar to the light or the dark mode. Its frame is drawn again right away: the new
-/// colours could otherwise wait for the window's next activation.
+/// colours could otherwise wait for the window's next activation. Windows 10 repaints the caption's colours only on
+/// an activation change, so the caption is drawn inactive and back (as Tauri's tao does), without the window's own
+/// handler seeing it.
 pub fn set_title_bar(window: &slint::Window, light: bool) {
-    use windows::Win32::UI::WindowsAndMessaging::{SWP_FRAMECHANGED, SWP_NOZORDER};
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{DefWindowProcW, SWP_FRAMECHANGED, SWP_NOZORDER, WM_NCACTIVATE};
     window.with_winit_window(|w| w.set_theme(Some(title_bar(light))));
     if let Some(hwnd) = hwnd(window) {
         unsafe {
             let flags = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
             let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, flags);
+            let active = GetActiveWindow() == hwnd;
+            let _ = DefWindowProcW(hwnd, WM_NCACTIVATE, WPARAM(usize::from(!active)), LPARAM(0));
+            let _ = DefWindowProcW(hwnd, WM_NCACTIVATE, WPARAM(usize::from(active)), LPARAM(0));
         }
     }
 }

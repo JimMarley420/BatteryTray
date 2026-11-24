@@ -10,6 +10,8 @@ export global Palette {
     out property <color> window: light ? #F3F3F3 : #202020;
     out property <color> card: light ? #FBFBFB : #2B2B2B;
     out property <color> stroke: light ? #E5E5E5 : #363636;
+    // A card marked as the one being worked on (its menu open, its name being typed): one step stronger than `stroke`
+    out property <color> stroke-strong: light ? #D1D1D1 : #4A4A4A;
     out property <color> control: light ? #FEFEFE : #323232;
     // Light: see-through black rather than a grey, so a hover shows the same on the window, a card and a popup. A
     // control's fill gives way to them, and what shows through is only what the control sits on.
