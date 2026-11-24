@@ -272,17 +272,15 @@ struct ReminderSettings: View {
                     LevelSetting(title: model.t("alerts.critical"), hint: model.t("alerts.critical.hint"),
                                  value: s.critical, range: 5...45, unit: "%",
                                  current: { model.snapshot?.settings.critical ?? s.critical }) { model.set("critical", $0) }
-                    LevelSetting(title: model.t("alerts.repeat"), hint: nil, value: s.repeatMinutes, range: 5...60,
-                                 unit: model.t("alerts.repeat.unit"),
+                    LevelSetting(title: model.t("alerts.repeat"), hint: nil, value: s.repeatMinutes, range: 1...60,
+                                 unit: model.t("alerts.repeat.unit"), step: 1,
                                  current: { model.snapshot?.settings.repeatMinutes ?? s.repeatMinutes }) { model.set("repeat", $0) }
                 }
                 Section {
                     Toggle(model.t("alerts.autoclose"), isOn: Binding(get: { s.autoClose }, set: { model.set("auto_close", $0) }))
                     if s.autoClose {
-                        // The slider runs from 1 to 15 seconds; the field takes any value up to an hour
-                        // (AUTO_CLOSE_SECONDS in settings.rs)
                         LevelSetting(title: model.t("alerts.autoclose.after"), hint: nil, value: s.autoCloseSeconds,
-                                     range: 1...15, unit: model.t("alerts.autoclose.unit"), step: 1,
+                                     range: 3...15, unit: model.t("alerts.autoclose.unit"), step: 1,
                                      current: { model.snapshot?.settings.autoCloseSeconds ?? s.autoCloseSeconds }) {
                             model.set("auto_close_seconds", $0)
                         }
@@ -312,8 +310,9 @@ struct ReminderSettings: View {
     }
 }
 
-/// A level: the number as typed (accent colored) and a slider that moves in steps (of 5 unless told otherwise). A typed
-/// value may be any the app accepts (it keeps it in range); the slider then stands where it falls.
+/// A level: the number as typed (accent colored) and a slider that moves in steps (of 5 unless told otherwise). The
+/// field takes more than the slider covers (settings.rs keeps a value in what it accepts: LEVEL_PERCENT,
+/// REPEAT_MINUTES, AUTO_CLOSE_SECONDS); the slider then stands at its end.
 struct LevelSetting: View {
     let title: String
     let hint: String?
@@ -335,17 +334,21 @@ struct LevelSetting: View {
                 NumberField(value: value, unit: unit, label: title, current: current, commit: change)
                     .foregroundStyle(Color.accentColor)
             }
-            Slider(
-                value: Binding(
-                    get: { Double(min(max(value, range.lowerBound), range.upperBound)) },
-                    set: { fresh in
-                        let stepped = Int(fresh.rounded())
-                        if stepped != current() { change(stepped) }
-                    }),
-                in: Double(range.lowerBound)...Double(range.upperBound),
-                step: Double(step)
-            ) {
-                Text(title)
+            let position = Binding(
+                get: { Double(min(max(value, range.lowerBound), range.upperBound)) },
+                set: { (fresh: Double) in
+                    let stepped = Int(fresh.rounded())
+                    if stepped != current() { change(stepped) }
+                })
+            let bounds = Double(range.lowerBound)...Double(range.upperBound)
+            Group {
+                if step > 1 {
+                    Slider(value: position, in: bounds, step: Double(step)) { Text(title) }
+                } else {
+                    // A step of 1 would draw a tick mark for every value: the slider runs smoothly instead and the
+                    // value is the nearest whole number
+                    Slider(value: position, in: bounds) { Text(title) }
+                }
             }
             .labelsHidden()
         }

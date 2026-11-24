@@ -156,7 +156,7 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
     ("alerts.critical.info", "Что такое критический уровень", "What the critical level is", "什么是严重低电量"),
     ("alerts.repeat", "Повторять напоминание каждые", "Repeat the reminder every", "重复提醒间隔"),
     ("alerts.repeat.unit", "мин", "min", "分钟"),
-    ("alerts.autoclose", "Автоматическое закрытие напоминания", "Close the reminder automatically", "自动关闭提醒"),
+    ("alerts.autoclose", "Автоматически закрывать напоминание", "Close the reminder automatically", "自动关闭提醒"),
     ("alerts.autoclose.after", "Закрыть через", "Close after", "关闭时间"),
     ("alerts.autoclose.unit", "сек", "s", "秒"),
     ("alerts.sound", "Звуковой сигнал", "Sound", "提示音"),

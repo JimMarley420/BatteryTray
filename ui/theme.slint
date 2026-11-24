@@ -128,10 +128,11 @@ export component IconButton inherits Rectangle {
     }
 }
 
-// Slider in steps (5%), the part up to the knob in the accent color. As the switches (SwitchRow in controls.slint), it
-// only asks for a value (`changed`); `value` shows what the app has, also when it moves another slider along (the
-// critical level stays 5 below the reminder level). The knob stays on the track for a value the slider can't reach
-// (the repeat field takes 1 to 120 minutes, the slider goes from 5 to 60).
+// Slider in steps (5% unless told otherwise), the part up to the knob in the accent color. As the switches (SwitchRow
+// in controls.slint), it only asks for a value (`changed`); `value` shows what the app has, also when it moves another
+// slider along (the critical level is never above the reminder level). The knob stays on the track for a value the
+// slider can't reach (the fields take more than their sliders: the repeat field 1 to 99 999 minutes, its slider 1 to
+// 60).
 export component StepSlider {
     in property <int> minimum;
     in property <int> maximum;

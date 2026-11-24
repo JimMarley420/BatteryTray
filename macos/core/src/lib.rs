@@ -290,15 +290,15 @@ mod tests {
         run(json!({ "cmd": "set", "key": "auto_close", "value": true }));
         run(json!({ "cmd": "set", "key": "auto_close_seconds", "value": 45 }));
         assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["auto_close_seconds"], 45, "past the slider's 15");
-        run(json!({ "cmd": "set", "key": "auto_close_seconds", "value": 99999 }));
-        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["auto_close_seconds"], 3600, "an hour at the most");
+        run(json!({ "cmd": "set", "key": "auto_close_seconds", "value": 1_000_000 }));
+        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["auto_close_seconds"], 99_999, "what the field holds");
         let closed = run(json!({ "cmd": "snooze", "auto": true }));
         assert_eq!(closed["effects"][0]["type"], "alert_close");
 
         // Settings: kept within range, saved half a second later by the app
-        let changed = run(json!({ "cmd": "set", "key": "low", "value": 80 }));
+        let changed = run(json!({ "cmd": "set", "key": "low", "value": 180 }));
         assert_eq!(changed["effects"][0]["type"], "save_later");
-        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["low"], 50);
+        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["low"], 100);
 
         // Shortcuts: ⌘C is the system's, ⇧⌘B is free
         let copy = run(json!({ "cmd": "check_shortcut", "mac_key": 0x08, "command": true }));

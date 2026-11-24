@@ -682,7 +682,8 @@ impl App {
                 id: r.id.clone(),
                 name: r.name.clone(),
                 kind: r.kind(),
-                level: if i == 0 { self.settings.low_for(&r.id) - 2 } else { self.settings.critical_for(&r.id) - 1 },
+                level: (if i == 0 { self.settings.low_for(&r.id) - 2 } else { self.settings.critical_for(&r.id) - 1 })
+                    .max(0),
                 critical: i > 0,
             })
             .collect();
@@ -691,7 +692,7 @@ impl App {
                 id: "test".into(),
                 name: t("name.mouse"),
                 kind: crate::reading::DeviceKind::Mouse,
-                level: self.settings.low_percent - 2,
+                level: (self.settings.low_percent - 2).max(0),
                 critical: false,
             });
         }

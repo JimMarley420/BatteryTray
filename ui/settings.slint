@@ -373,11 +373,12 @@ export component RemindersPage inherits Page {
                         horizontal-stretch: 1;
                         wrap: word-wrap;
                     }
+                    // The fields take what settings.rs does (LEVEL_PERCENT, REPEAT_MINUTES, AUTO_CLOSE_SECONDS); the
+                    // sliders cover the usual part of it
                     low-field := NumberField {
                         label: T.t("alerts.low");
                         value: root.low;
-                        minimum: 10;
-                        maximum: 50;
+                        minimum: 1;
                         unit: "%";
                         value-color: Palette.accent;
                         changed(v) => { root.low-changed(v); }
@@ -420,8 +421,7 @@ export component RemindersPage inherits Page {
                     critical-field := NumberField {
                         label: T.t("alerts.critical");
                         value: root.critical;
-                        minimum: 5;
-                        maximum: 45;
+                        minimum: 1;
                         unit: "%";
                         value-color: Palette.accent;
                         changed(v) => { root.critical-changed(v); }
@@ -454,7 +454,7 @@ export component RemindersPage inherits Page {
                         label: T.t("alerts.repeat");
                         value: root.repeat;
                         minimum: 1;
-                        maximum: 120;
+                        maximum: 99999;
                         unit: T.t("alerts.repeat.unit");
                         unit-gap: 4px;
                         value-color: Palette.accent;
@@ -462,8 +462,9 @@ export component RemindersPage inherits Page {
                     }
                 }
                 StepSlider {
-                    minimum: 5;
+                    minimum: 1;
                     maximum: 60;
+                    step: 1;
                     label: T.t("alerts.repeat");
                     value: root.repeat;
                     changed(v) => { root.repeat-changed(v); }
@@ -479,10 +480,10 @@ export component RemindersPage inherits Page {
                 }
             }
             if root.auto-close: close := VerticalLayout {
-                // The field takes what AUTO_CLOSE_SECONDS in settings.rs does (any value up to an hour); the slider
-                // runs from 1 to 15 seconds and stands at its end for a value past that, as the repeat's does
+                // The field takes what AUTO_CLOSE_SECONDS in settings.rs does; the slider runs from 3 to 15 seconds
+                // and stands at an end for a value past that, as the repeat's does
                 property <int> fewest: 1;
-                property <int> most: 3600;
+                property <int> most: 99999;
                 padding-right: 16px;
                 padding-bottom: 12px;
                 padding-left: 16px;
@@ -509,7 +510,7 @@ export component RemindersPage inherits Page {
                     }
                 }
                 StepSlider {
-                    minimum: 1;
+                    minimum: 3;
                     maximum: 15;
                     step: 1;
                     label: T.t("alerts.autoclose.after");

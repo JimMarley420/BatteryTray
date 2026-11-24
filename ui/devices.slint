@@ -1107,8 +1107,7 @@ export component DeviceMenu inherits Rectangle {
                             compact: true;
                             label: T.t("device.low");
                             value: root.device.low;
-                            minimum: 10;
-                            maximum: 50;
+                            minimum: 1;
                             unit: "%";
                             changed(v) => { root.low-changed(v); }
                         }
@@ -1119,8 +1118,8 @@ export component DeviceMenu inherits Rectangle {
                             compact: true;
                             label: T.t("device.critical");
                             value: root.device.critical;
-                            minimum: 5;
-                            maximum: max(5, root.device.low - 5);
+                            minimum: 1;
+                            maximum: root.device.low;
                             unit: "%";
                             changed(v) => { root.critical-changed(v); }
                         }
