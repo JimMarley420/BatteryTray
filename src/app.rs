@@ -800,21 +800,27 @@ impl App {
         }
     }
 
-    /// The settings' rows of sounds, after something about them changed that isn't a setting.
-    fn show_sounds(&self) {
+    /// The settings' rows of sounds, after something about them changed that isn't a setting: what plays, what was
+    /// refused, what is in the Sounds folder.
+    pub fn show_sounds(&self) {
         if let Some(view) = &self.main {
             view.load_sounds(self);
         }
     }
 
-    /// The sound at a place in the settings' lists; None for the last line, "Custom file…", which is no sound.
+    /// The sound at a place in the settings' lists as the window shows them; None for the last line, "Custom
+    /// file…", which is no sound.
     pub fn sound_at(&self, index: i32) -> Option<Choice> {
-        let list = sounds::choices(&sounds::files());
-        usize::try_from(index).ok().and_then(|i| list.get(i).cloned())
+        self.main.as_ref().and_then(|view| view.sound_at(index))
     }
 
     /// A sound picked in the settings: kept, and played once so that the choice is heard.
     pub fn choose_sound(&mut self, event: sounds::Event, choice: Choice) {
+        // A file deleted from the folder while the window still listed it: the lists are brought up to date instead
+        if matches!(&choice, Choice::File(name) if !sounds::path_of(name).is_file()) {
+            self.show_sounds();
+            return;
+        }
         self.sound_refused = None;
         // Also the sound being heard for this row: the new one starts, it isn't the button's "stop"
         self.stop_sound();
@@ -828,6 +834,25 @@ impl App {
             self.stop_sound();
         } else if self.play(event) {
             self.show_playing(Some(event));
+        }
+    }
+
+    /// A file of the user's has been taken out of the Sounds folder (the ✕ in a list): it is in no list any more, and a
+    /// sound that had it is the system's again.
+    pub fn sound_removed(&mut self, name: &str) {
+        log::write(&format!("sound {name} removed"));
+        self.stop_sound();
+        let gone = Choice::File(name.to_string());
+        let had: Vec<sounds::Event> =
+            sounds::Event::ALL.into_iter().filter(|&event| self.settings.sound_for(event) == gone).collect();
+        if had.is_empty() {
+            self.show_sounds();
+        } else {
+            self.edit(|s| {
+                for event in had {
+                    s.set_sound(event, &Choice::System);
+                }
+            });
         }
     }
 

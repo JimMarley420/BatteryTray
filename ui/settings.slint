@@ -343,6 +343,8 @@ component SoundRow inherits VerticalLayout {
     in property <string> note;
     in property <bool> refused;
     callback chosen(int);
+    // The ✕ of one of the user's files in the list
+    callback removed(int);
     callback preview();
     ControlRow {
         text: root.text;
@@ -356,7 +358,12 @@ component SoundRow inherits VerticalLayout {
                 current: root.current;
                 break-a: root.break-a;
                 break-b: root.break-b;
+                // The user's files: after the second line, up to "Custom file…", the last option
+                remove-from: root.break-b;
+                remove-to: root.options.length - 1;
+                remove-label: T.t("sounds.remove");
                 selected(i) => { root.chosen(i); }
+                removed(i) => { root.removed(i); }
             }
             if !root.silent: TipButton {
                 width: 32px;
@@ -427,6 +434,8 @@ export component RemindersPage inherits Page {
     callback repeat-changed(int);
     callback sound-chosen(int, int);
     callback sound-preview(int);
+    // The ✕ of a file of the user's, in any row's list: the place of the file in the list
+    callback sound-removed(int);
     callback notify-charged-changed(bool);
     callback auto-close-changed(bool);
     callback auto-close-seconds-changed(int);
@@ -644,6 +653,7 @@ export component RemindersPage inherits Page {
                 note: root.sound-notes[0];
                 refused: root.sound-refused == 0;
                 chosen(i) => { root.sound-chosen(0, i); }
+                removed(i) => { root.sound-removed(i); }
                 preview => { root.sound-preview(0); }
             }
             Divider { }
@@ -658,6 +668,7 @@ export component RemindersPage inherits Page {
                 note: root.sound-notes[1];
                 refused: root.sound-refused == 1;
                 chosen(i) => { root.sound-chosen(1, i); }
+                removed(i) => { root.sound-removed(i); }
                 preview => { root.sound-preview(1); }
             }
             // The notice's sound is here while the notice is: it opens and closes with the switch above
@@ -675,6 +686,7 @@ export component RemindersPage inherits Page {
                     note: root.sound-notes[2];
                     refused: root.sound-refused == 2;
                     chosen(i) => { root.sound-chosen(2, i); }
+                    removed(i) => { root.sound-removed(i); }
                     preview => { root.sound-preview(2); }
                 }
             }

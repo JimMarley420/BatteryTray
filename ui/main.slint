@@ -107,6 +107,8 @@ export component MainWindow inherits Window {
     // A row of the sounds (0 low, 1 critical, 2 charged) and the line chosen in its list; a row's play button
     callback sound-chosen(event: int, index: int);
     callback sound-preview(event: int);
+    // The ✕ of one of the user's files in a list of sounds: its place in the list
+    callback sound-removed(index: int);
     callback notify-charged-changed(on: bool);
     callback auto-close-changed(on: bool);
     callback auto-close-seconds-changed(value: int);
@@ -412,6 +414,7 @@ export component MainWindow inherits Window {
                     critical-changed(v) => { root.critical-changed(v); }
                     repeat-changed(v) => { root.repeat-changed(v); }
                     sound-chosen(event, index) => { root.sound-chosen(event, index); }
+                    sound-removed(index) => { root.sound-removed(index); }
                     sound-preview(event) => { root.sound-preview(event); }
                     notify-charged-changed(on) => { root.notify-charged-changed(on); }
                     auto-close-changed(on) => { root.auto-close-changed(on); }

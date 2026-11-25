@@ -180,6 +180,8 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
     ("sounds.alarm", "Тревога", "Alarm", "警报"),
     ("sounds.done", "Готово", "Done", "完成"),
     ("sounds.file", "Свой файл…", "Custom file…", "自定义文件…"),
+    ("sounds.remove", "Убрать из списка", "Remove from the list", "从列表中移除"),
+    ("sounds.reveal", "Показать в Finder", "Show in Finder", "在访达中显示"),
     ("sounds.play", "Прослушать", "Play", "试听"),
     ("sounds.stop", "Остановить", "Stop", "停止"),
     ("sounds.long", "Файл длинный: прозвучат первые 10 секунд", "A long file: its first 10 seconds will play",

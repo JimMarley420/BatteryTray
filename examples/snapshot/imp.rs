@@ -323,6 +323,22 @@ pub fn main() {
     window.dispatch_event(WindowEvent::PointerReleased { position: button, button: PointerEventButton::Left });
     render(&window, scale, tall, &folder.join("main-settings-sounds-list.png"));
 
+    // The ✕ of the user's file in that list, and what the app does then: the file is out of the options and the row
+    // has the system's sound. The list stays open
+    let asked = Rc::new(Cell::new(-1));
+    let heard = asked.clone();
+    main.on_sound_removed(move |index| heard.set(index));
+    let remove = slint::LogicalPosition::new(346.0, 793.0);
+    window.dispatch_event(WindowEvent::PointerPressed { position: remove, button: PointerEventButton::Left });
+    window.dispatch_event(WindowEvent::PointerReleased { position: remove, button: PointerEventButton::Left });
+    lay_out(&window, scale, tall);
+    assert_eq!(asked.get(), with_file.len() as i32 - 1, "the ✕ asks for the file's place in the list, once");
+    let without_file: Vec<SharedString> =
+        sounds::choices(&[]).iter().map(|c| c.label()).chain([t("sounds.file")]).map(SharedString::from).collect();
+    main.set_sound_options(ModelRc::new(VecModel::from(without_file)));
+    main.set_sound_low(0);
+    render(&window, scale, tall, &folder.join("main-settings-sounds-removed.png"));
+
     let (main, window) = open(&rows);
     main.set_screen(1);
     main.set_settings_tab(2);

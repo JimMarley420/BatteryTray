@@ -106,6 +106,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         window.makeFirstResponder(nil)
     }
+
+    /// Back in front: the Sounds folder may have changed meanwhile (a file removed in Finder), and the menus with it.
+    func windowDidBecomeKey(_ notification: Notification) {
+        model.refresh()
+    }
 }
 
 /// The tabs; they say which one was chosen, for the window to take its height.
@@ -428,8 +433,10 @@ struct SoundSetting: View {
     let title: String
     /// The chosen sound's `SoundOption.id`
     let chosen: String
-    /// The menu item that adds a file: no sound has this id
+    /// The menu items that are no sounds (no sound has these ids): the one that adds a file, and the one that shows
+    /// the user's files in Finder, which is where one is removed
     private static let add = "add"
+    private static let reveal = "reveal"
 
     var body: some View {
         let sounds = model.snapshot?.sounds ?? []
@@ -439,6 +446,8 @@ struct SoundSetting: View {
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated { SoundFiles.choose(for: event, model: model) }
                 }
+            } else if picked == Self.reveal {
+                SoundFiles.reveal(chosen: chosen)
             } else {
                 model.send(["cmd": "set_sound", "event": event, "value": picked])
             }
@@ -449,6 +458,10 @@ struct SoundSetting: View {
             Divider()
             ForEach(sounds.filter { $0.group == 2 }) { Text($0.name).tag($0.id) }
             Text(model.t("sounds.file")).tag(Self.add)
+            // Only while there is a file of the user's to show
+            if sounds.contains(where: { $0.group == 2 }) {
+                Text(model.t("sounds.reveal")).tag(Self.reveal)
+            }
         }
     }
 }
@@ -475,6 +488,19 @@ enum SoundFiles {
             panel.beginSheetModal(for: window, completionHandler: picked)
         } else {
             picked(panel.runModal())
+        }
+    }
+
+    /// Shows the Sounds folder in Finder, with the chosen file selected when it is one of the user's. A file moved to
+    /// the Trash there is gone from the menus when the settings window is back in front.
+    static func reveal(chosen: String) {
+        guard let folder = Core.call(["cmd": "sounds_folder"])["path"] as? String else { return }
+        let own = "file:"
+        if chosen.hasPrefix(own) {
+            let file = URL(fileURLWithPath: folder).appendingPathComponent(String(chosen.dropFirst(own.count)))
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        } else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: folder))
         }
     }
 }

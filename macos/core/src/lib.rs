@@ -97,6 +97,8 @@ fn call(command: &Value) -> Value {
         "default_shortcut" => return MacApp::default_shortcut(),
         "suggestion_url" => return json!({ "url": MacApp::suggestion_url() }),
         "log_folder" => return json!({ "path": log::folder().display().to_string() }),
+        // Where the user's sounds are kept: shown in Finder, which is where one is removed
+        "sounds_folder" => return json!({ "path": sounds::folder().display().to_string() }),
         "input_monitoring" => return json!({ "allowed": hid::input_monitoring_allowed() }),
         "request_input_monitoring" => return json!({ "allowed": hid::request_input_monitoring() }),
         _ => {}

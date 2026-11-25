@@ -205,6 +205,25 @@ pub fn pick_sound_file(owner: Option<HWND>) -> Option<std::path::PathBuf> {
     }
 }
 
+/// Puts a file into the Recycle Bin, without asking and without a window; false when Windows couldn't (a drive
+/// without a bin, a file that is gone).
+pub fn recycle(path: &std::path::Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW,
+    };
+    // The function takes a list of paths, each ended by a NUL and the list by one more
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        ..Default::default()
+    };
+    unsafe { SHFileOperationW(&mut operation) == 0 && !operation.fAnyOperationsAborted.as_bool() }
+}
+
 /// Colors a popup's border (the reminder's, in its accent).
 pub fn set_border(window: &slint::Window, border: Option<(u8, u8, u8)>) {
     use winit::platform::windows::WindowExtWindows;
