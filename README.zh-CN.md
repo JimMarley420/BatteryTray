@@ -43,7 +43,7 @@ BatteryTray for macOS 是原生的菜单栏应用（SwiftUI），与 Windows 版
 
 <img src="docs/macos-menu-zh.png" alt="macOS 菜单栏中的 BatteryTray：显示每个设备电量的菜单" width="363">
 
-- **菜单栏电量**：显示最需要充电的设备电量，颜色与 Windows 版相同。点击可查看所有设备的电量和命令，并打开设备窗口和 **设置…（⌘,）**。
+- **菜单栏电量**：显示列表中靠前的设备（默认 3 个，可在“设置 → 常规 → 菜单栏”中选择 1–5 个），每个设备显示图标和电量，电量低时以颜色标出；电量低但未排上的设备会占据最后一个位置。点击可查看所有设备的电量和命令，并打开设备窗口和 **设置…（⌘,）**。
 - **设置**在独立窗口中，包含“常规”“提醒”“悬浮窗”标签页。
 - **悬浮窗**通过 **⌃⌥V** 调出（可录制任何包含 ⌘、⌃ 或 ⌥ 的快捷键），显示在所有窗口和全屏应用之上。
 - **低电量提醒**是右上角不抢焦点的浮动面板；“充电完成”和“新版本可用”使用 macOS 通知。
@@ -55,14 +55,14 @@ BatteryTray for macOS 是原生的菜单栏应用（SwiftUI），与 Windows 版
 
 ## 支持的设备
 
-Razer Barracuda X（2.4 GHz 接收器，已测试）、Attack Shark R3 及其他 Rongyuan 平台鼠标键盘、Xenta 接收器（`1D57:FA60`）上的 Attack Shark、FURYCUBE、Delux、Inphic 鼠标（Attack Shark V3 Pro 已由用户测试，以及 X11、X3 Max、X6 / R1、FURYCUBE F1、G3、G9 PRO、G11 等）、约 45 款 Razer 无线鼠标、HyperSpeed 键盘和 BlackShark / Kraken 耳机、Logitech HID++ 设备（MX Master、MX Keys、G Lightspeed 系列等）、Logitech G / ASTRO / SteelSeries Arctis / HyperX Cloud / Corsair / Audeze / JBL Quantum / Jabra / Sony INZONE 等无线耳机、SteelSeries 和 HyperX 无线鼠标、ASUS ROG 鼠标键盘（含 Omni 接收器）、Corsair SLIPSTREAM 鼠标键盘、ATK / VXE / VGN、Lamzu、Pulsar、Scyrox、G-Wolves、Glorious、WLmouse、MCHOSE、Keychron、Rapoo VT、Incott、VAXEE、Ninjutso、Endgame Gear、ZOWIE 等鼠标、MCHOSE / AULA / VGN / AJAZZ / CHERRY / Attack Shark 等 2.4 GHz 键盘、Steam Controller、8BitDo、Flydigi、GameSir 手柄、Sony DualSense / DualShock 4、Nintendo Switch Pro 手柄和 Joy-Con、Xbox 手柄，以及 Windows 或 macOS 能显示电量的任何蓝牙设备（在 Mac 上包括 AirPods 和妙控系列，在 Windows 上包括妙控键盘）。以上设备在 macOS 上同样支持（Xbox 无线适配器除外，macOS 没有其驱动）。完整列表见 [英文说明](README.md#supported-devices)。
+Razer Barracuda X（2.4 GHz 接收器，已测试）、Attack Shark R3 及其他 Rongyuan 平台鼠标键盘、Xenta 接收器（`1D57:FA60`）上的 Attack Shark、FURYCUBE、Delux、Inphic 鼠标（Attack Shark V3 Pro 已由用户测试，以及 X11、X3 Max、X6 / R1、FURYCUBE F1、G3、G9 PRO、G11 等）、约 45 款 Razer 无线鼠标、HyperSpeed 键盘和 BlackShark / Kraken 耳机、Logitech HID++ 设备（MX Master、MX Keys、G Lightspeed 系列等）、Logitech G / ASTRO / SteelSeries Arctis / HyperX Cloud / Corsair / Audeze / JBL Quantum / Jabra / Sony INZONE 等无线耳机、SteelSeries 和 HyperX 无线鼠标、ASUS ROG 鼠标键盘（含 Omni 接收器）、Corsair SLIPSTREAM 鼠标键盘、ATK / VXE / VGN、Lamzu、Pulsar、Scyrox、G-Wolves、Glorious、WLmouse、MCHOSE、AJAZZ（T520 Max 已由用户测试）、Keychron、Rapoo VT、Incott、VAXEE、Ninjutso、Endgame Gear、ZOWIE 等鼠标、MCHOSE / AULA / VGN / AJAZZ / CHERRY / Attack Shark 等 2.4 GHz 键盘、Steam Controller、8BitDo、Flydigi、GameSir 手柄、Sony DualSense / DualShock 4、Nintendo Switch Pro 手柄和 Joy-Con、Xbox 手柄，以及 Windows 或 macOS 能显示电量的任何蓝牙设备（在 Mac 上包括 AirPods 和妙控系列，在 Windows 上包括妙控键盘）。以上设备在 macOS 上同样支持（Xbox 无线适配器除外，macOS 没有其驱动）。完整列表见 [英文说明](README.md#supported-devices)。
 
 标记为“未测试”的设备是按照公开的开源协议实现的，尚未在真机上验证；如果你有这些设备，欢迎在 [Issues](https://github.com/qu1ncky/BatteryTray/issues) 反馈。
 
 ## 常见问题
 
 **有没有能在任务栏或菜单栏显示无线鼠标、键盘、耳机电量的软件？**
-有：BatteryTray，免费开源，支持 Windows 10/11 和 macOS 13+。它在时钟旁边（Windows）或菜单栏（Mac）显示最需要充电的设备电量，在一个窗口中列出所有设备，并在电池耗尽前提醒你。通过接收器读取雷蛇、罗技、赛睿、HyperX、海盗船、华硕、Attack Shark 等游戏外设以及蓝牙设备，无需厂商软件。
+有：BatteryTray，免费开源，支持 Windows 10/11 和 macOS 13+。它在时钟旁边（Windows）显示最需要充电的设备电量，在菜单栏（Mac）显示你的设备电量，在一个窗口中列出所有设备，并在电池耗尽前提醒你。通过接收器读取雷蛇、罗技、赛睿、HyperX、海盗船、华硕、Attack Shark 等游戏外设以及蓝牙设备，无需厂商软件。
 
 **如何在 Windows 上查看 AirPods 电量？**
 BatteryTray 会像 iPhone 一样从 AirPods 自身的蓝牙消息中读取左右耳机和充电盒的电量，并显示在托盘中。
@@ -88,7 +88,7 @@ BatteryTray 会像 iPhone 一样从 AirPods 自身的蓝牙消息中读取左右
 
 1. 点击上方的 **下载 macOS 版**（即[最新版本](https://github.com/qu1ncky/BatteryTray/releases/latest)中的 `BatteryTray-macOS.dmg`），打开后将 **BatteryTray** 拖到“应用程序”。从其他位置打开时，应用会主动提出移到“应用程序”。
 2. 打开应用。该应用未经 Apple 公证，第一次打开时 macOS 会阻止：前往 **系统设置 → 隐私与安全性**，向下滚动并点击 **仍要打开**（macOS 13 和 14 也可以按住 Control 点按应用并选择“打开”）。
-3. 电量数字会出现在菜单栏中。macOS 会请求蓝牙权限：点击 **允许**。可在“设置 → 常规”中打开 **登录时打开**。
+3. 电量会出现在菜单栏中。macOS 会请求蓝牙权限：点击 **允许**。可在“设置 → 常规”中打开 **登录时打开**。
 
 macOS 只会在需要时各请求一次：**蓝牙**（读取 macOS 自身不显示电量的低功耗蓝牙设备）、**输入监控**（仅在连接键盘或带键盘按键的鼠标时；需在 macOS 打开的系统设置中手动打开开关）。应用使用项目自己的证书签名（不是 Apple Developer ID），因此首次打开需要“仍要打开”；每个版本使用同一证书，授予的权限在更新后仍然保留。
 

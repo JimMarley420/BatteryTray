@@ -62,6 +62,18 @@ struct Tray: Decodable, Equatable {
     var tone: String
     var tooltip: String
     var items: [TrayItem]
+    /// The devices the menu bar item shows, in their order
+    var bar: [BarSlot]
+}
+
+/// One device in the menu bar item (view.rs: BarSlot): its kind's symbol, then its level without "%".
+struct BarSlot: Decodable, Equatable {
+    var kind: String
+    /// "37", "≈15", or empty when the device only says it is charging
+    var level: String
+    var tone: String
+    /// Charging or full on its charger: a lightning follows the level
+    var power: Bool
 }
 
 struct TrayItem: Decodable, Equatable {
@@ -91,6 +103,8 @@ struct Settings: Decodable, Equatable {
     var overlayMode: Int
     var overlayCorner: Int
     var overlayNames: Bool
+    /// How many devices the menu bar item shows at most, 1-5
+    var menuBarDevices: Int
     var language: String
     /// "light", "dark", or "auto" to follow the system's appearance
     var theme: String
@@ -98,7 +112,7 @@ struct Settings: Decodable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case low, critical, soundLow, soundCritical, soundCharged, soundNotes, notifyCharged, autoClose, autoCloseSeconds,
-             autoUpdate, overlayEnabled, overlayMode, overlayCorner, overlayNames, language, theme,
+             autoUpdate, overlayEnabled, overlayMode, overlayCorner, overlayNames, menuBarDevices, language, theme,
              autostartBannerDismissed
         case repeatMinutes = "repeat"
     }

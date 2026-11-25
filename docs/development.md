@@ -93,8 +93,8 @@ does nothing for a target other than Windows.
   `%LOCALAPPDATA%\BatteryTray\rust-core`.
 - `BatteryTray.app/Contents/MacOS/BatteryTray --snapshot <folder> [ru|en|zh] [light|dark]` - the macOS app draws each of its
   windows with the demo's devices to PNG files and quits: the device list, a device's menu, a name being edited, the
-  menu bar item's menu, each settings tab, the reminder and the overlay (an app may take pictures of its own windows,
-  no Screen Recording permission needed). `--demo` runs the app with those devices, with settings of its own in the
+  menu bar item (drawn on a plain bar: its window belongs to the system) and its menu, each settings tab, the reminder
+  and the overlay (an app may take pictures of its own windows, no Screen Recording permission needed). `--demo` runs the app with those devices, with settings of its own in the
   temporary folder. The README's Mac pictures (`docs/macos-*.png`) come from `--snapshot`.
 - `cargo run --example snapshot -- <folder> [ru|en|zh] [scale] [light|dark]` (Windows) - renders the windows with sample data
   to PNG files, off screen, in the dark theme unless told otherwise (the overlay is dark in both), to check a layout without

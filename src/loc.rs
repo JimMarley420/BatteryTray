@@ -152,6 +152,8 @@ static STRINGS: &[(&str, &str, &str, &str)] = &[
     ("theme.auto", "Как в системе", "System", "跟随系统"),
     ("theme.light", "Светлая", "Light", "浅色"),
     ("theme.dark", "Тёмная", "Dark", "深色"),
+    // Next to a section that is new in this version; taken away in the version after it
+    ("settings.new", "новое", "New", "新"),
     ("alerts.header", "Напоминания", "Reminders", "提醒"),
     ("alerts.low", "Напоминать, когда заряд ниже", "Remind me when the battery is below", "电量低于此值时提醒"),
     ("alerts.critical", "Критический уровень", "Critical level", "严重低电量"),
@@ -372,6 +374,8 @@ static MAC: &[(&str, &str, &str, &str)] = &[
         "macOS 仅允许拥有“输入监控”权限的应用读取键盘和带键盘按键的鼠标。BatteryTray 只读取电量，从不读取您的输入。"),
     ("permission.allow", "Разрешить", "Allow", "允许"),
     ("permission.settings", "Открыть настройки", "Open Settings", "打开设置"),
+    ("menubar.header", "Строка меню", "Menu bar", "菜单栏"),
+    ("menubar.devices", "Устройств в строке меню", "Devices in the menu bar", "菜单栏中显示的设备数"),
     ("tray.exit", "Завершить BatteryTray", "Quit BatteryTray", "退出 BatteryTray"),
     ("tray.open", "Открыть BatteryTray", "Open BatteryTray", "打开 BatteryTray"),
     ("upd.err.version", "в релизе {0} лежит приложение версии {1}", "release {0} contains an app of version {1}",

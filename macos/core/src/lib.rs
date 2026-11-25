@@ -9,6 +9,7 @@ mod keys;
 
 use app::{MacApp, Notify};
 use batterytray::reading::{DeviceKind, DeviceReading};
+use batterytray::settings::MENU_BAR_DEVICES;
 use batterytray::{diag, hid, loc, log, sounds, updater};
 use serde_json::{json, Value};
 use std::ffi::{c_char, CStr, CString};
@@ -152,6 +153,9 @@ fn call(command: &Value) -> Value {
                 "overlay_mode" => app.edit(|s| s.overlay_mode = n.clamp(0, 1)),
                 "overlay_corner" => app.edit(|s| s.overlay_corner = n.clamp(0, 3)),
                 "overlay_names" => app.edit(|s| s.overlay_show_names = on),
+                "menu_bar_devices" => {
+                    app.edit(|s| s.menu_bar_devices = n.clamp(MENU_BAR_DEVICES.0, MENU_BAR_DEVICES.1))
+                }
                 other => return json!({ "error": format!("no setting {other}") }),
             }
         }

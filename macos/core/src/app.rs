@@ -578,6 +578,11 @@ impl MacApp {
                 })
             })
             .collect();
+        let bar: Vec<Value> = tray
+            .bar
+            .iter()
+            .map(|b| json!({ "kind": kind(b.kind), "level": b.level, "tone": b.tone.name(), "power": b.power }))
+            .collect();
         let needs = t("d.needsAdmin");
         let needs_permission = !hid::input_monitoring_allowed()
             && rows.iter().any(|r| r.current.as_ref().and_then(|c| c.detail.as_deref()) == Some(needs.as_str()));
@@ -613,7 +618,9 @@ impl MacApp {
                 "hidden": lists.hidden, "none_online": lists.none_online,
             },
             "updated_text": view::updated_text(&rows),
-            "tray": { "label": tray.label, "tone": tray.tone.name(), "tooltip": tray.tooltip, "items": menu },
+            "tray": {
+                "label": tray.label, "tone": tray.tone.name(), "tooltip": tray.tooltip, "items": menu, "bar": bar,
+            },
             "settings": {
                 "low": s.low_percent, "critical": s.critical_percent, "repeat": s.repeat_minutes,
                 "sound_low": chosen(sounds::Event::Low), "sound_critical": chosen(sounds::Event::Critical),
@@ -622,6 +629,7 @@ impl MacApp {
                 "auto_close_seconds": s.auto_close_seconds, "auto_update": s.auto_update,
                 "overlay_enabled": s.overlay_enabled, "overlay_mode": s.overlay_mode,
                 "overlay_corner": s.overlay_corner, "overlay_names": s.overlay_show_names,
+                "menu_bar_devices": s.menu_bar_devices,
                 "language": s.language, "theme": s.theme, "autostart_banner_dismissed": s.autostart_banner_dismissed,
             },
             "autostart": autostart::is_registered(),

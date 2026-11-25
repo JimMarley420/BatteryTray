@@ -30,6 +30,8 @@ pub const DEFAULT_HOTKEY: (i32, i32) = (0x56, MOD_ALT | MOD_CONTROL);
 pub const LEVEL_PERCENT: (i32, i32) = (1, 100);
 pub const REPEAT_MINUTES: (i32, i32) = (1, 99_999);
 pub const AUTO_CLOSE_SECONDS: (i32, i32) = (1, 99_999);
+/// How many devices the menu bar item on macOS may show (Settings > General > Menu bar).
+pub const MENU_BAR_DEVICES: (i32, i32) = (1, 5);
 /// A sound setting's default: the system's own sound, as the app always had.
 const SYSTEM_SOUND: &str = "system";
 
@@ -113,6 +115,8 @@ pub struct AppSettings {
     /// 0 top left, 1 top right, 2 bottom left, 3 bottom right.
     pub overlay_corner: i32,
     pub overlay_show_names: bool,
+    /// macOS: how many devices the menu bar item shows (MENU_BAR_DEVICES); fewer when fewer are on the air.
+    pub menu_bar_devices: i32,
     /// Version that ran last time; a different one means the app was just updated.
     pub last_run_version: Option<String>,
     pub devices: BTreeMap<String, DeviceSettings>,
@@ -153,6 +157,7 @@ impl Default for AppSettings {
             overlay_mode: 0,
             overlay_corner: 1,
             overlay_show_names: false,
+            menu_bar_devices: 3,
             last_run_version: None,
             devices: BTreeMap::new(),
             autostart_banner_dismissed: false,
@@ -265,6 +270,7 @@ impl AppSettings {
                 "OverlayMode" => set(&mut s.overlay_mode, int(v)),
                 "OverlayCorner" => set(&mut s.overlay_corner, int(v)),
                 "OverlayShowNames" => set(&mut s.overlay_show_names, v.as_bool()),
+                "MenuBarDevices" => set(&mut s.menu_bar_devices, int(v)),
                 "LastRunVersion" => match v {
                     Value::Null => true,
                     _ => set(&mut s.last_run_version, v.as_str().map(|t| Some(t.to_string()))),
@@ -340,6 +346,7 @@ impl AppSettings {
             *sound = Choice::parse(sound).setting();
         }
         self.sound = self.reminder_sounds();
+        self.menu_bar_devices = self.menu_bar_devices.clamp(MENU_BAR_DEVICES.0, MENU_BAR_DEVICES.1);
         // A device has both of its own levels or none: one set alone (by hand) gets the other from the global ones
         let (low, critical) = (self.low_percent, self.critical_percent);
         for d in self.devices.values_mut() {
@@ -691,6 +698,17 @@ mod tests {
         let (s, clean) = AppSettings::from_value(&value);
         assert!(clean);
         assert_eq!((s.low_percent, s.language.as_str()), (30, "a // not a comment"));
+    }
+
+    #[test]
+    fn the_menu_bar_shows_one_to_five_devices() {
+        assert_eq!(AppSettings::default().menu_bar_devices, 3);
+        for (written, read) in [(0, 1), (4, 4), (9, 5)] {
+            let (mut s, clean) = AppSettings::from_value(&serde_json::json!({ "MenuBarDevices": written }));
+            s.normalize();
+            assert!(clean);
+            assert_eq!(s.menu_bar_devices, read);
+        }
     }
 
     #[test]
