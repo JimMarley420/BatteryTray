@@ -207,16 +207,17 @@ final class AppModel: ObservableObject {
     }
 }
 
-/// A level's color by its tone (view.rs: Tone), the same as the Windows app's: in the dark appearance the bright colors
-/// the app always had, in the light one colors dark enough to read as text on a light background.
+/// A level's color by its tone (view.rs: Tone): in the dark appearance the bright colors the app always had, the same
+/// as the Windows app's; in the light one Apple's own system colors in their increased contrast variant (Human Interface
+/// Guidelines, Color), the ones meant for text: they read on the see-through reminder and menus too.
 enum Tone {
     /// The tone's color in the light and in the dark appearance, as 0xRRGGBB in sRGB
     private static func shades(_ tone: String) -> (light: Int, dark: Int)? {
         switch tone {
-        case "good": return (light: 0x0F7B0F, dark: 0x6CCB5F)
-        case "warn": return (light: 0x9D5D00, dark: 0xF7C04A)
-        case "bad": return (light: 0xC42B1C, dark: 0xFF6B6B)
-        case "charge": return (light: 0x005FB8, dark: 0x60CDFF)
+        case "good": return (light: 0x008932, dark: 0x6CCB5F)
+        case "warn": return (light: 0xC55300, dark: 0xF7C04A)
+        case "bad": return (light: 0xE9152D, dark: 0xFF6B6B)
+        case "charge": return (light: 0x1E6EF4, dark: 0x60CDFF)
         case "offline": return (light: 0x8A8A8A, dark: 0x7A7A7A)
         default: return nil
         }
