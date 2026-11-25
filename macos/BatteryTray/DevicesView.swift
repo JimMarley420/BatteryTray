@@ -14,6 +14,12 @@ struct DevicesView: View {
             if let snapshot = model.snapshot {
                 // One edge on each side for everything: the cards, the headings, the rows and the footer's text
                 List {
+                    // Room under the header's line, as in the design: the first card's border doesn't run into it
+                    Color.clear
+                        .frame(height: 1)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityHidden(true)
                     banners(snapshot)
                     // The pinned devices, then the connected ones, one list; a drag never leaves its block
                     block(snapshot.devices.pinned, card: true)
