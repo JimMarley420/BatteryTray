@@ -29,7 +29,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func update(_ tray: Tray?) {
         guard let button = item.button else { return }
         let label = tray?.label ?? "…"
-        let color = tray?.color.nsColor ?? .secondaryLabelColor
+        let color = tray.map { Tone.nsColor($0.tone) } ?? .secondaryLabelColor
         let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .bold)
         button.attributedTitle = NSAttributedString(string: label, attributes: [.foregroundColor: color, .font: font])
         button.toolTip = tray?.tooltip
@@ -77,7 +77,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let text = NSMutableAttributedString(string: device.name + "\t")
         let level = [device.level, device.charging ? "⚡" : ""].filter { !$0.isEmpty }.joined(separator: " ")
         let bold = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .semibold)
-        text.append(NSAttributedString(string: level, attributes: [.foregroundColor: device.color.nsColor, .font: bold]))
+        let color = Tone.nsColor(device.tone)
+        text.append(NSAttributedString(string: level, attributes: [.foregroundColor: color, .font: bold]))
         let style = NSMutableParagraphStyle()
         style.tabStops = [NSTextTab(textAlignment: .right, location: 260)]
         text.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: text.length))

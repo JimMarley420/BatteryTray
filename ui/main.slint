@@ -39,6 +39,7 @@ export component MainWindow inherits Window {
 
     // Settings / General
     in property <string> language;
+    in property <string> theme;
     in property <string> update-status;
     in property <string> update-checked-text;
     in property <string> update-notes;
@@ -80,6 +81,7 @@ export component MainWindow inherits Window {
     callback install-update();
     callback check-updates();
     callback language-chosen(language: string);
+    callback theme-chosen(theme: string);
     callback test-alert();
     callback open-folder();
     callback suggest-improvement();
@@ -358,6 +360,7 @@ export component MainWindow inherits Window {
                     visible: root.settings-tab == 0;
                     autostart: root.autostart;
                     language: root.language;
+                    theme: root.theme;
                     update-status: root.update-status;
                     update-checked-text: root.update-checked-text;
                     update-notes: root.update-notes;
@@ -367,6 +370,7 @@ export component MainWindow inherits Window {
                     auto-update: root.auto-update;
                     autostart-changed(on) => { root.autostart-changed(on); }
                     language-chosen(language) => { root.language-chosen(language); }
+                    theme-chosen(theme) => { root.theme-chosen(theme); }
                     install-update => { root.install-update(); }
                     check-updates => { root.check-updates(); }
                     auto-update-changed(on) => { root.auto-update-changed(on); }
@@ -426,7 +430,7 @@ export component MainWindow inherits Window {
                 lifted: true;
                 drop-shadow-offset-y: 12px;
                 drop-shadow-blur: 28px;
-                drop-shadow-color: rgba(0, 0, 0, 0.55);
+                drop-shadow-color: Palette.lift-shadow;
             }
             menu := DeviceMenu {
                 general-low: root.low;
@@ -482,7 +486,7 @@ export component MainWindow inherits Window {
             DropdownLayer { }
             // Over everything, the rest of the window out of reach until it is answered
             if root.admin-dialog: Rectangle {
-                background: #000000A0;
+                background: Palette.dialog-scrim;
                 TouchArea { }
                 Card {
                     x: 20px;
@@ -493,7 +497,7 @@ export component MainWindow inherits Window {
                     border-color: Palette.popup-stroke;
                     drop-shadow-offset-y: 8px;
                     drop-shadow-blur: 24px;
-                    drop-shadow-color: rgba(0, 0, 0, 0.5);
+                    drop-shadow-color: Palette.shadow;
                     dialog := VerticalLayout {
                         padding: 20px;
                         spacing: 12px;

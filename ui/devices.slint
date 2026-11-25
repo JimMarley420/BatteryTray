@@ -18,7 +18,8 @@ export struct DeviceItem {
     connected: bool,
     pinned: bool,
     level-text: string,
-    color: color,
+    // What the level says (view::Tone::index), which picks its colour in the window's theme
+    tone: int,
     charging: bool,
     // Charging, but the level can't be read right now: no number, a dimmed full bar instead
     indeterminate: bool,
@@ -109,7 +110,7 @@ export component DeviceView inherits Rectangle {
     background: root.lifted ? Palette.control : root.as-row ? transparent : Palette.card;
     border-width: root.lifted || !root.as-row ? 1px : 0px;
     border-color: root.lifted ? Palette.accent
-        : root.renaming || root.menu-open ? Palette.popup-stroke : Palette.stroke;
+        : root.renaming || root.menu-open ? Palette.stroke-strong : Palette.stroke;
     border-radius: 8px;
     // 15 + 36 (the name and one line under it, beside the level) + 12 + 4 (the bar) + 15, and the border's 1 + 1: as
     // tall as a card with a level bar, so a card without one (not connected) is no shorter
@@ -118,6 +119,7 @@ export component DeviceView inherits Rectangle {
     property <bool> renaming: !root.lifted && DeviceUi.renaming-id != "" && DeviceUi.renaming-id == root.item.id;
     property <bool> menu-open: !root.lifted && DeviceUi.menu-id != "" && DeviceUi.menu-id == root.item.id;
     property <bool> card-level: !root.as-row && root.item.connected;
+    property <color> level-color: Palette.tone(root.item.tone);
     // The menu hangs under the "⋯" button and shows this device's data: both are told to it while it is open, as
     // they change (the list scrolls, a banner comes, a refresh changes the row)
     property <Point> menu-anchor: root.menu-open ? more.absolute-position : { x: 0px, y: 0px };
@@ -266,7 +268,7 @@ export component DeviceView inherits Rectangle {
                                     color: Palette.text;
                                     vertical-alignment: center;
                                     selection-background-color: Palette.accent;
-                                    selection-foreground-color: #000000;
+                                    selection-foreground-color: Palette.on-accent;
                                     accessible-label: T.t("device.name");
                                     accessible-placeholder-text: root.item.own-name;
                                     init => {
@@ -307,13 +309,13 @@ export component DeviceView inherits Rectangle {
                         width: root.item.charging ? self.preferred-width : 0;
                         text: "\u{E945}";
                         font-size: root.item.indeterminate ? 26px : 16px;
-                        color: root.item.color;
+                        color: root.level-color;
                     }
                     Text {
                         text: root.item.level-text;
                         font-size: 26px;
                         font-weight: 600;
-                        color: root.item.color;
+                        color: root.level-color;
                         vertical-alignment: center;
                     }
                 }
@@ -341,7 +343,7 @@ export component DeviceView inherits Rectangle {
                     x: 0;
                     width: parent.width * (root.item.indeterminate ? 1 : root.item.fill);
                     border-radius: 2px;
-                    background: root.item.color;
+                    background: root.level-color;
                     opacity: root.item.indeterminate ? 0.45 : 1;
                 }
             }
@@ -420,7 +422,7 @@ component DragCell inherits Rectangle {
 
     if root.lifted: Rectangle {
         border-radius: 8px;
-        background: rgba(96, 205, 255, 0.06);
+        background: Palette.accent-wash;
         DashedFrame { }
     }
     view := DeviceView {
@@ -1076,7 +1078,7 @@ export component DeviceMenu inherits Rectangle {
         border-radius: 8px;
         drop-shadow-offset-y: 8px;
         drop-shadow-blur: 24px;
-        drop-shadow-color: rgba(0, 0, 0, 0.5);
+        drop-shadow-color: Palette.shadow;
 
         // Presses between the rows stay in the menu
         TouchArea { }

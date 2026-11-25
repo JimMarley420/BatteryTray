@@ -14,6 +14,7 @@ use crate::loc::{self, t};
 use crate::reading::DeviceKind;
 use crate::rows::DeviceRow;
 use crate::settings::AppSettings;
+use crate::theme;
 use crate::update_service::Status;
 use crate::updater::Version;
 use crate::view::{self, DeviceView};
@@ -37,10 +38,6 @@ pub fn glyph(kind: DeviceKind) -> &'static str {
     }
 }
 
-fn color((r, g, b): (u8, u8, u8)) -> slint::Color {
-    slint::Color::from_rgb_u8(r, g, b)
-}
-
 pub struct MainView {
     pub ui: MainWindow,
     pinned: Rc<VecModel<DeviceItem>>,
@@ -58,6 +55,7 @@ impl MainView {
     pub fn open(app: &App) -> Result<Self, slint::PlatformError> {
         let ui = gui::create(Kind::Normal, MainWindow::new)?;
         gui::setup_texts(&ui.global::<gui::T>());
+        gui::set_theme(&ui, theme::current().apps_light);
         let view = Self {
             pinned: Rc::new(VecModel::default()),
             connected: Rc::new(VecModel::default()),
@@ -94,6 +92,24 @@ impl MainView {
         Ok(view)
     }
 
+    /// The app mode changed (Windows', or the theme picked in the settings): the window and its title bar follow it.
+    pub fn follow_theme(&self) {
+        let light = theme::current().apps_light;
+        gui::set_theme(&self.ui, light);
+        if gui::hwnd(self.ui.window()).is_some() {
+            gui::set_title_bar(self.ui.window(), light);
+        } else {
+            // Just opened: winit makes the window only once the event loop gets to it, with the mode the window was
+            // opened in
+            let ui = self.ui.as_weak();
+            slint::Timer::single_shot(Duration::from_millis(100), move || {
+                if let Some(ui) = ui.upgrade() {
+                    gui::set_title_bar(ui.window(), theme::current().apps_light);
+                }
+            });
+        }
+    }
+
     /// Everything from the settings, as the window opens and after any change: the controls only ever show what the
     /// settings hold (a change the app refuses or adjusts is shown as it ends up).
     pub fn load_settings(&self, app: &App) {
@@ -112,6 +128,7 @@ impl MainView {
         ui.set_overlay_corner(s.overlay_corner);
         ui.set_overlay_names(s.overlay_show_names);
         ui.set_language(s.language.clone().into());
+        ui.set_theme(s.theme.clone().into());
         ui.set_autostart_banner_dismissed(s.autostart_banner_dismissed);
         self.refresh_overlay_status(s, app.overlay.shortcut_available());
     }
@@ -251,7 +268,7 @@ pub fn device_item(d: DeviceView) -> DeviceItem {
         connected: d.connected,
         pinned: d.pinned,
         level_text: d.level_text.into(),
-        color: color(d.color),
+        tone: d.tone.index(),
         charging: d.charging,
         indeterminate: d.indeterminate,
         fill: d.fill,
@@ -278,6 +295,9 @@ fn connect(ui: &MainWindow) {
     });
     ui.on_language_chosen(|l| {
         with_app(|a| a.set_language(&l));
+    });
+    ui.on_theme_chosen(|setting| {
+        with_app(|a| a.set_theme(&setting));
     });
     ui.on_test_alert(|| {
         with_app(|a| a.show_test_alert());

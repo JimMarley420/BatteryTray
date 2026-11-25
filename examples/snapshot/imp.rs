@@ -1,5 +1,6 @@
 //! Renders the windows with sample data to PNG files, off screen, with the same software renderer the app uses:
-//! `cargo run --example snapshot -- <folder> [ru|en|zh] [scale]`. For checking the layout without running the app.
+//! `cargo run --example snapshot -- <folder> [ru|en|zh] [scale] [light|dark]` (dark unless told; the overlay is dark
+//! either way, as in the app). For checking the layout without running the app.
 //! Each picture of the main window is a window of its own, so nothing opened or typed for one shows in the next. Its
 //! devices go through the app's own code, in the language asked for.
 
@@ -11,6 +12,7 @@ use batterytray::reading::{DeviceKind, DeviceReading};
 use batterytray::rows::{self, DeviceRow};
 use batterytray::settings::{AppSettings, DEFAULT_HOTKEY};
 use batterytray::updater::Version;
+use batterytray::view::Tone;
 use chrono::{DateTime, Local, TimeDelta};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter, WindowEvent};
@@ -80,7 +82,9 @@ fn render(window: &MinimalSoftwareWindow, scale: f32, logical: (f32, f32), path:
     println!("{}", path.display());
 }
 
-fn rgb(r: u8, g: u8, b: u8) -> slint::Color {
+/// A level's colour in the overlay, which is always dark
+fn overlay_color(tone: Tone) -> slint::Color {
+    let (r, g, b) = tone.rgb(false);
     slint::Color::from_rgb_u8(r, g, b)
 }
 
@@ -128,6 +132,8 @@ fn sample_rows(settings: &AppSettings, now: DateTime<Local>) -> Vec<DeviceRow> {
 
 pub fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let light = args.iter().any(|a| a == "light");
+    let args: Vec<String> = args.into_iter().filter(|a| a != "light" && a != "dark").collect();
     let folder = std::path::PathBuf::from(args.first().cloned().unwrap_or_else(|| ".".into()));
     let language = args.get(1).map(String::as_str).unwrap_or("ru");
     loc::set(language);
@@ -157,6 +163,7 @@ pub fn main() {
         let main = MainWindow::new().unwrap();
         let window = last();
         gui::setup_texts(&main.global::<gui::T>());
+        gui::set_theme(&main, light);
         let lists = main_view::device_lists(rows, &settings, now);
         main.set_pinned_devices(ModelRc::from(lists.pinned.as_slice()));
         main.set_connected_devices(ModelRc::from(lists.connected.as_slice()));
@@ -178,6 +185,7 @@ pub fn main() {
         main.set_autostart(true);
 
         main.set_language(language.into());
+        main.set_theme(settings.theme.clone().into());
         main.set_update_status(tf("upd.uptodate", &[&version]).into());
         main.set_update_checked_text(tf("upd.checked", &[&now.format("%H:%M")]).into());
         main.set_install_text(tf("upd.install", &[&latest]).into());
@@ -279,6 +287,7 @@ pub fn main() {
     let alert = AlertWindow::new().unwrap();
     let window = last();
     gui::setup_texts(&alert.global::<gui::T>());
+    gui::set_theme(&alert, light);
     alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![
         AlertRow {
             glyph: "\u{E7F6}".into(),
@@ -307,6 +316,7 @@ pub fn main() {
     let alert = AlertWindow::new().unwrap();
     let window = last();
     gui::setup_texts(&alert.global::<gui::T>());
+    gui::set_theme(&alert, light);
     alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![AlertRow {
         glyph: "\u{E7F6}".into(),
         name: "Razer Barracuda X".into(),
@@ -331,7 +341,7 @@ pub fn main() {
             name: "Razer Barracuda X".into(),
             show_name: false,
             level: "37%".into(),
-            color: rgb(0x6C, 0xCB, 0x5F),
+            color: overlay_color(Tone::Good),
             power: false,
         },
         OverlayEntry {
@@ -339,7 +349,7 @@ pub fn main() {
             name: "Attack Shark R3".into(),
             show_name: true,
             level: "".into(),
-            color: rgb(0x60, 0xCD, 0xFF),
+            color: overlay_color(Tone::Charge),
             power: true,
         },
         OverlayEntry {
@@ -347,7 +357,7 @@ pub fn main() {
             name: "VXE R1".into(),
             show_name: true,
             level: "82%".into(),
-            color: rgb(0x6C, 0xCB, 0x5F),
+            color: overlay_color(Tone::Good),
             power: false,
         },
     ];

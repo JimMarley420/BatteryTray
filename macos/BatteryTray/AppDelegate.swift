@@ -43,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let started = Core.call(["cmd": "start", "demo": demo])
         model.loadTexts()
         model.refresh()
+        // Before anything is shown, the offer to move into Applications too
+        if let theme = model.snapshot?.settings.theme {
+            applyTheme(theme)
+        }
         MainMenu.install(model)
         statusItem = StatusItemController(model: model)
         overlay.reminderFrame = { [weak self] in self?.reminder.frame }
@@ -129,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func snapshotChanged(_ snapshot: Snapshot?) {
         guard let snapshot else { return }
+        applyTheme(snapshot.settings.theme)
         statusItem?.update(snapshot.tray)
         overlay.apply(snapshot)
         if snapshot.lang != language {
@@ -136,6 +141,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainMenu.install(model)
             mainWindow?.languageChanged()
             settingsWindow?.languageChanged()
+        }
+    }
+
+    /// The appearance picked in the settings - "light", "dark", or "auto" for the system's - for the windows, the
+    /// menus and the alerts, changed at once in the open ones. The menu bar item's number keeps the menu bar's own
+    /// appearance: the system gives the menu bar's window its own, which the app's doesn't reach. The overlay stays dark
+    /// whatever this is. Not while drawing the snapshots: they are in the appearance they were asked for (main.swift).
+    private func applyTheme(_ theme: String) {
+        guard snapshot == nil else { return }
+        let name: NSAppearance.Name?
+        switch theme {
+        case "light": name = .aqua
+        case "dark": name = .darkAqua
+        default: name = nil
+        }
+        if NSApp.appearance?.name != name {
+            NSApp.appearance = name.flatMap { NSAppearance(named: $0) }
         }
     }
 

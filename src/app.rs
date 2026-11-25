@@ -19,8 +19,7 @@ use crate::state::StateStore;
 use crate::tray::{self, Tray, MENU_EXIT, MENU_OPEN, MENU_REFRESH, MENU_SETTINGS};
 use crate::update_service::{Event, Status, UpdateService};
 use crate::updater::{self, ReleaseInfo, Version};
-pub use crate::view::level_color;
-use crate::{diag, gui, log, providers, view, win};
+use crate::{diag, gui, log, providers, theme, view, win};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -242,7 +241,7 @@ impl App {
             log::write(&format!("cannot start the UI: {e}"));
             return 1;
         }
-        tray::use_dark_menus();
+        tray::set_menu_mode(theme::current().taskbar_light);
         let (hwnd, activator) = match create_windows() {
             Ok(windows) => windows,
             Err(e) => {
@@ -257,6 +256,8 @@ impl App {
         settings.last_run_version = Some(version());
         settings.save();
         loc::set(loc::resolve(Some(&settings.language)));
+        // The theme picked in the settings, before any window: each one is made in the theme it shows
+        theme::choose(&settings.theme);
         // New devices are always looked for on Windows: the polls when a device connects have no switch here
         let state = Arc::new(StateStore::load());
 
@@ -274,6 +275,8 @@ impl App {
             let _ = sender.send(event);
             later(|app| app.on_update_events());
         });
+        // Light or dark: followed while the app runs, also with no window open (the tray icon's number)
+        theme::watch(|| later(|app| app.on_theme_changed()));
         let tray = Tray::new(hwnd, WM_APP_TRAY);
         let mut overlay = Overlay::new(hwnd);
         overlay.apply_settings(&settings);
@@ -513,6 +516,16 @@ impl App {
         self.refresh_now(); // the devices' details come from the providers
     }
 
+    /// A theme picked in the settings ("auto" follows Windows): the windows switch right away. The tray icon's number
+    /// and menu keep the taskbar's mode.
+    pub fn set_theme(&mut self, setting: &str) {
+        self.settings.theme = setting.to_string();
+        if theme::choose(setting) {
+            self.windows_follow_theme();
+        }
+        self.settings_changed();
+    }
+
     pub fn set_autostart(&mut self, on: bool) {
         autostart::set(on);
         let registered = autostart::is_registered();
@@ -743,7 +756,26 @@ impl App {
         self.tooltip = tray.tooltip;
         let tooltip = self.tooltip.clone();
         if let Some(tray_icon) = &mut self.tray {
-            tray_icon.update(&tray.label, tray.color, &tooltip);
+            tray_icon.update(&tray.label, tray.tone.rgb(theme::current().taskbar_light), &tooltip);
+        }
+    }
+
+    /// Windows' light or dark mode changed: the tray icon's number (drawn again, whatever the levels) and menu, the
+    /// windows and the main window's title bar follow it at once.
+    fn on_theme_changed(&mut self) {
+        let Some(mode) = theme::reread() else { return };
+        tray::set_menu_mode(mode.taskbar_light);
+        self.update_tray();
+        self.windows_follow_theme();
+    }
+
+    /// The open windows, and the main window's title bar, in the app mode as it is now.
+    fn windows_follow_theme(&self) {
+        if let Some(view) = &self.main {
+            view.follow_theme();
+        }
+        for alert in [&self.alert, &self.test_alert].into_iter().flatten() {
+            alert.follow_theme();
         }
     }
 

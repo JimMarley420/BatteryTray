@@ -135,6 +135,7 @@ fn call(command: &Value) -> Value {
             Vec::new()
         }
         "language" => app.set_language(str_of(command, "value")),
+        "theme" => app.set_theme(str_of(command, "value")),
         "set" => {
             let (n, on) = (int_of(command, "value"), bool_of(command, "value"));
             match str_of(command, "key") {

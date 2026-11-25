@@ -347,13 +347,17 @@ impl Overlay {
         }
         let entries: Vec<OverlayEntry> = crate::view::overlay_entries(rows, s)
             .into_iter()
-            .map(|e| OverlayEntry {
-                glyph: crate::main_view::glyph(e.kind).into(),
-                name: e.name.into(),
-                show_name: e.show_name,
-                level: e.level.into(),
-                color: slint::Color::from_rgb_u8(e.color.0, e.color.1, e.color.2),
-                power: e.power,
+            .map(|e| {
+                // Dark whatever Windows' mode, as the whole overlay: it floats over games
+                let (r, g, b) = e.tone.rgb(false);
+                OverlayEntry {
+                    glyph: crate::main_view::glyph(e.kind).into(),
+                    name: e.name.into(),
+                    show_name: e.show_name,
+                    level: e.level.into(),
+                    color: slint::Color::from_rgb_u8(r, g, b),
+                    power: e.power,
+                }
             })
             .collect();
         let limit = self.row_limit();

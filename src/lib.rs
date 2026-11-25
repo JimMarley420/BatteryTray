@@ -37,6 +37,8 @@ pub mod settings;
 pub mod state;
 pub mod sys;
 #[cfg(windows)]
+pub mod theme;
+#[cfg(windows)]
 pub mod tray;
 pub mod update_service;
 pub mod updater;

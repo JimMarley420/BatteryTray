@@ -16,7 +16,7 @@ use batterytray::settings::{hotkey_valid, AppSettings, DEFAULT_HOTKEY};
 use batterytray::state::StateStore;
 use batterytray::update_service::{Event, Stage, Status, UpdateService};
 use batterytray::updater::{ReleaseInfo, Version};
-use batterytray::view::{self, DeviceView, Rgb};
+use batterytray::view::{self, DeviceView};
 use batterytray::{feedback, sys};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -355,6 +355,13 @@ impl MacApp {
         }
     }
 
+    /// A theme picked in the settings: "light", "dark", or "auto" to follow the system. The app sets its appearance
+    /// from the settings it is sent.
+    pub fn set_theme(&mut self, setting: &str) -> Effects {
+        self.settings.theme = setting.to_string();
+        self.settings_changed()
+    }
+
     pub fn set_language(&mut self, setting: &str) -> Effects {
         self.settings.language = setting.to_string();
         loc::set(loc::resolve(Some(setting)));
@@ -487,7 +494,7 @@ impl MacApp {
                     "name": r.name,
                     "kind": kind(r.kind()),
                     "level": level,
-                    "color": rgb(view::level_color(c.level, c.charging, true, &r.id, s)),
+                    "tone": view::level_tone(c.level, c.charging, true, &r.id, s).name(),
                     "charging": c.charging,
                 }))
             })
@@ -498,7 +505,7 @@ impl MacApp {
             .map(|e| {
                 json!({
                     "kind": kind(e.kind), "name": e.name, "show_name": e.show_name, "level": e.level,
-                    "color": rgb(e.color), "power": e.power,
+                    "tone": e.tone.name(), "power": e.power,
                 })
             })
             .collect();
@@ -513,14 +520,14 @@ impl MacApp {
                 "hidden": lists.hidden, "none_online": lists.none_online,
             },
             "updated_text": view::updated_text(&rows),
-            "tray": { "label": tray.label, "color": rgb(tray.color), "tooltip": tray.tooltip, "items": menu },
+            "tray": { "label": tray.label, "tone": tray.tone.name(), "tooltip": tray.tooltip, "items": menu },
             "settings": {
                 "low": s.low_percent, "critical": s.critical_percent, "repeat": s.repeat_minutes, "sound": s.sound,
                 "notify_charged": s.notify_charged, "auto_close": s.auto_close,
                 "auto_close_seconds": s.auto_close_seconds, "auto_update": s.auto_update,
                 "overlay_enabled": s.overlay_enabled, "overlay_mode": s.overlay_mode,
                 "overlay_corner": s.overlay_corner, "overlay_names": s.overlay_show_names,
-                "language": s.language, "autostart_banner_dismissed": s.autostart_banner_dismissed,
+                "language": s.language, "theme": s.theme, "autostart_banner_dismissed": s.autostart_banner_dismissed,
             },
             "autostart": autostart::is_registered(),
             "update": {
@@ -593,7 +600,7 @@ fn alert(due: &[AlertItem], settings: &AppSettings, test: bool) -> Value {
 fn device(d: &DeviceView) -> Value {
     json!({
         "id": d.id, "name": d.name, "kind": kind(d.kind), "subtitle": d.subtitle, "connected": d.connected,
-        "pinned": d.pinned, "level_text": d.level_text, "color": rgb(d.color), "charging": d.charging,
+        "pinned": d.pinned, "level_text": d.level_text, "tone": d.tone.name(), "charging": d.charging,
         "indeterminate": d.indeterminate, "fill": d.fill, "custom_name": d.custom_name, "own_name": d.own_name,
         "source": d.source, "alerts": d.alerts, "low": d.low, "critical": d.critical, "own_levels": d.own_levels,
     })
@@ -620,8 +627,4 @@ pub fn kind(kind: DeviceKind) -> &'static str {
         DeviceKind::Phone => "phone",
         DeviceKind::Tablet => "tablet",
     }
-}
-
-fn rgb((r, g, b): Rgb) -> Value {
-    json!([r, g, b])
 }
