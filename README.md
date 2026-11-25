@@ -24,7 +24,7 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 
 ## Features
 
-- **The level always in sight** — in the Windows tray or the Mac menu bar, the number of the device that most needs charging: green, yellow below its reminder level, red below its critical level, blue while charging. Hover it (Windows) or click it (Mac) to see every device.
+- **The level always in sight** — in the Windows tray, the number of the device that most needs charging: green, yellow below its reminder level, red below its critical level, blue while charging. In the Mac menu bar, the first devices of your list (three by default), each as its icon and level, in color when it runs low. Hover it (Windows) or click it (Mac) to see every device.
 - **All devices in one window** — connected ones as cards with their percentage, the rest with the last known level and when it was seen. Each device's **⋯** menu renames it, pins it to the top or hides it under "Hidden"; drag a card to change the order (the overlay and the tray follow it).
 - **New devices show up by themselves** — plug in a receiver or connect a Bluetooth headset and it appears within seconds.
 - **Low battery reminder that can't be missed** — its own always-on-top window in the corner, not a toast: Do Not Disturb doesn't hide it and it doesn't steal focus from a game. "Remind me in N min" or "Don't remind me until it's charged"; left unanswered, it closes after 10 seconds while you're at the computer and comes back after the repeat interval (or it stays until you answer: Settings → Reminders). At the critical level it comes back even if snoozed.
@@ -45,7 +45,7 @@ The same app on both: the device list, the reminders, the overlay and every supp
 
 | | Windows | macOS |
 |---|---|---|
-| The level | number in the tray, next to the clock | number in the menu bar, with a menu of every device |
+| The level | number in the tray, next to the clock | up to five devices in the menu bar (icon and level), with a menu of every device |
 | Settings | in the main window (gear) | their own window, **Settings… (⌘,)**: General, Reminders, Overlay |
 | Low battery reminder | always-on-top window, bottom right | floating panel, top right, never takes focus |
 | Overlay shortcut | **Ctrl+Alt+V** | **⌃⌥V** (any shortcut with ⌘, ⌃ or ⌥) |
@@ -61,7 +61,7 @@ The same app on both: the device list, the reminders, the overlay and every supp
 
 <img src="docs/macos-menu-en.png" alt="BatteryTray in the macOS menu bar: the menu with each device's battery level" width="363">
 
-- **The level in the menu bar** — click it for every device's level and the commands; the device window and **Settings… (⌘,)** open from there.
+- **Levels in the menu bar** — the first devices of your list, three by default (Settings → General → Menu bar: 1 to 5); one running low takes the last place. Click for every device's level and the commands; the device window and **Settings… (⌘,)** open from there.
 - **Bluetooth** — everything macOS shows a level for: AirPods with both earbuds and the case, Magic Mouse, Magic Keyboard, Magic Trackpad, headsets that report their level over Bluetooth (the Razer Barracuda X in its Bluetooth mode, for one), Xbox and other controllers (through the GameController framework).
 - **iPhone and iPad on a cable** — with their level and charging, once the device trusts this Mac (as Finder asks).
 - **The reminder** is a floating panel in the top right corner; "Charging complete" and "a new version" are macOS notifications.
@@ -179,7 +179,7 @@ That's all it takes. If Windows keeps a device from the app (some third-party dr
 
 1. Click **Download for macOS** above (it is `BatteryTray-macOS.dmg` from the [latest release](https://github.com/qu1ncky/BatteryTray/releases/latest)), open it and drag **BatteryTray** onto **Applications**.
 2. Open it from Applications. The app isn't notarized by Apple, so the first time macOS refuses to open it: go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** (on macOS 13 and 14 you can also Control-click the app and choose **Open**). Opened from anywhere else, the app offers to move itself into Applications.
-3. The number appears in the menu bar. macOS asks for the Bluetooth permission: click **Allow**. Turn on **Open at login** with "Enable" on the banner above the device list.
+3. The levels appear in the menu bar. macOS asks for the Bluetooth permission: click **Allow**. Turn on **Open at login** with "Enable" on the banner above the device list.
 
 #### Permissions on a Mac
 
@@ -200,7 +200,7 @@ Settings and the log are in `~/Library/Application Support/BatteryTray`, the log
 ## FAQ
 
 **Is there an app that shows the battery level of my wireless mouse, keyboard or headset in the taskbar or the menu bar?**
-Yes — BatteryTray, free and open source, for Windows 10/11 and macOS 13+. It shows the level of the device that most needs charging as a number next to the clock (Windows) or in the menu bar (Mac), every device in one window, and reminds you before a battery runs out. It reads gaming mice, keyboards and headsets through their receivers (Razer, Logitech, SteelSeries, HyperX, Corsair, ASUS, Attack Shark and many more) and Bluetooth devices, with no vendor software.
+Yes — BatteryTray, free and open source, for Windows 10/11 and macOS 13+. It shows the level of the device that most needs charging as a number next to the clock (Windows) or your devices' levels in the menu bar (Mac), every device in one window, and reminds you before a battery runs out. It reads gaming mice, keyboards and headsets through their receivers (Razer, Logitech, SteelSeries, HyperX, Corsair, ASUS, Attack Shark and many more) and Bluetooth devices, with no vendor software.
 
 **How do I see the battery of my Bluetooth devices on Windows 11 without opening Settings?**
 BatteryTray puts it in the tray: every Bluetooth device whose level Windows knows, read fresh from Bluetooth LE devices, with AirPods' earbuds and case each on their own.
