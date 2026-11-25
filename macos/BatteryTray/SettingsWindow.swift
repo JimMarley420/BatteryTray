@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The settings, as a Mac app has them: a window of their own (⌘,) with the tabs in its toolbar - General, Reminders,
 /// Overlay - each one as tall as its contents. The window follows its page's height smoothly, over the moment the page
@@ -104,6 +105,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// Another window or app comes to the front: a value being typed is applied, as on Windows.
     func windowDidResignKey(_ notification: Notification) {
         window.makeFirstResponder(nil)
+    }
+
+    /// Back in front: the Sounds folder may have changed meanwhile (a file removed in Finder), and the menus with it.
+    func windowDidBecomeKey(_ notification: Notification) {
+        model.refresh()
     }
 }
 
@@ -374,7 +380,7 @@ struct GeneralSettings: View {
 }
 
 /// Reminders: the low and critical levels and how often a reminder comes back, whether it closes on its own and after
-/// how many seconds, its sound, the "charged" notice, a sample.
+/// how many seconds, the "charged" notice, the sounds of the reminder and of that notice, a sample.
 struct ReminderSettings: View {
     @EnvironmentObject var model: AppModel
 
@@ -402,12 +408,27 @@ struct ReminderSettings: View {
                     }
                 }
                 Section {
-                    Toggle(model.t("alerts.sound"), isOn: Binding(get: { s.sound }, set: { model.set("sound", $0) }))
                     Toggle(isOn: Binding(get: { s.notifyCharged }, set: { model.set("notify_charged", $0) })) {
                         HStack(spacing: 6) {
                             Text(model.t("charged.toggle"))
                             Hint(text: model.t("charged.hint"))
                         }
+                    }
+                }
+                Section {
+                    SoundSetting(event: "low", title: model.t("sounds.low"), chosen: s.soundLow)
+                    SoundSetting(event: "critical", title: model.t("sounds.critical"), chosen: s.soundCritical)
+                    // The notice's sound is here while the notice is
+                    if s.notifyCharged {
+                        SoundSetting(event: "charged", title: model.t("sounds.charged"), chosen: s.soundCharged)
+                    }
+                } header: {
+                    Text(model.t("sounds.header"))
+                } footer: {
+                    // What there is to say about a chosen file: that only its beginning will sound
+                    let shown = s.notifyCharged ? s.soundNotes : Array(s.soundNotes.prefix(2))
+                    if let note = shown.first(where: { !$0.isEmpty }) {
+                        Text(note)
                     }
                 }
                 Section {
@@ -421,8 +442,91 @@ struct ReminderSettings: View {
             }
             .formStyle(.grouped)
             .fixedSize(horizontal: false, vertical: true)
-            // "Close after" opens and closes smoothly with its switch
+            // "Close after" opens and closes smoothly with its switch, the notice's sound with the notice's
             .animation(.easeInOut(duration: SettingsWindowController.duration), value: s.autoClose)
+            .animation(.easeInOut(duration: SettingsWindowController.duration), value: s.notifyCharged)
+        }
+    }
+}
+
+/// A sound: a pop-up menu of the sounds, the chosen one checked. Choosing one plays it, as the system's own lists of
+/// sounds do (Mail's, System Settings'), so there is no button for hearing it. The menu's last item, "Custom file…", is
+/// no sound: it opens the system's open panel.
+struct SoundSetting: View {
+    @EnvironmentObject var model: AppModel
+    /// "low", "critical" or "charged"
+    let event: String
+    let title: String
+    /// The chosen sound's `SoundOption.id`
+    let chosen: String
+    /// The menu items that are no sounds (no sound has these ids): the one that adds a file, and the one that shows
+    /// the user's files in Finder, which is where one is removed
+    private static let add = "add"
+    private static let reveal = "reveal"
+
+    var body: some View {
+        let sounds = model.snapshot?.sounds ?? []
+        Picker(title, selection: Binding(get: { chosen }, set: { picked in
+            if picked == Self.add {
+                // Once the menu has closed
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { SoundFiles.choose(for: event, model: model) }
+                }
+            } else if picked == Self.reveal {
+                SoundFiles.reveal(chosen: chosen)
+            } else {
+                model.send(["cmd": "set_sound", "event": event, "value": picked])
+            }
+        })) {
+            ForEach(sounds.filter { $0.group == 0 }) { Text($0.name).tag($0.id) }
+            Divider()
+            ForEach(sounds.filter { $0.group == 1 }) { Text($0.name).tag($0.id) }
+            Divider()
+            ForEach(sounds.filter { $0.group == 2 }) { Text($0.name).tag($0.id) }
+            Text(model.t("sounds.file")).tag(Self.add)
+            // Only while there is a file of the user's to show
+            if sounds.contains(where: { $0.group == 2 }) {
+                Text(model.t("sounds.reveal")).tag(Self.reveal)
+            }
+        }
+    }
+}
+
+/// The system's open panel for a sound file, as a sheet of the window the menu was in: a WAV or an MP3 can be picked,
+/// and the button says "Choose". The core copies the file into the app's Sounds folder, has it chosen and played, or
+/// says that it can't take it.
+@MainActor
+enum SoundFiles {
+    static func choose(for event: String, model: AppModel) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.wav, .mp3]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = model.t("sounds.choose")
+        let picked: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            MainActor.assumeIsolated {
+                model.send(["cmd": "add_sound", "event": event, "path": url.path])
+            }
+        }
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: picked)
+        } else {
+            picked(panel.runModal())
+        }
+    }
+
+    /// Shows the Sounds folder in Finder, with the chosen file selected when it is one of the user's. A file moved to
+    /// the Trash there is gone from the menus when the settings window is back in front.
+    static func reveal(chosen: String) {
+        guard let folder = Core.call(["cmd": "sounds_folder"])["path"] as? String else { return }
+        let own = "file:"
+        if chosen.hasPrefix(own) {
+            let file = URL(fileURLWithPath: folder).appendingPathComponent(String(chosen.dropFirst(own.count)))
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        } else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: folder))
         }
     }
 }

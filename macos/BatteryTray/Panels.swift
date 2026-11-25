@@ -153,6 +153,8 @@ final class ReminderController {
     private func answer(snooze: Bool, onItsOwn: Bool = false) {
         if test {
             close()
+            // The sample's sound ends with it, as the reminder's does
+            Sounds.stop()
         } else if snooze {
             AppModel.shared.send(["cmd": "snooze", "auto": onItsOwn])
         } else {

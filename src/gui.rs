@@ -179,6 +179,51 @@ pub fn hwnd(window: &slint::Window) -> Option<HWND> {
     })?
 }
 
+/// Windows' own "Open" dialog for a sound file, listing WAV and MP3; None when it is cancelled. It runs a loop of its
+/// own until it closes, so the app's state has to be free while it is open (as for the tray's menu).
+pub fn pick_sound_file(owner: Option<HWND>) -> Option<std::path::PathBuf> {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
+    use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, SIGDN_FILESYSPATH,
+    };
+    let name = crate::win::wide(&crate::loc::t("sounds.files"));
+    // COM is set up on the UI thread already: winit does it for drag and drop
+    unsafe {
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        dialog
+            .SetFileTypes(&[COMDLG_FILTERSPEC { pszName: PCWSTR(name.as_ptr()), pszSpec: w!("*.wav;*.mp3") }])
+            .ok()?;
+        let options = dialog.GetOptions().ok()?;
+        dialog.SetOptions(options | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM).ok()?;
+        dialog.Show(owner).ok()?;
+        let path = dialog.GetResult().ok()?.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let text = path.to_string().ok();
+        CoTaskMemFree(Some(path.0 as *const _));
+        text.map(std::path::PathBuf::from)
+    }
+}
+
+/// Puts a file into the Recycle Bin, without asking and without a window; false when Windows couldn't (a drive
+/// without a bin, a file that is gone).
+pub fn recycle(path: &std::path::Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW,
+    };
+    // The function takes a list of paths, each ended by a NUL and the list by one more
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        ..Default::default()
+    };
+    unsafe { SHFileOperationW(&mut operation) == 0 && !operation.fAnyOperationsAborted.as_bool() }
+}
+
 /// Colors a popup's border (the reminder's, in its accent).
 pub fn set_border(window: &slint::Window, border: Option<(u8, u8, u8)>) {
     use winit::platform::windows::WindowExtWindows;

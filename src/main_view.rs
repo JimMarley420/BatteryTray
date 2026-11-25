@@ -14,6 +14,7 @@ use crate::loc::{self, t};
 use crate::reading::DeviceKind;
 use crate::rows::DeviceRow;
 use crate::settings::AppSettings;
+use crate::sounds::{self, Choice, Event};
 use crate::theme;
 use crate::update_service::Status;
 use crate::updater::Version;
@@ -22,6 +23,7 @@ use crate::win;
 use chrono::{DateTime, Local};
 use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -44,6 +46,9 @@ pub struct MainView {
     connected: Rc<VecModel<DeviceItem>>,
     offline: Rc<VecModel<DeviceItem>>,
     hidden: Rc<VecModel<DeviceItem>>,
+    /// The sounds as the lists show them now: a place in a list is a place here, whatever has happened to the Sounds
+    /// folder since
+    sounds: RefCell<Vec<Choice>>,
     /// Keeps "N min ago" fresh
     _clock: slint::Timer,
 }
@@ -61,6 +66,7 @@ impl MainView {
             connected: Rc::new(VecModel::default()),
             offline: Rc::new(VecModel::default()),
             hidden: Rc::new(VecModel::default()),
+            sounds: RefCell::new(Vec::new()),
             _clock: slint::Timer::default(),
             ui,
         };
@@ -118,7 +124,7 @@ impl MainView {
         ui.set_low(s.low_percent);
         ui.set_critical(s.critical_percent);
         ui.set_repeat(s.repeat_minutes);
-        ui.set_sound(s.sound);
+        self.load_sounds(app);
         ui.set_notify_charged(s.notify_charged);
         ui.set_auto_close(s.auto_close);
         ui.set_auto_close_seconds(s.auto_close_seconds);
@@ -131,6 +137,50 @@ impl MainView {
         ui.set_theme(s.theme.clone().into());
         ui.set_autostart_banner_dismissed(s.autostart_banner_dismissed);
         self.refresh_overlay_status(s, app.overlay.shortcut_available());
+    }
+
+    /// The "Sounds" card: the list every row chooses from (sounds::choices, with "Custom file…" after them), what
+    /// each row has chosen, which one is playing, and what is said under a row about its file.
+    pub fn load_sounds(&self, app: &App) {
+        let ui = &self.ui;
+        let choices = sounds::choices(&sounds::files());
+        let labels: Vec<SharedString> =
+            choices.iter().map(|c| c.label()).chain([t("sounds.file")]).map(SharedString::from).collect();
+        // A new model draws an open list again: only when it changed
+        if !ui.get_sound_options().iter().eq(labels.iter().cloned()) {
+            ui.set_sound_options(ModelRc::new(VecModel::from(labels)));
+        }
+        *self.sounds.borrow_mut() = choices.clone();
+        ui.set_sound_break_a(sounds::BREAKS[0] as i32);
+        ui.set_sound_break_b(sounds::BREAKS[1] as i32);
+        ui.set_sound_none(choices.iter().position(|c| *c == Choice::None).unwrap_or(0) as i32);
+        // A file that is gone from the folder isn't in the list: its row shows the system's sound, which it plays
+        let chosen = Event::ALL.map(|e| app.settings.sound_for(e));
+        let place = |choice: &Choice| choices.iter().position(|c| c == choice).unwrap_or(0) as i32;
+        ui.set_sound_low(place(&chosen[0]));
+        ui.set_sound_critical(place(&chosen[1]));
+        ui.set_sound_charged(place(&chosen[2]));
+        ui.set_sound_playing(app.sound_playing.map_or(-1, |e| e.index() as i32));
+        ui.set_sound_refused(app.sound_refused.map_or(-1, |e| e.index() as i32));
+        let notes: Vec<SharedString> = Event::ALL
+            .iter()
+            .zip(&chosen)
+            .map(|(event, choice)| match choice {
+                _ if app.sound_refused == Some(*event) => t("sounds.error"),
+                Choice::File(name) if sounds::is_cut(&sounds::path_of(name)) => t("sounds.long"),
+                _ => String::new(),
+            })
+            .map(SharedString::from)
+            .collect();
+        if !ui.get_sound_notes().iter().eq(notes.iter().cloned()) {
+            ui.set_sound_notes(ModelRc::new(VecModel::from(notes)));
+        }
+    }
+
+    /// The sound at a place in the lists as they are shown; None for their last line, "Custom file…", which is no
+    /// sound.
+    pub fn sound_at(&self, index: i32) -> Option<Choice> {
+        usize::try_from(index).ok().and_then(|i| self.sounds.borrow().get(i).cloned())
     }
 
     /// The shortcut as key caps, and why it doesn't work when it can't be registered.
@@ -344,8 +394,41 @@ fn connect(ui: &MainWindow) {
     ui.on_repeat_changed(|v| {
         with_app(|a| a.edit(|s| s.set_repeat(v)));
     });
-    ui.on_sound_changed(|on| {
-        with_app(|a| a.edit(|s| s.sound = on));
+    ui.on_sound_chosen(|event, index| {
+        let Some(event) = Event::from_index(event) else { return };
+        match with_app(|a| a.sound_at(index)).flatten() {
+            Some(choice) => {
+                with_app(|a| a.choose_sound(event, choice));
+            }
+            // The last line, "Custom file…": Windows' dialog picks the file. From the event loop, with the app's
+            // state free: the dialog runs a loop of its own until it closes
+            None => slint::Timer::single_shot(Duration::ZERO, move || {
+                let owner = with_app(|a| a.main_hwnd()).flatten();
+                if let Some(file) = gui::pick_sound_file(owner) {
+                    with_app(|a| a.add_sound(event, &file));
+                }
+            }),
+        }
+    });
+    ui.on_sound_preview(|event| {
+        if let Some(event) = Event::from_index(event) {
+            with_app(|a| a.preview_sound(event));
+        }
+    });
+    // The ✕ of a file of the user's: the file goes to the Recycle Bin (just deleted, if Windows can't put it there),
+    // and out of every list. From the event loop, with the app's state free, as the dialog above: the shell may
+    // handle messages while it works
+    ui.on_sound_removed(|index| {
+        let Some(Choice::File(name)) = with_app(|a| a.sound_at(index)).flatten() else { return };
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            let path = sounds::path_of(&name);
+            if !gui::recycle(&path) {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    crate::log::write(&format!("sound {name} not removed: {e}"));
+                }
+            }
+            with_app(|a| a.sound_removed(&name));
+        });
     });
     ui.on_notify_charged_changed(|on| {
         with_app(|a| a.edit(|s| s.notify_charged = on));
@@ -421,6 +504,13 @@ fn connect(ui: &MainWindow) {
         use winit::platform::scancode::PhysicalKeyExtScancode;
         let Some(ui) = weak.upgrade() else { return EventResult::Propagate };
         match event {
+            // Back in the window: the Sounds folder may have changed meanwhile (a file put there or deleted by hand)
+            WindowEvent::Focused(true) => {
+                slint::Timer::single_shot(Duration::ZERO, || {
+                    with_app(|a| a.show_sounds());
+                });
+                EventResult::Propagate
+            }
             // A menu, a list or a tooltip doesn't stay open in a window that lost the focus, and a name being typed
             // is saved
             WindowEvent::Focused(false) => {

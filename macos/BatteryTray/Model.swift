@@ -12,7 +12,18 @@ struct Snapshot: Decodable, Equatable {
     var autostart: Bool
     var update: Update
     var overlay: Overlay
+    /// The sounds every sound's menu offers
+    var sounds: [SoundOption]
     var needsPermission: Bool
+}
+
+/// A sound of the menus. `id` is what the settings keep: "system", "none", one of macOS' sounds by name ("glass") or a
+/// file of the user's ("file:name.mp3"). `group` is its part of the menu, a line between the parts: 0 the system's
+/// sound and silence, 1 macOS' sounds by name, 2 the user's files.
+struct SoundOption: Decodable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var group: Int
 }
 
 struct Devices: Decodable, Equatable {
@@ -77,7 +88,13 @@ struct Settings: Decodable, Equatable {
     var low: Int
     var critical: Int
     var repeatMinutes: Int
-    var sound: Bool
+    /// What sounds when the reminder comes at the reminder level, at the critical level, and with the "charged" notice:
+    /// a `SoundOption.id`
+    var soundLow: String
+    var soundCritical: String
+    var soundCharged: String
+    /// What is said under each of those three rows, "" for nothing
+    var soundNotes: [String]
     var notifyCharged: Bool
     var autoClose: Bool
     var autoCloseSeconds: Int
@@ -94,8 +111,9 @@ struct Settings: Decodable, Equatable {
     var autostartBannerDismissed: Bool
 
     enum CodingKeys: String, CodingKey {
-        case low, critical, sound, notifyCharged, autoClose, autoCloseSeconds, autoUpdate, overlayEnabled, overlayMode,
-             overlayCorner, overlayNames, menuBarDevices, language, theme, autostartBannerDismissed
+        case low, critical, soundLow, soundCritical, soundCharged, soundNotes, notifyCharged, autoClose, autoCloseSeconds,
+             autoUpdate, overlayEnabled, overlayMode, overlayCorner, overlayNames, menuBarDevices, language, theme,
+             autostartBannerDismissed
         case repeatMinutes = "repeat"
     }
 }

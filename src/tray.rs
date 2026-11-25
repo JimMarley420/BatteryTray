@@ -13,8 +13,8 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE,
+    NIM_MODIFY, NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, DestroyIcon, DestroyMenu, GetCursorPos, GetSystemMetrics,
@@ -91,11 +91,12 @@ impl Tray {
         }
     }
 
-    /// A Windows notification (a toast on Windows 10 and 11).
-    pub fn show_notice(&self, title: &str, text: &str) {
+    /// A Windows notification (a toast on Windows 10 and 11). `silent`: without Windows' own sound, when the app plays
+    /// the one chosen for the notice or none was asked for.
+    pub fn show_notice(&self, title: &str, text: &str, silent: bool) {
         let mut d = self.data();
         d.uFlags = NIF_INFO;
-        d.dwInfoFlags = NIIF_INFO;
+        d.dwInfoFlags = if silent { NIIF_INFO | NIIF_NOSOUND } else { NIIF_INFO };
         d.Anonymous.uTimeout = 8000;
         copy(&mut d.szInfoTitle, title);
         copy(&mut d.szInfo, text);
