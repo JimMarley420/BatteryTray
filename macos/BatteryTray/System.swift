@@ -23,7 +23,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// `systemSound`: with the sound macOS gives a notification, which the system plays or not as the user set it for
     /// the app in System Settings and as a Focus has it. Without it the notice is silent, as the app's notices were
-    /// before a sound could be chosen (a sound of the app's own is played by `Sounds`).
+    /// before a sound could be chosen (any other sound is played by `Sounds`).
     func post(title: String, text: String, systemSound: Bool) {
         switch route {
         case .modern:
@@ -127,8 +127,8 @@ struct LegacyNotices: LegacyPosting {
 
 /// The sounds of the reminder and of the "charged" notice, as the core hands them over ("sound"). The system's own:
 /// the user's alert sound, and macOS' "Basso" at the critical level, as the Windows app plays the system's Exclamation
-/// and Critical Stop. Or a file - one of the app's own sounds, or one the user added - for as many seconds as the core
-/// says, 10 at most. One sound at a time; the reminder's ends when the reminder closes.
+/// and Critical Stop. Or a file - one of macOS' own sounds by name, or one the user added - for as many seconds as the
+/// core says, 10 at most. One sound at a time; the reminder's ends when the reminder closes.
 @MainActor
 enum Sounds {
     private static var playing: NSSound?

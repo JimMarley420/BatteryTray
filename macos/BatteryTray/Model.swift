@@ -17,9 +17,9 @@ struct Snapshot: Decodable, Equatable {
     var needsPermission: Bool
 }
 
-/// A sound of the menus. `id` is what the settings keep: "system", "none", one of the app's own sounds ("drop") or a
+/// A sound of the menus. `id` is what the settings keep: "system", "none", one of macOS' sounds by name ("glass") or a
 /// file of the user's ("file:name.mp3"). `group` is its part of the menu, a line between the parts: 0 the system's
-/// sound and silence, 1 the app's own sounds, 2 the user's files.
+/// sound and silence, 1 macOS' sounds by name, 2 the user's files.
 struct SoundOption: Decodable, Equatable, Identifiable {
     var id: String
     var name: String

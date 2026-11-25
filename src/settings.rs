@@ -85,7 +85,7 @@ pub struct AppSettings {
     /// doesn't name the sounds yet.
     pub sound: bool,
     /// What sounds when the reminder comes at the reminder level, when it comes at the critical level, and with the
-    /// notice that a device has finished charging: "system", "none", one of the app's own sounds or "file:<name>" for
+    /// notice that a device has finished charging: "system", "none", one of the system's sounds by name or "file:<name>" for
     /// a file in the Sounds folder (sounds.rs). Written only when it isn't the system's sound: a file of someone who
     /// never chose a sound looks as it always did.
     #[serde(skip_serializing_if = "is_system_sound")]
@@ -921,10 +921,11 @@ mod tests {
         let text = serde_json::to_string(&s).unwrap();
         assert!(!text.contains("SoundLow") && !text.contains("SoundCharged"), "{text}");
 
-        s.set_sound(Event::Low, &Choice::BuiltIn("drop"));
+        let named = crate::sounds::NAMED_SOUNDS[0].id;
+        s.set_sound(Event::Low, &Choice::Named(named));
         s.set_sound(Event::Charged, &Choice::File("done.mp3".into()));
         let value = serde_json::to_value(&s).unwrap();
-        assert_eq!(value["SoundLow"], serde_json::json!("drop"));
+        assert_eq!(value["SoundLow"], serde_json::json!(named));
         assert_eq!(value["SoundCharged"], serde_json::json!("file:done.mp3"));
         assert!(value.get("SoundCritical").is_none());
         let (again, clean) = AppSettings::from_value(&value);
@@ -955,9 +956,10 @@ mod tests {
         assert_eq!(again, s);
 
         // Once a sound has been chosen, the old switch decides nothing
-        let (mut s, _) = AppSettings::from_value(&serde_json::json!({ "Sound": false, "SoundLow": "chime" }));
+        let named = crate::sounds::NAMED_SOUNDS[0].id;
+        let (mut s, _) = AppSettings::from_value(&serde_json::json!({ "Sound": false, "SoundLow": named }));
         s.normalize();
-        assert_eq!((s.sound_for(Event::Low), s.sound_for(Event::Critical)), (Choice::BuiltIn("chime"), Choice::System));
+        assert_eq!((s.sound_for(Event::Low), s.sound_for(Event::Critical)), (Choice::Named(named), Choice::System));
         assert!(s.sound);
 
         // What isn't a sound is the system's; a value of the wrong type costs only itself

@@ -1,24 +1,59 @@
-//! The sounds of the reminder and of the "charged" notice: what a setting can name (the system's own sound, none, one
-//! of the app's own, a file the user added), the folder the user's files are kept in, how long a file plays, and the
-//! app's own sounds, which are made here from a few tones rather than shipped as files. Playing is each app's own
-//! (sound_player.rs on Windows, System.swift on macOS).
+//! The sounds of the reminder and of the "charged" notice: what a setting can name (the sound the system itself has
+//! for the event, none, one of the system's sounds by name, a file the user added), the folder the user's files are
+//! kept in, and how long a file plays. The app carries no sounds of its own: the named ones are files Windows and
+//! macOS have themselves, each system its own. Playing is each app's own (sound_player.rs on Windows, System.swift on
+//! macOS).
 
 use crate::{loc, sys};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::time::Duration;
 
 /// A sound is cut off after this long, whatever the file holds.
 pub const MAX_PLAY: Duration = Duration::from_secs(10);
 /// The largest file the Sounds folder takes.
 pub const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
-/// The app's own sounds, as the settings name them and in the order the lists show them.
-pub const BUILT_IN: [&str; 5] = ["drop", "chime", "pulse", "alarm", "done"];
+
+/// One of the system's sounds the lists offer by name: what a setting holds, what the lists call it (the file's name,
+/// as the system's own lists of sounds have it - not translated), and the file in the system's folder of sounds.
+pub struct NamedSound {
+    pub id: &'static str,
+    pub name: &'static str,
+    file: &'static str,
+}
+
+const fn named(id: &'static str, name: &'static str, file: &'static str) -> NamedSound {
+    NamedSound { id, name, file }
+}
+
+/// The system's sounds the lists offer, in the lists' order: Windows' from its Media folder.
+#[cfg(not(target_os = "macos"))]
+pub const NAMED_SOUNDS: [NamedSound; 7] = [
+    named("battery-low", "Battery Low", "Windows Battery Low.wav"),
+    named("background", "Background", "Windows Background.wav"),
+    named("foreground", "Foreground", "Windows Foreground.wav"),
+    named("notify-messaging", "Notify Messaging", "Windows Notify Messaging.wav"),
+    named("proximity", "Proximity Notification", "Windows Proximity Notification.wav"),
+    named("unlock", "Unlock", "Windows Unlock.wav"),
+    named("chimes", "Chimes", "chimes.wav"),
+];
+
+/// The system's sounds the lists offer: some of macOS' alert sounds, by the alphabet as its own lists have them.
+#[cfg(target_os = "macos")]
+pub const NAMED_SOUNDS: [NamedSound; 7] = [
+    named("blow", "Blow", "Blow.aiff"),
+    named("bottle", "Bottle", "Bottle.aiff"),
+    named("glass", "Glass", "Glass.aiff"),
+    named("hero", "Hero", "Hero.aiff"),
+    named("purr", "Purr", "Purr.aiff"),
+    named("sosumi", "Sosumi", "Sosumi.aiff"),
+    named("submarine", "Submarine", "Submarine.aiff"),
+];
+
 /// Where the lists of sounds have a line between their parts: before these places in `choices`. The system's sound and
-/// silence, the app's own sounds, then the user's files with "Custom file…" after them.
-pub const BREAKS: [usize; 2] = [2, 2 + BUILT_IN.len()];
+/// silence, the system's sounds by name, then the user's files with "Custom file…" after them.
+pub const BREAKS: [usize; 2] = [2, 2 + NAMED_SOUNDS.len()];
 
 /// What a sound belongs to: the reminder at the reminder level, the reminder at the critical level, the notice that a
 /// device has finished charging.
@@ -51,18 +86,19 @@ impl Event {
     }
 }
 
-/// A sound as the settings keep it: "system", "none", one of `BUILT_IN`, or "file:<name>" for a file in the Sounds
-/// folder.
+/// A sound as the settings keep it: "system" for the sound the system itself has for the event, "none", the id of one
+/// of `NAMED_SOUNDS`, or "file:<name>" for a file in the Sounds folder.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Choice {
     System,
     None,
-    BuiltIn(&'static str),
+    Named(&'static str),
     File(String),
 }
 
 impl Choice {
-    /// Anything that isn't a sound (a hand edit, a later version's value) is the system's sound.
+    /// Anything that isn't a sound (a hand edit, a later version's value, a sound of the other system) is the
+    /// system's sound: what every event has until the user chooses another.
     pub fn parse(text: &str) -> Choice {
         if text == "none" {
             return Choice::None;
@@ -70,34 +106,48 @@ impl Choice {
         if let Some(name) = text.strip_prefix("file:") {
             return if is_sound_name(name) { Choice::File(name.to_string()) } else { Choice::System };
         }
-        BUILT_IN.iter().copied().find(|&b| b == text).map_or(Choice::System, Choice::BuiltIn)
+        named_sound(text).map_or(Choice::System, |sound| Choice::Named(sound.id))
     }
 
     pub fn setting(&self) -> String {
         match self {
             Choice::System => "system".into(),
             Choice::None => "none".into(),
-            Choice::BuiltIn(id) => (*id).into(),
+            Choice::Named(id) => (*id).into(),
             Choice::File(name) => format!("file:{name}"),
         }
     }
 
-    /// What the lists call it: a file by its name, the others in the app's language.
+    /// What the lists call it: a sound of the system and a file by their names, the others in the app's language.
     pub fn label(&self) -> String {
         match self {
             Choice::System => loc::t("sounds.system"),
             Choice::None => loc::t("sounds.none"),
-            Choice::BuiltIn(id) => loc::t(&format!("sounds.{id}")),
+            Choice::Named(id) => named_sound(id).map_or(*id, |sound| sound.name).to_string(),
             Choice::File(name) => name.clone(),
         }
     }
 }
 
-/// Everything a list of sounds offers, in its order: the system's sound, silence, the app's own, the user's files.
-/// `BREAKS` says where the lines between them go.
+fn named_sound(id: &str) -> Option<&'static NamedSound> {
+    NAMED_SOUNDS.iter().find(|sound| sound.id == id)
+}
+
+/// The file of one of the system's sounds. It may not be there (a Windows without its sounds, a file removed by
+/// hand): whoever plays it falls back to the system's sound for the event.
+pub fn named_path(id: &str) -> Option<PathBuf> {
+    #[cfg(not(target_os = "macos"))]
+    let folder = PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into())).join("Media");
+    #[cfg(target_os = "macos")]
+    let folder = PathBuf::from("/System/Library/Sounds");
+    named_sound(id).map(|sound| folder.join(sound.file))
+}
+
+/// Everything a list of sounds offers, in its order: the system's sound for the event, silence, the system's sounds
+/// by name, the user's files. `BREAKS` says where the lines between them go.
 pub fn choices(files: &[String]) -> Vec<Choice> {
     let mut list = vec![Choice::System, Choice::None];
-    list.extend(BUILT_IN.iter().map(|&id| Choice::BuiltIn(id)));
+    list.extend(NAMED_SOUNDS.iter().map(|sound| Choice::Named(sound.id)));
     list.extend(files.iter().cloned().map(Choice::File));
     list
 }
@@ -314,151 +364,6 @@ fn mp3_frame_length(frame: &[u8], sound_bytes: u64) -> Option<Duration> {
     Some(Duration::from_secs_f64(sound_bytes as f64 * 8.0 / (kbps as f64 * 1000.0)))
 }
 
-// The app's own sounds
-
-const RATE: u32 = 44_100;
-/// The tones' gains are those of a quiet sketch; the sounds are this much louder
-const LOUDNESS: f32 = 2.0;
-
-#[derive(Clone, Copy)]
-enum Wave {
-    Sine,
-    Triangle,
-    Square,
-}
-
-/// One tone of a sound: `freq` Hz (sliding to `slide` by its end), from `at` seconds for `len` seconds. It comes up
-/// in 12 ms and dies away from there to its end, as a struck thing does.
-#[derive(Clone, Copy)]
-struct Tone {
-    freq: f32,
-    slide: f32,
-    at: f32,
-    len: f32,
-    wave: Wave,
-    gain: f32,
-}
-
-const fn tone(freq: f32, at: f32, len: f32) -> Tone {
-    Tone { freq, slide: freq, at, len, wave: Wave::Sine, gain: 0.22 }
-}
-
-const fn shaped(freq: f32, at: f32, len: f32, wave: Wave, gain: f32) -> Tone {
-    Tone { freq, slide: freq, at, len, wave, gain }
-}
-
-fn tones(id: &str) -> &'static [Tone] {
-    const DROP: [Tone; 1] = [Tone { slide: 659.0, ..tone(1318.0, 0.0, 0.32) }];
-    const CHIME: [Tone; 2] = [tone(784.0, 0.0, 0.55), tone(1175.0, 0.15, 0.8)];
-    const PULSE: [Tone; 2] =
-        [shaped(880.0, 0.0, 0.12, Wave::Triangle, 0.3), shaped(880.0, 0.18, 0.12, Wave::Triangle, 0.3)];
-    const ALARM: [Tone; 4] = [
-        shaped(988.0, 0.0, 0.14, Wave::Square, 0.1),
-        shaped(740.0, 0.17, 0.14, Wave::Square, 0.1),
-        shaped(988.0, 0.34, 0.14, Wave::Square, 0.1),
-        shaped(740.0, 0.51, 0.22, Wave::Square, 0.1),
-    ];
-    const DONE: [Tone; 3] = [tone(523.0, 0.0, 0.3), tone(659.0, 0.12, 0.3), tone(784.0, 0.24, 0.6)];
-    match id {
-        "drop" => &DROP,
-        "chime" => &CHIME,
-        "pulse" => &PULSE,
-        "alarm" => &ALARM,
-        "done" => &DONE,
-        _ => &[],
-    }
-}
-
-/// The sound as samples: 16 bits, one channel, `RATE` a second.
-fn render(tones: &[Tone]) -> Vec<i16> {
-    const ATTACK: f32 = 0.012;
-    const QUIET: f32 = 0.0001;
-    let end = tones.iter().map(|t| t.at + t.len).fold(0.0, f32::max);
-    // A moment of silence after the last tone, so the output never ends on a click
-    let count = ((end + 0.05) * RATE as f32) as usize;
-    (0..count)
-        .map(|n| {
-            let time = n as f32 / RATE as f32;
-            let sum: f32 = tones
-                .iter()
-                .filter(|t| time >= t.at && time < t.at + t.len)
-                .map(|t| {
-                    let local = time - t.at;
-                    let level = if local < ATTACK {
-                        QUIET * (t.gain / QUIET).powf(local / ATTACK)
-                    } else {
-                        t.gain * (QUIET / t.gain).powf((local - ATTACK) / (t.len - ATTACK))
-                    };
-                    let turns = if t.slide == t.freq {
-                        t.freq * local
-                    } else {
-                        let ratio = t.slide / t.freq;
-                        t.freq * t.len / ratio.ln() * (ratio.powf(local / t.len) - 1.0)
-                    };
-                    let wave = (turns * std::f32::consts::TAU).sin();
-                    level
-                        * match t.wave {
-                            Wave::Sine => wave,
-                            Wave::Triangle => wave.asin() * std::f32::consts::FRAC_2_PI,
-                            Wave::Square => wave.signum(),
-                        }
-                })
-                .sum();
-            ((sum * LOUDNESS).clamp(-1.0, 1.0) * i16::MAX as f32) as i16
-        })
-        .collect()
-}
-
-/// The samples as a WAV file's bytes.
-fn wav(samples: &[i16]) -> Vec<u8> {
-    let data = samples.len() as u32 * 2;
-    let mut bytes = Vec::with_capacity(44 + data as usize);
-    bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&(36 + data).to_le_bytes());
-    bytes.extend_from_slice(b"WAVEfmt ");
-    bytes.extend_from_slice(&16u32.to_le_bytes());
-    // PCM, one channel
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&RATE.to_le_bytes());
-    bytes.extend_from_slice(&(RATE * 2).to_le_bytes());
-    bytes.extend_from_slice(&2u16.to_le_bytes());
-    bytes.extend_from_slice(&16u16.to_le_bytes());
-    bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&data.to_le_bytes());
-    for sample in samples {
-        bytes.extend_from_slice(&sample.to_le_bytes());
-    }
-    bytes
-}
-
-/// One of the app's own sounds as a WAV file's bytes, made the first time any is asked for and kept from then on.
-pub fn built_in_wav(id: &str) -> Option<&'static [u8]> {
-    static SOUNDS: OnceLock<Vec<Vec<u8>>> = OnceLock::new();
-    let index = BUILT_IN.iter().position(|&b| b == id)?;
-    let sounds = SOUNDS.get_or_init(|| BUILT_IN.iter().map(|id| wav(&render(tones(id)))).collect());
-    Some(&sounds[index])
-}
-
-/// How long one of the app's own sounds is.
-pub fn built_in_length(id: &str) -> Duration {
-    let samples = built_in_wav(id).map_or(0, |w| (w.len() - 44) / 2);
-    Duration::from_secs_f64(samples as f64 / RATE as f64)
-}
-
-/// One of the app's own sounds as a file, for a player that takes files (the macOS app): written into the app's
-/// folder the first time, and again when it is gone or isn't what the app makes now.
-pub fn built_in_file(id: &str) -> Option<PathBuf> {
-    let bytes = built_in_wav(id)?;
-    let folder = sys::app_data_folder().join("OwnSounds");
-    let path = folder.join(format!("{id}.wav"));
-    if fs::metadata(&path).map(|m| m.len()).ok() != Some(bytes.len() as u64) {
-        fs::create_dir_all(&folder).ok()?;
-        fs::write(&path, bytes).ok()?;
-    }
-    Some(path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,12 +392,37 @@ mod tests {
         }
     }
 
+    const RATE: u32 = 44_100;
+
+    /// Samples (16 bits, one channel) as a WAV file's bytes.
+    fn wav(samples: &[i16]) -> Vec<u8> {
+        let data = samples.len() as u32 * 2;
+        let mut bytes = Vec::with_capacity(44 + data as usize);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + data).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&RATE.to_le_bytes());
+        bytes.extend_from_slice(&(RATE * 2).to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data.to_le_bytes());
+        for sample in samples {
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        bytes
+    }
+
     #[test]
     fn a_setting_names_a_sound_or_falls_back_to_the_system_s() {
-        for text in ["system", "none", "drop", "done", "file:low battery.MP3", "file:сигнал.wav"] {
+        let first = NAMED_SOUNDS[0].id;
+        for text in ["system", "none", first, "file:low battery.MP3", "file:сигнал.wav"] {
             assert_eq!(Choice::parse(text).setting(), text);
         }
-        assert_eq!(Choice::parse("drop"), Choice::BuiltIn("drop"));
+        assert_eq!(Choice::parse(first), Choice::Named(first));
         // Not a sound: a later version's value, a hand edit, a path out of the folder, another kind of file
         for text in
             ["", "System", "gong", "file:", "file:..\\settings.json", "file:a/b.wav", "file:C:x.wav", "file:x.txt"]
@@ -502,11 +432,11 @@ mod tests {
     }
 
     #[test]
-    fn the_lists_go_system_silence_own_sounds_files() {
+    fn the_lists_go_system_silence_named_sounds_files() {
         let list = choices(&["b.wav".into()]);
-        assert_eq!(list.len(), 8);
+        assert_eq!(list.len(), 2 + NAMED_SOUNDS.len() + 1);
         assert_eq!((&list[0], &list[1]), (&Choice::System, &Choice::None));
-        assert_eq!(list[BREAKS[0]], Choice::BuiltIn("drop"));
+        assert_eq!(list[BREAKS[0]], Choice::Named(NAMED_SOUNDS[0].id));
         assert_eq!(list[BREAKS[1]], Choice::File("b.wav".into()));
         assert_eq!(Event::from_index(2), Some(Event::Charged));
         assert_eq!(Event::from_index(3), None);
@@ -514,19 +444,19 @@ mod tests {
     }
 
     #[test]
-    fn the_app_s_own_sounds_are_short_wavs() {
-        for id in BUILT_IN {
-            let bytes = built_in_wav(id).unwrap();
-            assert!(looks_like(Some(Kind::Wav), bytes), "{id}");
-            let length = built_in_length(id);
-            assert!(length > Duration::from_millis(200) && length < Duration::from_secs(2), "{id}: {length:?}");
-            // Something sounds, and nothing is cut off at the top
-            let samples: Vec<i16> = bytes[44..].chunks(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
-            let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
-            assert!(peak > 3000 && peak < i16::MAX as u16, "{id}: {peak}");
-            assert_eq!(*samples.last().unwrap(), 0, "{id} ends in silence");
+    fn the_named_sounds_are_files_of_the_system() {
+        for (n, sound) in NAMED_SOUNDS.iter().enumerate() {
+            assert!(NAMED_SOUNDS[..n].iter().all(|other| other.id != sound.id), "{} twice", sound.id);
+            assert_eq!(Choice::Named(sound.id).label(), sound.name);
+            let path = named_path(sound.id).unwrap();
+            assert!(path.ends_with(sound.file));
+            // Where this Windows has the file, it is a short sound the app can time
+            #[cfg(windows)]
+            if path.is_file() {
+                assert!(length(&path).is_some_and(|l| l < MAX_PLAY), "{}", sound.id);
+            }
         }
-        assert!(built_in_wav("gong").is_none());
+        assert!(named_path("gong").is_none());
     }
 
     #[test]
@@ -534,8 +464,7 @@ mod tests {
         let from = Scratch::new("from");
         let into = Scratch::new("into");
         let sounds = into.0.join("Sounds");
-        let wav_bytes = built_in_wav("drop").unwrap();
-        let source = from.file("Low Battery.WAV", wav_bytes);
+        let source = from.file("Low Battery.WAV", &wav(&[0; 64]));
         assert_eq!(import_into(&source, &sounds).as_deref(), Ok("Low Battery.WAV"));
         from.file("b.mp3", b"ID3\x03\x00\x00\x00\x00\x00\x00rest");
         assert_eq!(import_into(&from.0.join("b.mp3"), &sounds).as_deref(), Ok("b.mp3"));
@@ -566,10 +495,10 @@ mod tests {
     #[test]
     fn a_wav_says_how_long_it_is() {
         let folder = Scratch::new("wav");
-        let path = folder.file("drop.wav", built_in_wav("drop").unwrap());
-        assert_eq!(length(&path), Some(built_in_length("drop")));
+        let path = folder.file("short.wav", &wav(&vec![0i16; RATE as usize / 2]));
+        assert_eq!(length(&path), Some(Duration::from_millis(500)));
         assert!(!is_cut(&path));
-        assert_eq!(plays_for(&path), built_in_length("drop"));
+        assert_eq!(plays_for(&path), Duration::from_millis(500));
         // Twelve seconds, with a chunk of an odd size before the samples
         let mut long = wav(&vec![0i16; RATE as usize * 12]);
         long.splice(36..36, *b"LIST\x03\x00\x00\x00abc\x00");

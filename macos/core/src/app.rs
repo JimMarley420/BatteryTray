@@ -254,9 +254,9 @@ impl MacApp {
         effects
     }
 
-    /// The sound chosen for an event, for the app to play: the system's own ("system"), or a file with the seconds it
-    /// sounds - one of the app's own sounds, written out for the player, or one of the user's. None for no sound. A
-    /// file that is gone is the system's sound.
+    /// The sound chosen for an event, for the app to play: the system's own for the event ("system"), or a file with
+    /// the seconds it sounds - one of macOS' sounds by name, or one of the user's. None for no sound. A file that is
+    /// gone is the system's sound.
     fn sound_effect(&self, event: sounds::Event) -> Option<Value> {
         let system = || json!({ "type": "sound", "event": event.name(), "system": true });
         let file = |path: PathBuf, length: Duration| {
@@ -268,9 +268,15 @@ impl MacApp {
         Some(match self.settings.sound_for(event) {
             Choice::None => return None,
             Choice::System => system(),
-            Choice::BuiltIn(id) => match sounds::built_in_file(id) {
-                Some(path) => file(path, sounds::built_in_length(id)),
-                None => system(),
+            Choice::Named(id) => match sounds::named_path(id).filter(|path| path.is_file()) {
+                Some(path) => {
+                    let length = sounds::plays_for(&path);
+                    file(path, length)
+                }
+                None => {
+                    log::write(&format!("macOS' sound {id} is gone: the system's sound instead"));
+                    system()
+                }
             },
             Choice::File(name) => {
                 let path = sounds::path_of(&name);
@@ -575,7 +581,7 @@ impl MacApp {
         let needs = t("d.needsAdmin");
         let needs_permission = !hid::input_monitoring_allowed()
             && rows.iter().any(|r| r.current.as_ref().and_then(|c| c.detail.as_deref()) == Some(needs.as_str()));
-        // The sounds a menu offers, in its three parts: the system's and silence, the app's own, the user's files
+        // The sounds a menu offers, in its three parts: the system's and silence, macOS' sounds by name, the user's files
         let sound_list = sounds::choices(&sounds::files());
         let sound_menu: Vec<Value> = sound_list
             .iter()

@@ -1,13 +1,12 @@
 //! Windows: plays the sounds of the reminder and of the "charged" notice (sounds.rs says what a setting can name). The
-//! system's sounds are the ones the app always played. The app's own sounds and the user's WAV files go through
-//! PlaySound, which needs no codec; an MP3 goes through Windows' media player, there wherever Windows has its media
-//! features (an N edition without them plays the system's sound instead). One sound at a time: a new one ends the one
-//! before.
+//! system's sound for an event is the one the app always played, whatever Windows' sound scheme has there. A sound of
+//! Windows by name (a file of its Media folder) and the user's WAV files go through PlaySound, which needs no codec; an
+//! MP3 goes through Windows' media player, there wherever Windows has its media features (an N edition without them
+//! plays the system's sound instead). One sound at a time: a new one ends the one before.
 
 use crate::log;
 use crate::sounds::{self, Choice, Event, Kind};
 use crate::win::wide;
-use std::ffi::c_void;
 use std::path::Path;
 use std::ptr::null;
 use std::sync::OnceLock;
@@ -20,7 +19,6 @@ use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
 const SND_ASYNC: u32 = 0x0001;
 const SND_NODEFAULT: u32 = 0x0002;
-const SND_MEMORY: u32 = 0x0004;
 const SND_ALIAS: u32 = 0x0001_0000;
 const SND_FILENAME: u32 = 0x0002_0000;
 const MB_ICONHAND: u32 = 0x10;
@@ -44,15 +42,18 @@ impl Player {
         match choice {
             Choice::None => None,
             Choice::System => Some(system_sound(event)),
-            Choice::BuiltIn(id) => match sounds::built_in_wav(id) {
-                Some(wav) if play_wave(wav.as_ptr().cast(), SND_MEMORY) => Some(sounds::built_in_length(id)),
-                _ => Some(system_sound(event)),
+            Choice::Named(id) => match sounds::named_path(id).filter(|path| path.is_file() && play_wave(path)) {
+                Some(path) => Some(sounds::plays_for(&path)),
+                None => {
+                    log::write(&format!("Windows' sound {id} can't be played: the system's sound instead"));
+                    Some(system_sound(event))
+                }
             },
             Choice::File(name) => {
                 let path = sounds::path_of(name);
                 let started = path.is_file()
                     && match sounds::kind(&path) {
-                        Some(Kind::Wav) => play_wave(wide(&path.to_string_lossy()).as_ptr().cast(), SND_FILENAME),
+                        Some(Kind::Wav) => play_wave(&path),
                         Some(Kind::Mp3) => match self.play_media(&path) {
                             Ok(()) => true,
                             Err(e) => {
@@ -122,10 +123,10 @@ fn system_sound(event: Event) -> Duration {
     SYSTEM_LENGTH
 }
 
-/// A WAV by PlaySound: from memory (`SND_MEMORY`, which must stay there while it plays: the app's own sounds do) or
-/// from a file (`SND_FILENAME`). Without Windows' default sound when it can't be played.
-fn play_wave(sound: *const c_void, from: u32) -> bool {
-    play_sound().is_some_and(|play| unsafe { play(sound.cast(), 0, from | SND_ASYNC | SND_NODEFAULT) != 0 })
+/// A WAV file by PlaySound. Without Windows' default sound when it can't be played.
+fn play_wave(path: &Path) -> bool {
+    let name = wide(&path.to_string_lossy());
+    play_sound().is_some_and(|play| unsafe { play(name.as_ptr(), 0, SND_FILENAME | SND_ASYNC | SND_NODEFAULT) != 0 })
 }
 
 type PlaySound = unsafe extern "system" fn(sound: *const u16, module: isize, flags: u32) -> i32;

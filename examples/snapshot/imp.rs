@@ -297,7 +297,7 @@ pub fn main() {
         main.set_settings_tab(1);
         main.set_sound_options(ModelRc::new(VecModel::from(file_labels.clone())));
         main.set_sound_low(with_file.len() as i32 - 1);
-        main.set_sound_critical(with_file.iter().position(|c| *c == sounds::Choice::BuiltIn("alarm")).unwrap() as i32);
+        main.set_sound_critical(sounds::BREAKS[0] as i32 + 3);
         main.set_sound_charged(1);
     };
     let (main, window) = open(&rows);
@@ -323,12 +323,12 @@ pub fn main() {
     window.dispatch_event(WindowEvent::PointerReleased { position: button, button: PointerEventButton::Left });
     render(&window, scale, tall, &folder.join("main-settings-sounds-list.png"));
 
-    // The ✕ of the user's file in that list, and what the app does then: the file is out of the options and the row
-    // has the system's sound. The list stays open
+    // The ✕ of the user's file in that list (its last option, 32 a row down from the first), and what the app does
+    // then: the file is out of the options and the row has the system's sound. The list stays open
     let asked = Rc::new(Cell::new(-1));
     let heard = asked.clone();
     main.on_sound_removed(move |index| heard.set(index));
-    let remove = slint::LogicalPosition::new(346.0, 793.0);
+    let remove = slint::LogicalPosition::new(346.0, 569.0 + 32.0 * (with_file.len() - 1) as f32);
     window.dispatch_event(WindowEvent::PointerPressed { position: remove, button: PointerEventButton::Left });
     window.dispatch_event(WindowEvent::PointerReleased { position: remove, button: PointerEventButton::Left });
     lay_out(&window, scale, tall);

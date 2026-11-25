@@ -313,9 +313,13 @@ mod tests {
         assert_eq!(changed["effects"][0]["type"], "save_later");
         assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["low"], 100);
 
-        // Sounds: the system's until one is chosen; silence plays nothing, a sound chosen is played once
+        // Sounds: the system's until one is chosen; silence plays nothing, a sound chosen is played once - one of
+        // macOS' own from the system's folder
         let snapshot = run(json!({ "cmd": "snapshot" }));
         assert_eq!(snapshot["settings"]["sound_low"], "system");
+        let named = run(json!({ "cmd": "set_sound", "event": "low", "value": "hero" }));
+        let sound = named["effects"].as_array().unwrap().iter().find(|e| e["type"] == "sound").cloned().unwrap();
+        assert!(sound["path"].as_str().is_some_and(|p| p.ends_with("/Hero.aiff")), "{sound}");
         assert_eq!(
             (snapshot["sounds"][0]["id"].clone(), snapshot["sounds"][1]["id"].clone()),
             (json!("system"), json!("none"))
