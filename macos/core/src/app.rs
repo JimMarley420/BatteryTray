@@ -300,7 +300,9 @@ impl MacApp {
             Ok(name) => self.set_sound(event, &Choice::File(name).setting()),
             Err(e) => {
                 log::write(&format!("sound file not taken: {e:?}"));
-                vec![json!({ "type": "sound_refused", "text": t("sounds.error") })]
+                vec![json!({
+                    "type": "sound_refused", "title": t("sounds.error.title"), "text": t("sounds.error.text"),
+                })]
             }
         }
     }

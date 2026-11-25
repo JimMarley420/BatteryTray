@@ -350,6 +350,10 @@ static MAC: &[(&str, &str, &str, &str)] = &[
     ("overlay.invalid", "Выберите другое сочетание. Для обычных клавиш нужен ⌘, ⌃ или ⌥. ⌘Q, ⌘W, ⌘H, ⌘M, ⌘C, ⌘V, ⌘X, ⌘Z, ⌘A, ⌘Tab, ⌘Пробел, ⌃Пробел и снимки экрана (⇧⌘3, 4, 5) зарезервированы.",
         "Choose another shortcut. Ordinary keys require ⌘, ⌃ or ⌥. ⌘Q, ⌘W, ⌘H, ⌘M, ⌘C, ⌘V, ⌘X, ⌘Z, ⌘A, ⌘Tab, ⌘Space, ⌃Space and the screenshot shortcuts (⇧⌘3, 4, 5) are reserved.",
         "请选择其他快捷键。普通按键需搭配 ⌘、⌃ 或 ⌥。⌘Q、⌘W、⌘H、⌘M、⌘C、⌘V、⌘X、⌘Z、⌘A、⌘Tab、⌘空格、⌃空格和截屏快捷键（⇧⌘3、4、5）为保留快捷键。"),
+    // The alert for a sound file the app couldn't take: a short title, and what to do in the text under it
+    ("sounds.error.title", "Не удалось открыть этот файл.", "This file couldn't be opened.", "无法打开此文件。"),
+    ("sounds.error.text", "Звук остался прежним. Подойдёт WAV или MP3 до 10 МБ.",
+        "The sound is as it was. A WAV or MP3 of up to 10 MB will do.", "提示音保持不变。请选择不超过 10 MB 的 WAV 或 MP3 文件。"),
     ("key.space", "Пробел", "Space", "空格"),
     ("menu.about", "О программе BatteryTray", "About BatteryTray", "关于 BatteryTray"),
     ("menu.hide", "Скрыть BatteryTray", "Hide BatteryTray", "隐藏 BatteryTray"),

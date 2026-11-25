@@ -175,10 +175,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "sound":
                 Sounds.play(effect)
             case "sound_refused":
-                // A file picked for a sound that the app can't take: said over the window it was picked in
+                // A file picked for a sound that the app can't take: an alert over the window it was picked in, with a
+                // short title and what to do under it. The app's icon and one "OK", as macOS gives an alert that
+                // only informs
                 let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = effect["text"] as? String ?? ""
+                alert.messageText = effect["title"] as? String ?? ""
+                alert.informativeText = effect["text"] as? String ?? ""
                 if let window = NSApp.keyWindow {
                     alert.beginSheetModal(for: window)
                 } else {
