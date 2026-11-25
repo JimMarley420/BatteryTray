@@ -225,8 +225,22 @@ struct RowButtonStyle: ButtonStyle {
     }
 }
 
-/// General: the login item, the Input Monitoring permission when a device waits for it, the language and the theme, the
-/// updates, the folder of the log and settings, a suggestion.
+/// "New" in a small outlined capsule next to a section that is new in this version; taken away in the next one.
+struct NewBadge: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Text(model.t("settings.new"))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .overlay(Capsule().strokeBorder(Color.accentColor, lineWidth: 1))
+    }
+}
+
+/// General: the login item, the Input Monitoring permission when a device waits for it, the language and the theme, how
+/// many devices the menu bar item shows, the updates, the folder of the log and settings, a suggestion.
 struct GeneralSettings: View {
     @EnvironmentObject var model: AppModel
 
@@ -280,6 +294,18 @@ struct GeneralSettings: View {
                         Text(model.t("theme.dark")).tag("dark")
                     } label: {
                         Label(model.t("theme.header"), systemImage: "circle.lefthalf.filled")
+                    }
+                }
+                Section {
+                    Picker(selection: Binding(get: { s.settings.menuBarDevices }, set: { model.set("menu_bar_devices", $0) })) {
+                        ForEach(1...5, id: \.self) { Text("\($0)").tag($0) }
+                    } label: {
+                        Label(model.t("menubar.devices"), systemImage: "menubar.rectangle")
+                    }
+                } header: {
+                    HStack(spacing: 8) {
+                        Text(model.t("menubar.header"))
+                        NewBadge()
                     }
                 }
                 Section(model.t("updates.header")) {

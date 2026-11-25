@@ -3,7 +3,7 @@
 //! The Windows windows (Slint) and the macOS app (SwiftUI, through macos/core) both draw from these.
 
 use crate::loc::{self, t, tf};
-use crate::reading::DeviceKind;
+use crate::reading::{DeviceKind, DeviceReading};
 use crate::rows::{self, Block, DeviceRow};
 use crate::settings::AppSettings;
 use crate::update_service::{Stage, Status};
@@ -289,7 +289,7 @@ pub fn update_view(u: &Status) -> UpdateView {
     }
 }
 
-/// The tray icon (the menu bar item on macOS): a number in a color, and a line per device.
+/// The tray icon: a number in a color, and a line per device. The menu bar item on macOS shows `bar` instead.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayView {
     pub label: String,
@@ -298,6 +298,19 @@ pub struct TrayView {
     pub lines: Vec<String>,
     /// The lines joined, or "no data"
     pub tooltip: String,
+    /// macOS: the devices in the menu bar item, as many as the settings say at most
+    pub bar: Vec<BarSlot>,
+}
+
+/// One device in the menu bar item on macOS: its kind's symbol, then its level without "%".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BarSlot {
+    pub kind: DeviceKind,
+    /// "37", "≈15" for an estimate, empty when the device only says it is charging
+    pub level: String,
+    pub tone: Tone,
+    /// Charging or full on its charger: a lightning follows the level
+    pub power: bool,
 }
 
 pub fn tray_view(rows: &[DeviceRow], s: &AppSettings) -> TrayView {
@@ -345,7 +358,40 @@ pub fn tray_view(rows: &[DeviceRow], s: &AppSettings) -> TrayView {
         None => ("--".to_string(), Tone::Offline),
         Some((r, charging, l)) => (l.to_string(), level_tone(Some(*l), *charging, true, &r.id, s)),
     };
-    TrayView { label, tone, lines, tooltip }
+    let bar = bar_slots(&shown, s);
+    TrayView { label, tone, lines, tooltip, bar }
+}
+
+/// The devices in the menu bar item: the first ones of the list that have a level or are charging, at most as many as
+/// the settings say. One below its own reminder level that didn't get a place takes the last place of one that isn't
+/// low, the least charged first, so a device about to run out is never left out.
+fn bar_slots(shown: &[&DeviceRow], s: &AppSettings) -> Vec<BarSlot> {
+    let readable: Vec<(&DeviceRow, &DeviceReading)> = shown
+        .iter()
+        .filter_map(|r| r.current.as_ref().filter(|c| c.level.is_some() || c.charging).map(|c| (*r, c)))
+        .collect();
+    let low = |(r, c): &(&DeviceRow, &DeviceReading)| !c.charging && c.level.is_some_and(|l| l <= s.low_for(&r.id));
+    let places = s.menu_bar_devices.clamp(1, 5) as usize;
+    let mut picked: Vec<_> = readable.iter().take(places).copied().collect();
+    let mut left_out: Vec<_> = readable.iter().skip(places).copied().filter(low).collect();
+    left_out.sort_by_key(|(_, c)| c.level);
+    for device in left_out {
+        let Some(place) = picked.iter().rposition(|p| !low(p)) else { break };
+        picked.remove(place);
+        picked.push(device);
+    }
+    picked
+        .into_iter()
+        .map(|(r, c)| {
+            let power = c.charging || c.full_on_charger;
+            BarSlot {
+                kind: r.kind(),
+                level: c.level.map(|l| format!("{}{l}", if c.estimate { "≈" } else { "" })).unwrap_or_default(),
+                tone: level_tone(c.level, power, true, &r.id, s),
+                power,
+            }
+        })
+        .collect()
 }
 
 /// A name as the tooltip has room for it.
@@ -481,6 +527,64 @@ mod tests {
         assert_eq!(tray_view(&rows, &s).label, "60");
         // Only charging ones left: the least charged of them
         assert_eq!(tray_view(&[at("c", 5, true), at("d", 40, true)], &s).label, "5");
+    }
+
+    #[test]
+    fn the_menu_bar_shows_the_first_devices_and_one_running_out() {
+        let mut s = AppSettings::default();
+        let at = |id: &str, kind: DeviceKind, level: Option<i32>, charging: bool| {
+            let mut r = row(id, kind, true);
+            let c = r.current.as_mut().unwrap();
+            c.level = level;
+            c.charging = charging;
+            r
+        };
+        let levels = |rows: &[DeviceRow], s: &AppSettings| -> Vec<String> {
+            tray_view(rows, s).bar.into_iter().map(|b| b.level).collect()
+        };
+        assert!(tray_view(&[], &s).bar.is_empty());
+
+        // Three places; fewer devices on the air, fewer shown
+        let headset = at("a", DeviceKind::Headset, Some(37), false);
+        assert_eq!(levels(std::slice::from_ref(&headset), &s), ["37"]);
+
+        // In the list's order, the lightning after the level, no "%"; the phone, fifth, is below its reminder level
+        // and takes the last place
+        let rows = [
+            headset.clone(),
+            at("b", DeviceKind::Mouse, Some(62), true),
+            at("c", DeviceKind::Keyboard, Some(80), false),
+            at("d", DeviceKind::Gamepad, Some(54), false),
+            at("e", DeviceKind::Phone, Some(15), false),
+        ];
+        s.device_order = ["a", "b", "c", "d", "e"].map(String::from).to_vec();
+        let bar = tray_view(&rows, &s).bar;
+        assert_eq!(bar.iter().map(|b| b.level.as_str()).collect::<Vec<_>>(), ["37", "62", "15"]);
+        assert_eq!((bar[1].power, bar[1].tone, bar[2].tone), (true, Tone::Charge, Tone::Warn));
+        assert_eq!(bar[2].kind, DeviceKind::Phone);
+
+        // All five fit; one place shows the one running out
+        s.menu_bar_devices = 5;
+        assert_eq!(levels(&rows, &s), ["37", "62", "80", "54", "15"]);
+        s.menu_bar_devices = 1;
+        assert_eq!(levels(&rows, &s), ["15"]);
+
+        // Charging isn't running out, even when low; an estimate keeps its "≈"; a device without a level isn't shown
+        // unless it is charging
+        let mut estimate = at("f", DeviceKind::Mouse, Some(9), false);
+        estimate.current.as_mut().unwrap().estimate = true;
+        let rows = [
+            at("a", DeviceKind::Headset, Some(37), false),
+            at("b", DeviceKind::Keyboard, None, false),
+            at("c", DeviceKind::Mouse, None, true),
+            at("d", DeviceKind::Gamepad, Some(5), true),
+            estimate,
+        ];
+        s.device_order = ["a", "b", "c", "d", "f"].map(String::from).to_vec();
+        s.menu_bar_devices = 3;
+        let bar = tray_view(&rows, &s).bar;
+        assert_eq!(bar.iter().map(|b| b.level.as_str()).collect::<Vec<_>>(), ["37", "", "≈9"]);
+        assert_eq!(bar[2].tone, Tone::Bad);
     }
 
     #[test]

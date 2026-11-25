@@ -1,12 +1,15 @@
 import AppKit
 
-/// The menu bar item: the level of the device that most needs charging as a colored number (the Windows app's tray
-/// icon), the devices in a tooltip, and a menu with each device's level and the app's commands.
+/// The menu bar item: the first devices of the list, each as its kind's symbol and its level (`MenuBarLabel`), the
+/// devices in a tooltip, and a menu with each device's level and the app's commands.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let model: AppModel
+    /// The devices the item shows now: an unchanged snapshot doesn't draw it again
+    private var shown: [BarSlot]?
+    private var appearanceObservation: NSKeyValueObservation?
 
     init(model: AppModel) {
         self.model = model
@@ -17,7 +20,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.button?.setAccessibilityLabel("BatteryTray")
         item.behavior = []
         item.isVisible = true
+        item.button?.imagePosition = .imageOnly
         update(model.snapshot?.tray)
+        // The menu bar is light or dark by the wallpaper under it: drawn again in the colors of the new one
+        appearanceObservation = item.button?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in self?.draw() }
+        }
     }
 
     /// Where the item is on the screen: the device window opens under it.
@@ -28,11 +36,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func update(_ tray: Tray?) {
         guard let button = item.button else { return }
-        let label = tray?.label ?? "…"
-        let color = tray.map { Tone.nsColor($0.tone) } ?? .secondaryLabelColor
-        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .bold)
-        button.attributedTitle = NSAttributedString(string: label, attributes: [.foregroundColor: color, .font: font])
         button.toolTip = tray?.tooltip
+        // VoiceOver reads each device by name with its level, not the symbols
+        let devices = tray?.tooltip.replacingOccurrences(of: "\n", with: ", ")
+        button.setAccessibilityLabel(["BatteryTray", devices].compactMap { $0 }.joined(separator: ": "))
+        let slots = tray?.bar ?? []
+        if slots != shown {
+            shown = slots
+            draw()
+        }
+    }
+
+    private func draw() {
+        item.button?.image = MenuBarLabel.image(shown ?? [])
     }
 
     /// Opens the menu and hands its window to `take` while it is open, then closes it (`--snapshot`).
@@ -105,6 +121,98 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func quit() {
         AppDelegate.shared?.quit()
+    }
+}
+
+/// The menu bar item's picture: each device's kind as its symbol, then its level without "%" and a lightning while it
+/// charges, in the menu bar's own text color; a level below the device's reminder or critical level in the app's
+/// orange or red, the only color in it. "--" when no device has a level. Drawn when it is shown, so its colors are the
+/// menu bar's appearance of the moment (light or dark by the wallpaper, not the windows' theme).
+enum MenuBarLabel {
+    /// Between a symbol and its level, a level and its lightning, and two devices
+    static let symbolGap: CGFloat = 3
+    static let boltGap: CGFloat = 1
+    static let deviceGap: CGFloat = 8
+
+    /// One device, measured.
+    private struct Part {
+        var symbol: NSImage
+        var level: String
+        var levelWidth: CGFloat
+        var bolt: NSImage?
+        var color: NSColor?
+
+        var width: CGFloat {
+            symbol.size.width + (levelWidth > 0 ? MenuBarLabel.symbolGap + levelWidth : 0)
+                + (bolt.map { MenuBarLabel.boltGap + $0.size.width } ?? 0)
+        }
+    }
+
+    static func image(_ slots: [BarSlot]) -> NSImage {
+        // The menu bar's own size, larger with Accessibility > Display > Menu bar size
+        let size = NSFont.menuBarFont(ofSize: 0).pointSize
+        let font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+        let symbolSize = NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
+        let boltSize = NSImage.SymbolConfiguration(pointSize: size * 0.8, weight: .semibold)
+        let measure = { (text: String) in (text as NSString).size(withAttributes: [.font: font]).width.rounded(.up) }
+        let parts: [Part] = slots.compactMap { slot in
+            guard let glyph = NSImage(systemSymbolName: symbol(slot.kind), accessibilityDescription: nil)?
+                .withSymbolConfiguration(symbolSize)
+            else { return nil }
+            let low = slot.tone == "warn" || slot.tone == "bad"
+            return Part(
+                symbol: glyph,
+                level: slot.level,
+                levelWidth: slot.level.isEmpty ? 0 : measure(slot.level),
+                bolt: slot.power
+                    ? NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)?.withSymbolConfiguration(boltSize)
+                    : nil,
+                color: low ? Tone.nsColor(slot.tone) : nil
+            )
+        }
+        let textHeight = (font.ascender - font.descender).rounded(.up)
+        if parts.isEmpty {
+            let none = "--"
+            return NSImage(size: NSSize(width: measure(none), height: textHeight), flipped: false) { _ in
+                let grey = Tone.nsColor("offline").usingColorSpace(.sRGB) ?? .secondaryLabelColor
+                (none as NSString).draw(at: .zero, withAttributes: [.font: font, .foregroundColor: grey])
+                return true
+            }
+        }
+        let height = max(textHeight, parts.map(\.symbol.size.height).max() ?? 0)
+        let width = parts.map(\.width).reduce(0, +) + deviceGap * CGFloat(parts.count - 1)
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+            // The colors as they are in the appearance the image is being drawn in
+            let resolve = { (color: NSColor) in color.usingColorSpace(.sRGB) ?? color }
+            let label = resolve(.labelColor)
+            let tint = NSImage.SymbolConfiguration(paletteColors: [label])
+            var x: CGFloat = 0
+            for part in parts {
+                let color = part.color.map(resolve) ?? label
+                let symbol = part.symbol.withSymbolConfiguration(symbolSize.applying(tint)) ?? part.symbol
+                symbol.draw(in: NSRect(x: x, y: ((height - symbol.size.height) / 2).rounded(),
+                                       width: symbol.size.width, height: symbol.size.height))
+                x += symbol.size.width
+                if part.levelWidth > 0 {
+                    x += symbolGap
+                    (part.level as NSString).draw(at: NSPoint(x: x, y: ((height - textHeight) / 2).rounded()),
+                                                  withAttributes: [.font: font, .foregroundColor: color])
+                    x += part.levelWidth
+                }
+                if let bolt = part.bolt {
+                    x += boltGap
+                    let tinted = bolt.withSymbolConfiguration(boltSize.applying(tint)) ?? bolt
+                    tinted.draw(in: NSRect(x: x, y: ((height - tinted.size.height) / 2).rounded(),
+                                           width: tinted.size.width, height: tinted.size.height))
+                    x += tinted.size.width
+                }
+                x += deviceGap
+            }
+            return true
+        }
+        image.isTemplate = false
+        image.accessibilityDescription = "BatteryTray"
+        return image
     }
 }
 
