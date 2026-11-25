@@ -10,6 +10,11 @@
 //! that form is tried when the first one gets no answer, and the one that worked goes first the next time. The
 //! G3 V2's own monitor sends one more 01, 55 30 A5 0B 2E 01 01 01, which goes first on that mouse. Only this read is
 //! sent. The IDs don't tell the models apart, so the name comes from the product string (see `receiver_name`).
+//!
+//! The AJAZZ T520 Max uses A8A5:2266 on the receiver and A8A4:2266 on the cable. Both use FF01:0010.
+//! The read-only model report (55 52) identifies the T520 Max before it is queried with form 2 or named.
+//! Both connections were verified with firmware 20250830111206-T520-3395.
+//!
 //! Protocol facts from ajazz-aj139-macos (PROTOCOL.md: checked on an AJ139 V2 MC), OpenMouse (mouse-protocol:
 //! src/ksnake/index.ts, the vendor panel's form of the request, read on a Noir M2-NEX) and
 //! Wireless-Device-Battery-Monitor (src/drivers/misc_mice.cpp: both forms in this order; an AJ139 V2 MC and an MCHOSE
@@ -31,19 +36,36 @@ use std::time::{Duration, Instant};
 struct Family {
     id: &'static str,
     receiver: (u16, u16),
-    cable: (u16, u16),
+    cable: Option<(u16, u16)>,
     name: Option<&'static str>,
     forms: &'static [usize],
+    firmware_id: Option<&'static [u8]>,
 }
 
 static FAMILIES: &[Family] = &[
-    Family { id: "ajazz:2255", receiver: (0xA8A5, 0x2255), cable: (0xA8A4, 0x2255), name: None, forms: &[0, 1] },
+    Family {
+        id: "ajazz:2255",
+        receiver: (0xA8A5, 0x2255),
+        cable: Some((0xA8A4, 0x2255)),
+        name: None,
+        forms: &[0, 1],
+        firmware_id: None,
+    },
+    Family {
+        id: "ajazz:t520-max",
+        receiver: (0xA8A5, 0x2266),
+        cable: Some((0xA8A4, 0x2266)),
+        name: Some("AJAZZ T520 Max"),
+        forms: &[2],
+        firmware_id: Some(b"20250830111206-T520-3395"),
+    },
     Family {
         id: "mchose:g3v2",
         receiver: (0x3837, 0x4245),
-        cable: (0x3837, 0x418C),
+        cable: Some((0x3837, 0x418C)),
         name: Some("MCHOSE G3 V2"),
         forms: &[2, 1],
+        firmware_id: None,
     },
 ];
 
@@ -51,7 +73,7 @@ static FAMILIES: &[Family] = &[
 fn family(vid: u16, pid: u16) -> Option<(&'static Family, bool)> {
     FAMILIES.iter().find_map(|f| match (vid, pid) {
         ids if ids == f.receiver => Some((f, false)),
-        ids if ids == f.cable => Some((f, true)),
+        ids if Some(ids) == f.cable => Some((f, true)),
         _ => None,
     })
 }
@@ -62,6 +84,7 @@ const REQUEST_HEAD: u8 = 0x55;
 const REPLY_HEAD: u8 = 0xAA;
 const READ_MARK: u8 = 0xA5;
 const BATTERY_COMMAND: u8 = 0x30;
+const MODEL_COMMAND: u8 = 0x52;
 const BATTERY_LENGTH: u8 = 0x2E;
 /// The report ID, always 0, and 64 bytes.
 const REPORT_LENGTH: usize = 65;
@@ -90,11 +113,13 @@ impl Provider for AjazzMouseProvider {
         let found = hid::enumerate(|v, p| family(v, p).is_some());
         for ((vid, pid), collections) in group_by(found, |i| (i.vendor_id, i.product_id)) {
             let Some((family, cable)) = family(vid, pid) else { continue };
+            // The T520 Max web driver sends 63 payload bytes. HidDevice pads to the collection's report length.
+            let minimum_length = if family.firmware_id.is_some() { 64 } else { REPORT_LENGTH };
             let vendor = collections.iter().find(|i| {
                 i.usage_page == VENDOR_PAGE
                     && i.usage == VENDOR_USAGE
-                    && i.output_length >= REPORT_LENGTH
-                    && i.input_length >= REPORT_LENGTH
+                    && i.output_length >= minimum_length
+                    && i.input_length >= minimum_length
             });
             let mut trace = Vec::new();
             let mut battery = None;
@@ -113,19 +138,29 @@ impl Provider for AjazzMouseProvider {
                 .and_then(|v| v.product.as_deref())
                 .or_else(|| collections.iter().find_map(|i| i.product.as_deref()));
             self.log_once((vid, pid), &collections, vendor, product, &trace, battery.is_some());
+            let name = if family.firmware_id.is_some() {
+                // Only a verified connection gets this name. Keep the row offline during timeouts.
+                if !vendor.is_some_and(|v| self.answered.contains_key(&v.path)) {
+                    continue;
+                }
+                family.name.unwrap().into()
+            } else {
+                receiver_name::mouse(product, family.name)
+            };
 
-            result.push(DeviceReading {
+            let reading = DeviceReading {
                 online: battery.is_some(),
-                level: battery.map(|b| b.level),
+                level: battery.and_then(|b| b.reported_level(cable && family.firmware_id.is_some())),
                 charging: battery.is_some_and(|b| b.charging),
                 detail: if battery.is_none() { Some(error.unwrap_or_else(|| t("d.asleep"))) } else { None },
-                ..DeviceReading::new(
-                    family.id,
-                    receiver_name::mouse(product, family.name),
-                    DeviceKind::Mouse,
-                    t(if cable { "via.cable" } else { "via.24" }),
-                )
-            });
+                ..DeviceReading::new(family.id, name, DeviceKind::Mouse, t(if cable { "via.cable" } else { "via.24" }))
+            };
+            // The T520 Max's receiver can still hold an old reading when its cable is connected.
+            if cable && family.firmware_id.is_some() && reading.online {
+                result.insert(0, reading);
+            } else {
+                result.push(reading);
+            }
         }
         // A mouse charging on its cable while its receiver stays plugged in is listed twice under one Id, and the
         // receiver finds it off: keep the reading that reached the mouse
@@ -141,16 +176,35 @@ impl Provider for AjazzMouseProvider {
     }
 }
 
+impl Battery {
+    fn reported_level(self, t520_cable: bool) -> Option<i32> {
+        // This firmware can report 100 on USB power even when it reported 51% just before.
+        // Its charging flag remains useful but does not distinguish this reply from a full battery.
+        (!(t520_cable && self.charging && self.level == 100)).then_some(self.level)
+    }
+}
+
 impl AjazzMouseProvider {
     /// Asks for the battery; None when nothing answered or the reply has no level.
     fn query(&mut self, family: &Family, vendor: &HidInfo, trace: &mut Vec<String>) -> sys::Result<Option<Battery>> {
         let dev = HidDevice::open(vendor)?;
+        if let Some(expected_firmware) = family.firmware_id {
+            let Some(reply) = ask(&dev, &model_request(), |r| is_reply(r, MODEL_COMMAND), trace)? else {
+                return Ok(None);
+            };
+            let Some(firmware) = firmware_id(&reply) else { return Ok(None) };
+            if firmware != expected_firmware {
+                self.answered.remove(&vendor.path);
+                return Ok(None);
+            }
+        }
+        let accepts_reply = if family.firmware_id.is_some() { is_t520_battery_reply } else { is_battery_reply };
         let forms = family.forms;
         let answered = self.answered.get(&vendor.path);
         let first = answered.and_then(|form| forms.iter().position(|f| f == form)).unwrap_or(0);
         for i in 0..forms.len() {
             let tried = forms[(first + i) % forms.len()];
-            if let Some(reply) = ask(&dev, &request(tried), trace)? {
+            if let Some(reply) = ask(&dev, &request(tried), accepts_reply, trace)? {
                 self.answered.insert(vendor.path.clone(), tried);
                 return Ok(parse(&reply));
             }
@@ -187,8 +241,13 @@ impl AjazzMouseProvider {
     }
 }
 
-/// Sends the request and waits for the battery reply; None when it didn't come.
-fn ask(dev: &HidDevice, request: &[u8], trace: &mut Vec<String>) -> sys::Result<Option<Vec<u8>>> {
+/// Sends the request and waits for a reply with the expected command, skipping unsolicited reports.
+fn ask(
+    dev: &HidDevice,
+    request: &[u8],
+    accepts_reply: impl Fn(&[u8]) -> bool,
+    trace: &mut Vec<String>,
+) -> sys::Result<Option<Vec<u8>>> {
     dev.flush();
     trace.push(format!("> {}", hex(request)));
     if !dev.write(request, TIMEOUT_MS as u32)? {
@@ -202,11 +261,27 @@ fn ask(dev: &HidDevice, request: &[u8], trace: &mut Vec<String>) -> sys::Result<
             return Ok(None);
         };
         trace.push(format!("< {}", hex(&r)));
-        if is_battery_reply(&r) {
+        if accepts_reply(&r) {
             return Ok(Some(r));
         }
     }
     Ok(None)
+}
+
+fn model_request() -> [u8; REPORT_LENGTH] {
+    let mut report = [0; REPORT_LENGTH];
+    report[..6].copy_from_slice(&[0, REQUEST_HEAD, MODEL_COMMAND, 1, 0, 0x1A]);
+    report
+}
+
+fn firmware_id(reply: &[u8]) -> Option<&[u8]> {
+    if !is_reply(reply, MODEL_COMMAND) {
+        return None;
+    }
+    let length = usize::from(*reply.get(9)?);
+    let field = reply.get(10..10 + length)?;
+    let id = field.split(|&byte| byte == 0).next()?;
+    (!id.is_empty()).then_some(id)
 }
 
 /// The battery request, report ID first. Form 0 has the checksum the protocol notes describe, form 1 is what the
@@ -232,7 +307,16 @@ pub fn request(form: usize) -> Vec<u8> {
 
 /// The answer to the battery request, report ID first, and not one of the mouse's own reports.
 pub fn is_battery_reply(r: &[u8]) -> bool {
-    r.len() >= 11 && r[1] == REPLY_HEAD && r[2] == BATTERY_COMMAND
+    r.len() >= 11 && is_reply(r, BATTERY_COMMAND)
+}
+
+fn is_t520_battery_reply(r: &[u8]) -> bool {
+    // The checksum byte varies by connection and battery level.
+    is_battery_reply(r) && r[3] == READ_MARK && r[5..9] == [0x0A, 1, 1, 1] && r[10] <= 1
+}
+
+fn is_reply(r: &[u8], command: u8) -> bool {
+    r.get(1..3) == Some(&[REPLY_HEAD, command])
 }
 
 /// What a battery reply says; None for a level over 100 and for 0 off the cable, which is the receiver answering for
@@ -302,6 +386,44 @@ mod tests {
         assert!(family(0x3837, 0x4245).is_some_and(|(f, cable)| f.id == "mchose:g3v2" && !cable));
         assert!(family(0x3837, 0x418C).is_some_and(|(f, cable)| f.forms[0] == 2 && cable));
         assert!(family(0x3837, 0x2255).is_none());
+    }
+
+    #[test]
+    fn t520_max_checks_the_model_on_both_connections_and_reads_charging() {
+        let (family, cable) = family(0xA8A5, 0x2266).unwrap();
+        assert!(!cable);
+        let (usb, cable) = super::family(0xA8A4, 0x2266).unwrap();
+        assert!(cable);
+        assert_eq!(usb.id, family.id);
+        assert_eq!(family.name, Some("AJAZZ T520 Max"));
+        assert_eq!(family.forms, &[2]);
+        assert_eq!(model_request().as_slice(), report(&[0x55, 0x52, 0x01, 0x00, 0x1A]));
+
+        let mut model = report(&[0xAA, 0x52, 0x01, 0x00, 0x1A, 0, 0, 0, 0x19]);
+        model[10..34].copy_from_slice(b"20250830111206-T520-3395");
+        assert_eq!(firmware_id(&model), family.firmware_id);
+        assert_eq!(firmware_id(&model[..33]), None);
+        model[33] = b'1';
+        assert_ne!(firmware_id(&model), family.firmware_id);
+        model[9] = 0;
+        assert_eq!(firmware_id(&model), None);
+
+        let battery = report(&[0xAA, 0x30, 0xA5, 0x0B, 0x0A, 1, 1, 1, 0x27, 0]);
+        assert!(is_t520_battery_reply(&battery));
+        assert_eq!(parse(&battery), b(39, false));
+
+        let cable_battery = report(&[0xAA, 0x30, 0xA5, 0x41, 0x0A, 1, 1, 1, 0x33, 1]);
+        assert!(is_t520_battery_reply(&cable_battery));
+        let charging = parse(&cable_battery).unwrap();
+        assert!(charging.charging);
+        assert_eq!(charging.reported_level(true), Some(51));
+
+        let cable_at_100 = report(&[0xAA, 0x30, 0xA5, 0x72, 0x0A, 1, 1, 1, 0x64, 1]);
+        assert!(is_t520_battery_reply(&cable_at_100));
+        let ambiguous = parse(&cable_at_100).unwrap();
+        assert!(ambiguous.charging);
+        assert_eq!(ambiguous.reported_level(true), None);
+        assert_eq!(ambiguous.reported_level(false), Some(100));
     }
 
     #[test]
