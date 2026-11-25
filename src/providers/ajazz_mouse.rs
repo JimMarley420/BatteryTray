@@ -150,7 +150,7 @@ impl Provider for AjazzMouseProvider {
 
             let reading = DeviceReading {
                 online: battery.is_some(),
-                level: battery.and_then(|b| b.reported_level(cable && family.firmware_id.is_some())),
+                level: battery.and_then(|b| b.reported_level(family.firmware_id.is_some())),
                 charging: battery.is_some_and(|b| b.charging),
                 detail: if battery.is_none() { Some(error.unwrap_or_else(|| t("d.asleep"))) } else { None },
                 ..DeviceReading::new(family.id, name, DeviceKind::Mouse, t(if cable { "via.cable" } else { "via.24" }))
@@ -177,10 +177,9 @@ impl Provider for AjazzMouseProvider {
 }
 
 impl Battery {
-    fn reported_level(self, t520_cable: bool) -> Option<i32> {
-        // This firmware can report 100 on USB power even when it reported 51% just before.
-        // Its charging flag remains useful but does not distinguish this reply from a full battery.
-        (!(t520_cable && self.charging && self.level == 100)).then_some(self.level)
+    fn reported_level(self, t520_max: bool) -> Option<i32> {
+        // On external power the T520 Max can report 100 before the battery is full, over either connection.
+        (!(t520_max && self.charging && self.level == 100)).then_some(self.level)
     }
 }
 
@@ -424,6 +423,13 @@ mod tests {
         assert!(ambiguous.charging);
         assert_eq!(ambiguous.reported_level(true), None);
         assert_eq!(ambiguous.reported_level(false), Some(100));
+
+        let receiver_at_100 = report(&[0xAA, 0x30, 0xA5, 0x0B, 0x0A, 1, 1, 1, 0x64, 1]);
+        assert!(is_t520_battery_reply(&receiver_at_100));
+        let external_power = parse(&receiver_at_100).unwrap();
+        assert!(external_power.charging);
+        assert_eq!(external_power.reported_level(true), None);
+        assert_eq!(Battery { level: 100, charging: false }.reported_level(true), Some(100));
     }
 
     #[test]
