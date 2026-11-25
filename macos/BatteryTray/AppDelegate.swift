@@ -170,9 +170,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for effect in effects {
             switch effect["type"] as? String {
             case "notice":
-                Notifier.shared.post(title: effect["title"] as? String ?? "", text: effect["text"] as? String ?? "")
+                Notifier.shared.post(title: effect["title"] as? String ?? "", text: effect["text"] as? String ?? "",
+                                     systemSound: effect["system_sound"] as? Bool ?? false)
             case "sound":
-                Sounds.play(critical: effect["critical"] as? Bool ?? false)
+                Sounds.play(effect)
+            case "sound_refused":
+                // A file picked for a sound that the app can't take: said over the window it was picked in
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = effect["text"] as? String ?? ""
+                if let window = NSApp.keyWindow {
+                    alert.beginSheetModal(for: window)
+                } else {
+                    alert.runModal()
+                }
             case "alert":
                 if effect["test"] as? Bool == true {
                     showTestReminder(effect)
@@ -183,6 +194,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "alert_close":
                 reminder.close()
                 overlay.place()
+                // The reminder's sound doesn't outlast the reminder
+                Sounds.stop()
             case "save_later":
                 saveTimer?.invalidate()
                 saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in

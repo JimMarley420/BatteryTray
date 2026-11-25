@@ -11,8 +11,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Notifier()
     private enum Route { case unknown, asking, modern, legacy }
     private var route = Route.unknown
-    /// Notices that came while the answer was awaited
-    private var waiting: [(String, String)] = []
+    /// Notices that came while the answer was awaited: title, text, and whether with the system's sound
+    private var waiting: [(String, String, Bool)] = []
     private let legacy: LegacyPosting = LegacyNotices()
 
     func setUp() {
@@ -21,21 +21,27 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         legacy.setUp { AppDelegate.shared?.openMain() }
     }
 
-    func post(title: String, text: String) {
+    /// `systemSound`: with the sound macOS gives a notification, which the system plays or not as the user set it for
+    /// the app in System Settings and as a Focus has it. Without it the notice is silent, as the app's notices were
+    /// before a sound could be chosen (a sound of the app's own is played by `Sounds`).
+    func post(title: String, text: String, systemSound: Bool) {
         switch route {
         case .modern:
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = text
+            if systemSound {
+                content.sound = .default
+            }
             UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content,
                                                                          trigger: nil))
         case .legacy:
-            legacy.post(title: title, text: text)
+            legacy.post(title: title, text: text, systemSound: systemSound)
         case .asking:
-            waiting.append((title, text))
+            waiting.append((title, text, systemSound))
         case .unknown:
             route = .asking
-            waiting.append((title, text))
+            waiting.append((title, text, systemSound))
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated { Notifier.shared.answered(granted, error?.localizedDescription) }
@@ -49,14 +55,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         Core.log("notifications: \(granted ? "allowed" : "through NSUserNotificationCenter")\(error.map { " (\($0))" } ?? "")")
         let notices = waiting
         waiting = []
-        for (title, text) in notices {
-            post(title: title, text: text)
+        for (title, text, systemSound) in notices {
+            post(title: title, text: text, systemSound: systemSound)
         }
     }
 
+    /// Shown, and heard when the notice has a sound, also while the app is in front.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                             withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
-        done([.banner, .list])
+        done([.banner, .list, .sound])
     }
 
     /// A click on a notice opens the device window.
@@ -74,7 +81,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 @MainActor
 protocol LegacyPosting {
     func setUp(clicked: @escaping () -> Void)
-    func post(title: String, text: String)
+    func post(title: String, text: String, systemSound: Bool)
 }
 
 @MainActor
@@ -107,23 +114,52 @@ struct LegacyNotices: LegacyPosting {
     }
 
     @available(macOS, deprecated: 11.0)
-    func post(title: String, text: String) {
+    func post(title: String, text: String, systemSound: Bool) {
         let note = NSUserNotification()
         note.title = title
         note.informativeText = text
+        if systemSound {
+            note.soundName = NSUserNotificationDefaultSoundName
+        }
         NSUserNotificationCenter.default.deliver(note)
     }
 }
 
-/// The reminder's sounds, as the Windows app plays the system's Exclamation and Critical Stop: the user's alert sound,
-/// and macOS' "Basso" when the level is critical.
+/// The sounds of the reminder and of the "charged" notice, as the core hands them over ("sound"). The system's own:
+/// the user's alert sound, and macOS' "Basso" at the critical level, as the Windows app plays the system's Exclamation
+/// and Critical Stop. Or a file - one of the app's own sounds, or one the user added - for as many seconds as the core
+/// says, 10 at most. One sound at a time; the reminder's ends when the reminder closes.
+@MainActor
 enum Sounds {
-    static func play(critical: Bool) {
-        if critical, let sound = NSSound(named: NSSound.Name("Basso")) {
-            sound.play()
-        } else {
-            NSSound.beep()
+    private static var playing: NSSound?
+    private static var limit: Timer?
+
+    static func play(_ effect: [String: Any]) {
+        stop()
+        guard let path = effect["path"] as? String,
+              let sound = NSSound(contentsOfFile: path, byReference: true),
+              sound.play()
+        else {
+            // The system's sound, also for a file that can't be played
+            if effect["event"] as? String == "critical", let basso = NSSound(named: NSSound.Name("Basso")) {
+                basso.play()
+            } else {
+                NSSound.beep()
+            }
+            return
         }
+        playing = sound
+        let seconds = effect["seconds"] as? Double ?? 10
+        limit = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in
+            MainActor.assumeIsolated { Sounds.stop() }
+        }
+    }
+
+    static func stop() {
+        limit?.invalidate()
+        limit = nil
+        playing?.stop()
+        playing = nil
     }
 }
 

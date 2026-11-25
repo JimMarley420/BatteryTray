@@ -176,6 +176,8 @@ export component TipButton inherits Rectangle {
     in property <bool> secondary;
     // Looks open: its menu is
     in property <bool> active;
+    // The glyph in the accent colour: what the button started is going on (a sound is playing)
+    in property <bool> accent;
     callback clicked();
     border-radius: 4px;
     background: touch.pressed ? Palette.control-pressed
@@ -186,7 +188,8 @@ export component TipButton inherits Rectangle {
     Glyph {
         text: root.glyph;
         font-size: root.glyph-size;
-        color: root.secondary && !touch.has-hover && !root.active ? Palette.secondary : Palette.text;
+        color: root.accent ? Palette.accent
+            : root.secondary && !touch.has-hover && !root.active ? Palette.secondary : Palette.text;
         horizontal-alignment: center;
     }
     touch := TipArea {
@@ -408,13 +411,19 @@ export global DropdownList {
     // The option the button shows, and the one the keys are on
     in-out property <int> current;
     in-out property <int> highlight;
+    // A line between the parts of the list, before these options; 0 for none. The first one first
+    in-out property <int> break-a;
+    in-out property <int> break-b;
     // What was chosen, for the button that opened the list; -1 when it closed without a choice
     in-out property <int> picked: -1;
 
-    public function show(options: [string], current: int, x: length, y: length, width: length, height: length) -> int {
+    public function show(options: [string], current: int, break-a: int, break-b: int, x: length, y: length,
+        width: length, height: length) -> int {
         self.options = options;
         self.current = current;
         self.highlight = current;
+        self.break-a = break-a;
+        self.break-b = break-b;
         self.picked = -1;
         self.x = x;
         self.y = y;
@@ -443,6 +452,9 @@ export component Dropdown inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
     in property <string> label;
+    // A list in parts: a line before the options at these places (0: none)
+    in property <int> break-a;
+    in property <int> break-b;
     out property <bool> has-focus: scope.has-focus;
     callback selected(int);
     // As wide as its value (at least what the use site sets as `min-width`), never stretched
@@ -486,8 +498,8 @@ export component Dropdown inherits Rectangle {
         if (root.mine) {
             DropdownList.close();
         } else {
-            root.ticket = DropdownList.show(root.options, root.current, root.absolute-position.x,
-                root.absolute-position.y, root.width, root.height);
+            root.ticket = DropdownList.show(root.options, root.current, root.break-a, root.break-b,
+                root.absolute-position.x, root.absolute-position.y, root.width, root.height);
         }
     }
 
@@ -550,8 +562,9 @@ export component Dropdown inherits Rectangle {
     }
 }
 
-// The window's layer for the open dropdown list: under its button (above when there is no room below), as wide as
-// the button. A press outside closes it and goes no further; the wheel does nothing while it is open.
+// The window's layer for the open dropdown list: under its button (above when there is no room below, and as low as
+// it fits when there is room for neither), as wide as the button. A press outside closes it and goes no further; the
+// wheel does nothing while it is open.
 export component DropdownLayer inherits Rectangle {
     visible: DropdownList.open;
 
@@ -567,12 +580,18 @@ export component DropdownLayer inherits Rectangle {
     }
     Rectangle {
         property <length> gap: 4px;
-        property <bool> above: DropdownList.y + DropdownList.height + self.gap + self.height > root.height
+        // A line between two parts of the list takes this much of its height
+        property <length> line: 9px;
+        property <length> shift-a: DropdownList.break-a > 0 ? self.line : 0px;
+        property <length> shift-b: DropdownList.break-b > 0 ? self.line : 0px;
+        property <length> below: DropdownList.y + DropdownList.height + self.gap;
+        property <bool> above: self.below + self.height > root.height
             && DropdownList.y - self.gap - self.height >= 0;
         x: max(0px, min(root.width - self.width, DropdownList.x));
-        y: self.above ? DropdownList.y - self.gap - self.height : DropdownList.y + DropdownList.height + self.gap;
+        y: self.above ? DropdownList.y - self.gap - self.height
+            : max(0px, min(self.below, root.height - self.height));
         width: DropdownList.width;
-        height: DropdownList.options.length * 32px + 10px;
+        height: DropdownList.options.length * 32px + 10px + self.shift-a + self.shift-b;
         background: Palette.popup;
         border-width: 1px;
         border-color: Palette.popup-stroke;
@@ -585,9 +604,24 @@ export component DropdownLayer inherits Rectangle {
 
         // Presses between the options stay in the list
         TouchArea { }
+        if DropdownList.break-a > 0: Rectangle {
+            x: 5px;
+            y: 5px + DropdownList.break-a * 32px + 4px;
+            width: parent.width - 10px;
+            height: 1px;
+            background: Palette.popup-stroke;
+        }
+        if DropdownList.break-b > 0: Rectangle {
+            x: 5px;
+            y: 5px + DropdownList.break-b * 32px + parent.shift-a + 4px;
+            width: parent.width - 10px;
+            height: 1px;
+            background: Palette.popup-stroke;
+        }
         for option[i] in DropdownList.options: Rectangle {
             x: 5px;
-            y: 5px + i * 32px;
+            y: 5px + i * 32px + (DropdownList.break-a > 0 && i >= DropdownList.break-a ? parent.shift-a : 0px)
+                + (DropdownList.break-b > 0 && i >= DropdownList.break-b ? parent.shift-b : 0px);
             width: parent.width - 10px;
             height: 32px;
             border-radius: 4px;

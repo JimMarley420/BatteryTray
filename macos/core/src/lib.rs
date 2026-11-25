@@ -9,7 +9,7 @@ mod keys;
 
 use app::{MacApp, Notify};
 use batterytray::reading::{DeviceKind, DeviceReading};
-use batterytray::{diag, hid, loc, log, updater};
+use batterytray::{diag, hid, loc, log, sounds, updater};
 use serde_json::{json, Value};
 use std::ffi::{c_char, CStr, CString};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -142,7 +142,6 @@ fn call(command: &Value) -> Value {
                 "low" => app.edit(|s| s.set_low(n)),
                 "critical" => app.edit(|s| s.set_critical(n)),
                 "repeat" => app.edit(|s| s.set_repeat(n)),
-                "sound" => app.edit(|s| s.sound = on),
                 "notify_charged" => app.edit(|s| s.notify_charged = on),
                 "auto_close" => app.edit(|s| s.auto_close = on),
                 "auto_close_seconds" => app.edit(|s| s.set_auto_close_seconds(n)),
@@ -152,6 +151,17 @@ fn call(command: &Value) -> Value {
                 "overlay_corner" => app.edit(|s| s.overlay_corner = n.clamp(0, 3)),
                 "overlay_names" => app.edit(|s| s.overlay_show_names = on),
                 other => return json!({ "error": format!("no setting {other}") }),
+            }
+        }
+        // A sound ("low", "critical" or "charged") chosen from its menu, or a file picked for it in the open panel
+        "set_sound" | "add_sound" => {
+            let Some(event) = sounds::Event::from_name(str_of(command, "event")) else {
+                return json!({ "error": format!("no sound {}", str_of(command, "event")) });
+            };
+            if cmd == "set_sound" {
+                app.set_sound(event, str_of(command, "value"))
+            } else {
+                app.add_sound(event, str_of(command, "path"))
             }
         }
         "rename" => app.rename(id, str_of(command, "text")),
@@ -300,6 +310,27 @@ mod tests {
         let changed = run(json!({ "cmd": "set", "key": "low", "value": 180 }));
         assert_eq!(changed["effects"][0]["type"], "save_later");
         assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["low"], 100);
+
+        // Sounds: the system's until one is chosen; silence plays nothing, a sound chosen is played once
+        let snapshot = run(json!({ "cmd": "snapshot" }));
+        assert_eq!(snapshot["settings"]["sound_low"], "system");
+        assert_eq!(
+            (snapshot["sounds"][0]["id"].clone(), snapshot["sounds"][1]["id"].clone()),
+            (json!("system"), json!("none"))
+        );
+        assert_eq!(
+            (snapshot["sounds"][1]["group"].clone(), snapshot["sounds"][2]["group"].clone()),
+            (json!(0), json!(1))
+        );
+        let silent = run(json!({ "cmd": "set_sound", "event": "critical", "value": "none" }));
+        assert!(silent["effects"].as_array().unwrap().iter().all(|e| e["type"] != "sound"));
+        assert_eq!(run(json!({ "cmd": "snapshot" }))["settings"]["sound_critical"], "none");
+        let system = run(json!({ "cmd": "set_sound", "event": "critical", "value": "system" }));
+        let sound = system["effects"].as_array().unwrap().iter().find(|e| e["type"] == "sound").cloned().unwrap();
+        assert_eq!((sound["event"].clone(), sound["system"].clone()), (json!("critical"), json!(true)));
+        assert!(run(json!({ "cmd": "set_sound", "event": "bell", "value": "none" }))["error"].is_string());
+        let refused = run(json!({ "cmd": "add_sound", "event": "low", "path": "/nowhere/notes.txt" }));
+        assert_eq!(refused["effects"][0]["type"], "sound_refused");
 
         // Shortcuts: ⌘C is the system's, ⇧⌘B is free
         let copy = run(json!({ "cmd": "check_shortcut", "mac_key": 0x08, "command": true }));

@@ -5,6 +5,7 @@
 //! know are kept as they are, so going back and forth between versions loses nothing.
 
 use crate::log;
+use crate::sounds::{Choice, Event};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashSet};
@@ -29,6 +30,14 @@ pub const DEFAULT_HOTKEY: (i32, i32) = (0x56, MOD_ALT | MOD_CONTROL);
 pub const LEVEL_PERCENT: (i32, i32) = (1, 100);
 pub const REPEAT_MINUTES: (i32, i32) = (1, 99_999);
 pub const AUTO_CLOSE_SECONDS: (i32, i32) = (1, 99_999);
+/// A sound setting's default: the system's own sound, as the app always had.
+const SYSTEM_SOUND: &str = "system";
+
+// A `&String`: what serde hands to `skip_serializing_if`
+#[allow(clippy::ptr_arg)]
+fn is_system_sound(setting: &String) -> bool {
+    setting == SYSTEM_SOUND
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -71,7 +80,20 @@ pub struct AppSettings {
     pub low_percent: i32,
     pub critical_percent: i32,
     pub repeat_minutes: i32,
+    /// Up to 2.3.0 the switch of the reminder's sound. Since then each sound is chosen by itself (below); this is
+    /// written for those versions, false when the reminder has no sound at either level, and read from a file that
+    /// doesn't name the sounds yet.
     pub sound: bool,
+    /// What sounds when the reminder comes at the reminder level, when it comes at the critical level, and with the
+    /// notice that a device has finished charging: "system", "none", one of the app's own sounds or "file:<name>" for
+    /// a file in the Sounds folder (sounds.rs). Written only when it isn't the system's sound: a file of someone who
+    /// never chose a sound looks as it always did.
+    #[serde(skip_serializing_if = "is_system_sound")]
+    pub sound_low: String,
+    #[serde(skip_serializing_if = "is_system_sound")]
+    pub sound_critical: String,
+    #[serde(skip_serializing_if = "is_system_sound")]
+    pub sound_charged: String,
     /// "ru", "en", "zh", or "auto" to follow Windows.
     pub language: String,
     /// "light", "dark", or "auto" to follow the system's mode.
@@ -116,6 +138,9 @@ impl Default for AppSettings {
             critical_percent: 10,
             repeat_minutes: 10,
             sound: true,
+            sound_low: SYSTEM_SOUND.into(),
+            sound_critical: SYSTEM_SOUND.into(),
+            sound_charged: SYSTEM_SOUND.into(),
             language: AUTO.into(),
             theme: AUTO.into(),
             notify_charged: true,
@@ -225,6 +250,9 @@ impl AppSettings {
                 "CriticalPercent" => set(&mut s.critical_percent, int(v)),
                 "RepeatMinutes" => set(&mut s.repeat_minutes, int(v)),
                 "Sound" => set(&mut s.sound, v.as_bool()),
+                "SoundLow" => set(&mut s.sound_low, v.as_str().map(str::to_string)),
+                "SoundCritical" => set(&mut s.sound_critical, v.as_str().map(str::to_string)),
+                "SoundCharged" => set(&mut s.sound_charged, v.as_str().map(str::to_string)),
                 "Language" => set(&mut s.language, v.as_str().map(str::to_string)),
                 "Theme" => set(&mut s.theme, v.as_str().map(str::to_string)),
                 "NotifyCharged" => set(&mut s.notify_charged, v.as_bool()),
@@ -283,6 +311,12 @@ impl AppSettings {
                 clean = false;
             }
         }
+        // A file from before the sounds could be chosen, with the reminder's sound switched off: the reminder stays
+        // silent at both levels. The "charged" notice keeps its sound: the switch never was about it.
+        if !s.sound && !root.contains_key("SoundLow") && !root.contains_key("SoundCritical") {
+            s.sound_low = Choice::None.setting();
+            s.sound_critical = Choice::None.setting();
+        }
         (s, clean)
     }
 
@@ -301,6 +335,11 @@ impl AppSettings {
         if !(0..=3).contains(&self.overlay_corner) {
             self.overlay_corner = 1;
         }
+        // A sound is one the app knows; anything else (a hand edit, a later version's sound) is the system's
+        for sound in [&mut self.sound_low, &mut self.sound_critical, &mut self.sound_charged] {
+            *sound = Choice::parse(sound).setting();
+        }
+        self.sound = self.reminder_sounds();
         // A device has both of its own levels or none: one set alone (by hand) gets the other from the global ones
         let (low, critical) = (self.low_percent, self.critical_percent);
         for d in self.devices.values_mut() {
@@ -398,6 +437,30 @@ impl AppSettings {
 
     pub fn set_auto_close_seconds(&mut self, seconds: i32) {
         self.auto_close_seconds = seconds.clamp(AUTO_CLOSE_SECONDS.0, AUTO_CLOSE_SECONDS.1);
+    }
+
+    /// The sound chosen for an event.
+    pub fn sound_for(&self, event: Event) -> Choice {
+        Choice::parse(match event {
+            Event::Low => &self.sound_low,
+            Event::Critical => &self.sound_critical,
+            Event::Charged => &self.sound_charged,
+        })
+    }
+
+    pub fn set_sound(&mut self, event: Event, choice: &Choice) {
+        let setting = choice.setting();
+        match event {
+            Event::Low => self.sound_low = setting,
+            Event::Critical => self.sound_critical = setting,
+            Event::Charged => self.sound_charged = setting,
+        }
+        self.sound = self.reminder_sounds();
+    }
+
+    /// What the versions up to 2.3.0 read as the reminder's sound switch: off when neither level has a sound.
+    fn reminder_sounds(&self) -> bool {
+        self.sound_for(Event::Low) != Choice::None || self.sound_for(Event::Critical) != Choice::None
     }
 
     /// How long the reminder stays before it closes on its own; None while it waits for an answer.
@@ -848,5 +911,59 @@ mod tests {
         for key in ["\"Pinned\"", "\"DeviceOrder\"", "\"AutostartBannerDismissed\""] {
             assert_eq!(written.matches(key).count(), 1, "{key} in {written}");
         }
+    }
+
+    #[test]
+    fn each_sound_is_chosen_by_itself() {
+        // Never chosen: the system's sound, and the file as it always was
+        let mut s = AppSettings::default();
+        assert_eq!(s.sound_for(Event::Critical), Choice::System);
+        let text = serde_json::to_string(&s).unwrap();
+        assert!(!text.contains("SoundLow") && !text.contains("SoundCharged"), "{text}");
+
+        s.set_sound(Event::Low, &Choice::BuiltIn("drop"));
+        s.set_sound(Event::Charged, &Choice::File("done.mp3".into()));
+        let value = serde_json::to_value(&s).unwrap();
+        assert_eq!(value["SoundLow"], serde_json::json!("drop"));
+        assert_eq!(value["SoundCharged"], serde_json::json!("file:done.mp3"));
+        assert!(value.get("SoundCritical").is_none());
+        let (again, clean) = AppSettings::from_value(&value);
+        assert!(clean && again == s && again.extra.is_empty());
+
+        // The switch of the versions before follows the reminder's two sounds
+        s.set_sound(Event::Low, &Choice::None);
+        assert!(s.sound, "the critical level still sounds");
+        s.set_sound(Event::Critical, &Choice::None);
+        assert!(!s.sound);
+        s.set_sound(Event::Charged, &Choice::None);
+        s.set_sound(Event::Critical, &Choice::System);
+        assert!(s.sound);
+    }
+
+    #[test]
+    fn a_sound_switched_off_before_stays_off() {
+        // 2.3.0 and before: one switch, for the reminder's sound
+        let (mut s, clean) = AppSettings::from_value(&serde_json::json!({ "Sound": false }));
+        s.normalize();
+        assert!(clean);
+        assert_eq!((s.sound_for(Event::Low), s.sound_for(Event::Critical)), (Choice::None, Choice::None));
+        assert_eq!(s.sound_for(Event::Charged), Choice::System, "the switch never was about the notice");
+        assert!(!s.sound);
+        // Written and read again: as it is
+        let (mut again, _) = AppSettings::from_value(&serde_json::to_value(&s).unwrap());
+        again.normalize();
+        assert_eq!(again, s);
+
+        // Once a sound has been chosen, the old switch decides nothing
+        let (mut s, _) = AppSettings::from_value(&serde_json::json!({ "Sound": false, "SoundLow": "chime" }));
+        s.normalize();
+        assert_eq!((s.sound_for(Event::Low), s.sound_for(Event::Critical)), (Choice::BuiltIn("chime"), Choice::System));
+        assert!(s.sound);
+
+        // What isn't a sound is the system's; a value of the wrong type costs only itself
+        let (mut s, clean) = AppSettings::from_value(&serde_json::json!({ "SoundLow": "gong", "SoundCritical": 5 }));
+        s.normalize();
+        assert!(!clean);
+        assert_eq!((s.sound_low.as_str(), s.sound_critical.as_str()), ("system", "system"));
     }
 }

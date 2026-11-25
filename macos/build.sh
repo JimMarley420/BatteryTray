@@ -38,6 +38,7 @@ for ARCH in $ARCHS; do
     -L "$ROOT/target/$TARGET/release" -lbatterytray_macos \
     -framework IOKit -framework CoreFoundation -framework Foundation -framework AppKit -framework SwiftUI \
     -framework Carbon -framework GameController -framework UserNotifications -framework CoreAudio \
+    -framework UniformTypeIdentifiers \
     -o "$WORK/BatteryTray-$ARCH"
   BINARIES="$BINARIES $WORK/BatteryTray-$ARCH"
 done
