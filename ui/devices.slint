@@ -484,13 +484,14 @@ component DragCell inherits Rectangle {
     }
 }
 
-// A hidden device under "Hidden": no grip and no menu, its icon in line with the icons above
+// A hidden device under "Hidden": no grip and no menu, its icon in line with the icons above. An open eye puts it
+// back, in the column of the "⋯" buttons of the rows above; the word is its tooltip.
 component HiddenRowView inherits Rectangle {
     in property <DeviceItem> item;
     callback shown();
     HorizontalLayout {
         padding-top: 2px;
-        padding-right: 16px;
+        padding-right: 10px;
         padding-bottom: 6px;
         padding-left: 35px;
         VerticalLayout {
@@ -526,10 +527,14 @@ component HiddenRowView inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            Btn {
+            padding-left: 6px;
+            TipButton {
+                width: 28px;
                 height: 28px;
-                padding-x: 12px;
-                text: T.t("device.show");
+                glyph: "\u{E890}";
+                glyph-size: 16px;
+                secondary: true;
+                tip: T.t("device.show");
                 accessible-text: T.t("device.show") + ": " + root.item.name;
                 clicked => { root.shown(); }
             }
