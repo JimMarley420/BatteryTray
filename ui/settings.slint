@@ -143,10 +143,17 @@ component Page inherits Rectangle {
 // A row of a settings card with a control on its right: the label wraps, the control keeps its size
 component ControlRow inherits HorizontalLayout {
     in property <string> text;
+    in property <string> leading-glyph;
     min-height: 48px;
     padding-left: 16px;
     padding-right: 16px;
     spacing: 12px;
+    if root.leading-glyph != "": Glyph {
+        width: 20px;
+        text: root.leading-glyph;
+        font-size: 18px;
+        horizontal-alignment: center;
+    }
     Text {
         text: root.text;
         color: Palette.text;
@@ -160,10 +167,12 @@ component ControlRow inherits HorizontalLayout {
     }
 }
 
-// "General": autostart, language, updates, the log folder, ideas
+// "General": autostart, language and theme, updates, the log folder, ideas
 export component GeneralPage inherits Page {
     in property <bool> autostart;
     in property <string> language;
+    // "light", "dark", or "auto" to follow Windows
+    in property <string> theme;
     in property <string> update-status;
     in property <string> update-checked-text;
     in property <string> update-notes;
@@ -173,6 +182,7 @@ export component GeneralPage inherits Page {
     in property <bool> auto-update;
     callback autostart-changed(bool);
     callback language-chosen(string);
+    callback theme-chosen(string);
     callback install-update();
     callback check-updates();
     callback auto-update-changed(bool);
@@ -199,34 +209,29 @@ export component GeneralPage inherits Page {
     Card {
         VerticalLayout {
             padding: 1px;
-            HorizontalLayout {
-                min-height: 48px;
-                padding-left: 16px;
-                padding-right: 16px;
-                spacing: 12px;
-                Glyph {
-                    width: 20px;
-                    text: "\u{E774}";
-                    font-size: 18px;
-                    horizontal-alignment: center;
+            // Always also says "Language", for someone who can't read the current one
+            ControlRow {
+                leading-glyph: "\u{E774}";
+                text: T.t("lang.header");
+                Dropdown {
+                    min-width: 150px;
+                    label: T.t("lang.header");
+                    options: [T.t("lang.auto"), "Русский", "English", "中文"];
+                    current: root.language == "ru" ? 1 : root.language == "en" ? 2 : root.language == "zh" ? 3 : 0;
+                    selected(i) => { root.language-chosen(["auto", "ru", "en", "zh"][i]); }
                 }
-                // Always also says "Language", for someone who can't read the current one
-                Text {
-                    text: T.t("lang.header");
-                    color: Palette.text;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                    wrap: word-wrap;
-                }
-                VerticalLayout {
-                    alignment: center;
-                    Dropdown {
-                        min-width: 150px;
-                        label: T.t("lang.header");
-                        options: [T.t("lang.auto"), "Русский", "English", "中文"];
-                        current: root.language == "ru" ? 1 : root.language == "en" ? 2 : root.language == "zh" ? 3 : 0;
-                        selected(i) => { root.language-chosen(["auto", "ru", "en", "zh"][i]); }
-                    }
+            }
+            Divider { }
+            // As wide as the language's: the two lists line up
+            ControlRow {
+                leading-glyph: "\u{E790}";
+                text: T.t("theme.header");
+                Dropdown {
+                    min-width: 150px;
+                    label: T.t("theme.header");
+                    options: [T.t("theme.auto"), T.t("theme.light"), T.t("theme.dark")];
+                    current: root.theme == "light" ? 1 : root.theme == "dark" ? 2 : 0;
+                    selected(i) => { root.theme-chosen(["auto", "light", "dark"][i]); }
                 }
             }
         }
@@ -324,23 +329,113 @@ export component GeneralPage inherits Page {
     }
 }
 
+// A sound of the "Sounds" card: what it is for, the list it is chosen from, and a button that plays it (and ends it
+// while it plays; with "No sound" chosen there is nothing to play). Under the row, what there is to say about the
+// file chosen: that only its beginning will sound, or, in red, that the file picked couldn't be taken.
+component SoundRow inherits VerticalLayout {
+    in property <string> text;
+    in property <[string]> options;
+    in property <int> break-a;
+    in property <int> break-b;
+    in property <int> current;
+    in property <bool> silent;
+    in property <bool> playing;
+    in property <string> note;
+    in property <bool> refused;
+    callback chosen(int);
+    // The ✕ of one of the user's files in the list
+    callback removed(int);
+    callback preview();
+    ControlRow {
+        text: root.text;
+        HorizontalLayout {
+            spacing: 4px;
+            // As wide whatever is chosen: a file's long name is cut short
+            Dropdown {
+                width: 170px;
+                label: root.text;
+                options: root.options;
+                current: root.current;
+                break-a: root.break-a;
+                break-b: root.break-b;
+                // The user's files: after the second line, up to "Custom file…", the last option
+                remove-from: root.break-b;
+                remove-to: root.options.length - 1;
+                remove-label: T.t("sounds.remove");
+                selected(i) => { root.chosen(i); }
+                removed(i) => { root.removed(i); }
+            }
+            if !root.silent: TipButton {
+                width: 32px;
+                height: 32px;
+                glyph: root.playing ? "\u{E71A}" : "\u{E768}";
+                glyph-size: 13px;
+                secondary: true;
+                active: root.playing;
+                accent: root.playing;
+                tip: root.playing ? T.t("sounds.stop") : T.t("sounds.play");
+                clicked => { root.preview(); }
+            }
+            if root.silent: Rectangle {
+                width: 32px;
+                height: 32px;
+                Glyph {
+                    text: "\u{E768}";
+                    font-size: 13px;
+                    color: Palette.offline;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+    if root.note != "": VerticalLayout {
+        padding-right: 16px;
+        padding-bottom: 12px;
+        padding-left: 16px;
+        Text {
+            text: root.note;
+            font-size: 12px;
+            color: root.refused ? Palette.bad : Palette.secondary;
+            wrap: word-wrap;
+        }
+    }
+}
+
 // "Reminders": the levels and the repeat interval, each a field and a slider; closing on its own, after a field and a
-// slider's seconds; sound; the finished charge
+// slider's seconds; the finished charge; and, in a card of their own, the sounds: of the reminder at each level and
+// of the "charged" notice, each chosen from the same list
 export component RemindersPage inherits Page {
     in property <int> low;
     in property <int> critical;
     in property <int> repeat;
-    in property <bool> sound;
     in property <bool> notify-charged;
     in property <bool> auto-close;
     in property <int> auto-close-seconds;
+    // The list every sound is chosen from; its last line, "Custom file…", is no sound: it adds one
+    in property <[string]> sound-options;
+    in property <int> sound-break-a;
+    in property <int> sound-break-b;
+    // Where "No sound" is in the list
+    in property <int> sound-none;
+    // What each row has chosen
+    in property <int> sound-low;
+    in property <int> sound-critical;
+    in property <int> sound-charged;
+    // The row whose sound is playing (0, 1, 2), and the row whose picked file was refused; -1: none
+    in property <int> sound-playing: -1;
+    in property <int> sound-refused: -1;
+    // What is said under each row, "" for nothing
+    in property <[string]> sound-notes;
     // One of the number fields has the keyboard focus
     out property <bool> field-focused: low-field.has-focus || critical-field.has-focus || repeat-field.has-focus
         || close-field.has-focus;
     callback low-changed(int);
     callback critical-changed(int);
     callback repeat-changed(int);
-    callback sound-changed(bool);
+    callback sound-chosen(int, int);
+    callback sound-preview(int);
+    // The ✕ of a file of the user's, in any row's list: the place of the file in the list
+    callback sound-removed(int);
     callback notify-charged-changed(bool);
     callback auto-close-changed(bool);
     callback auto-close-seconds-changed(int);
@@ -529,17 +624,71 @@ export component RemindersPage inherits Page {
             }
             Divider { }
             SwitchRow {
-                text: T.t("alerts.sound");
-                checked: root.sound;
-                toggled(on) => { root.sound-changed(on); }
-            }
-            Divider { }
-            SwitchRow {
                 text: T.t("charged.toggle");
                 hint: T.t("charged.hint");
                 hint-label: T.t("charged.info");
                 checked: root.notify-charged;
                 toggled(on) => { root.notify-charged-changed(on); }
+            }
+        }
+    }
+    VerticalLayout {
+        padding-top: 14px;
+        padding-left: 2px;
+        SectionHeader {
+            text: T.t("sounds.header");
+        }
+    }
+    Card {
+        VerticalLayout {
+            padding: 1px;
+            SoundRow {
+                text: T.t("sounds.low");
+                options: root.sound-options;
+                break-a: root.sound-break-a;
+                break-b: root.sound-break-b;
+                current: root.sound-low;
+                silent: root.sound-low == root.sound-none;
+                playing: root.sound-playing == 0;
+                note: root.sound-notes[0];
+                refused: root.sound-refused == 0;
+                chosen(i) => { root.sound-chosen(0, i); }
+                removed(i) => { root.sound-removed(i); }
+                preview => { root.sound-preview(0); }
+            }
+            Divider { }
+            SoundRow {
+                text: T.t("sounds.critical");
+                options: root.sound-options;
+                break-a: root.sound-break-a;
+                break-b: root.sound-break-b;
+                current: root.sound-critical;
+                silent: root.sound-critical == root.sound-none;
+                playing: root.sound-playing == 1;
+                note: root.sound-notes[1];
+                refused: root.sound-refused == 1;
+                chosen(i) => { root.sound-chosen(1, i); }
+                removed(i) => { root.sound-removed(i); }
+                preview => { root.sound-preview(1); }
+            }
+            // The notice's sound is here while the notice is: it opens and closes with the switch above
+            Collapsible {
+                open: root.notify-charged;
+                Divider { }
+                SoundRow {
+                    text: T.t("sounds.charged");
+                    options: root.sound-options;
+                    break-a: root.sound-break-a;
+                    break-b: root.sound-break-b;
+                    current: root.sound-charged;
+                    silent: root.sound-charged == root.sound-none;
+                    playing: root.sound-playing == 2;
+                    note: root.sound-notes[2];
+                    refused: root.sound-refused == 2;
+                    chosen(i) => { root.sound-chosen(2, i); }
+                    removed(i) => { root.sound-removed(i); }
+                    preview => { root.sound-preview(2); }
+                }
             }
         }
     }

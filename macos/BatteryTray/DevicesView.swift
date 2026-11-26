@@ -14,6 +14,13 @@ struct DevicesView: View {
             if let snapshot = model.snapshot {
                 // One edge on each side for everything: the cards, the headings, the rows and the footer's text
                 List {
+                    // Room under the header's line: the first card's border doesn't run into it (16 points with the
+                    // row's own 3)
+                    Color.clear
+                        .frame(height: 13)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityHidden(true)
                     banners(snapshot)
                     // The pinned devices, then the connected ones, one list; a drag never leaves its block
                     block(snapshot.devices.pinned, card: true)
@@ -178,7 +185,7 @@ struct KindIcon: View {
             .overlay(alignment: .bottomTrailing) {
                 if connected {
                     Circle()
-                        .fill(Color(red: 0x6C / 255, green: 0xCB / 255, blue: 0x5F / 255))
+                        .fill(Tone.color("good"))
                         .frame(width: 9, height: 9)
                         .overlay(Circle().stroke(Color(nsColor: .controlBackgroundColor), lineWidth: 2))
                         .offset(x: -1, y: -1)
@@ -271,7 +278,7 @@ struct DeviceRowView: View {
                             Image(systemName: "bolt.fill").font(.system(size: 16, weight: .semibold))
                         }
                     }
-                    .foregroundStyle(device.color.color)
+                    .foregroundStyle(Tone.color(device.tone))
                     .fixedSize()
                 }
                 Button { model.menuID = device.id } label: {
@@ -288,7 +295,7 @@ struct DeviceRowView: View {
                 }
             }
             if card && device.connected {
-                LevelBar(fill: device.indeterminate ? 1 : device.fill, color: device.color.color,
+                LevelBar(fill: device.indeterminate ? 1 : device.fill, color: Tone.color(device.tone),
                          faint: device.indeterminate)
                     .padding(.leading, 44)
             }
@@ -315,7 +322,7 @@ struct LevelBar: View {
     }
 }
 
-/// A hidden device: its name and state, and a button that puts it back.
+/// A hidden device: its name and state, and an open eye that puts it back (the word is its help tag).
 struct HiddenRow: View {
     @EnvironmentObject var model: AppModel
     let device: Device
@@ -328,15 +335,20 @@ struct HiddenRow: View {
                 Text(device.subtitle).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button(model.t("device.show")) {
+            // An image button without a border; its frame is what takes the click, about 10 points around the eye
+            Button {
                 model.send(["cmd": "hide", "id": device.id, "hidden": false])
+            } label: {
+                Image(systemName: "eye").frame(width: 36, height: 30).contentShape(Rectangle())
             }
-            .controlSize(.small)
+            .buttonStyle(.borderless)
+            .help(model.t("device.show"))
             .accessibilityLabel("\(model.t("device.show")): \(device.name)")
         }
         .padding(.vertical, 3)
-        // As the rows without a card
-        .padding(.horizontal, 12)
+        // As the rows without a card; on the right 6 points less, so the eye stands under their "⋯" (24 points wide)
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
     }
 }
 

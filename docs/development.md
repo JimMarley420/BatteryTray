@@ -76,6 +76,7 @@ does nothing for a target other than Windows.
 | `src/providers/portable_devices.rs` | Windows: Android phones and tablets on a cable through Windows Portable Devices (COM): the device object's `WPD_DEVICE_POWER_LEVEL`, which the MTP driver has from MTP's BatteryLevel. Seen only in the phone's "File transfer" or "PTP" USB mode; opened for reading only; iPhones and iPads left out |
 | `src/providers/ups.rs` | Windows: a UPS's battery from the battery class, where hidbatt puts a HID Power Device: SetupAPI and `IOCTL_BATTERY_QUERY_*`, opened for reading only. Only short-term batteries (a UPS), never the computer's own |
 | `src/state.rs`, `src/settings.rs` | `state.json` and `settings.json` in `%LOCALAPPDATA%\BatteryTray` (`~/Library/Application Support/BatteryTray` on macOS) |
+| `src/sounds.rs` | The sounds of the reminder (at the reminder level and at the critical one) and of the "charged" notice: what a setting can name - the sound the system itself has for the event, none, one of the system's sounds by name (files of Windows' `Media` folder or of macOS' `/System/Library/Sounds`, played from there and not shipped), a file of the user's - the `Sounds` folder next to `settings.json` that a picked WAV or MP3 is copied into (10 MB at most), and how long a file plays (its first 10 seconds). Played by `src/sound_player.rs` on Windows (PlaySound; Windows' media player for an MP3) and by `Sounds` in `macos/BatteryTray/System.swift` (NSSound) |
 | `src/view.rs` | What the windows show, worked out the same for both apps: a device's card or row, the update card, the tray number and tooltip, the overlay's entries |
 | `src/app.rs` | Windows: startup, single instance, the tray, reminders, the overlay and updates; everything UI runs in Slint's event loop |
 | `src/gui.rs`, `ui/*.slint` | Windows: the windows (Slint, software renderer), and the Win32 parts Slint has no API for |
@@ -92,14 +93,15 @@ does nothing for a target other than Windows.
   `%LOCALAPPDATA%\BatteryTray\rust-core`.
 - `BatteryTray.app/Contents/MacOS/BatteryTray --snapshot <folder> [ru|en|zh] [light|dark]` - the macOS app draws each of its
   windows with the demo's devices to PNG files and quits: the device list, a device's menu, a name being edited, the
-  menu bar item's menu, each settings tab, the reminder and the overlay (an app may take pictures of its own windows,
-  no Screen Recording permission needed). `--demo` runs the app with those devices, with settings of its own in the
+  menu bar item (drawn on a plain bar: its window belongs to the system) and its menu, each settings tab, the reminder
+  and the overlay (an app may take pictures of its own windows, no Screen Recording permission needed). `--demo` runs the app with those devices, with settings of its own in the
   temporary folder. The README's Mac pictures (`docs/macos-*.png`) come from `--snapshot`.
-- `cargo run --example snapshot -- <folder> [ru|en|zh] [scale]` (Windows) - renders the windows with sample data to PNG files,
-  off screen, to check a layout without running the app: the device list (with the update banner, and without it for
-  the README; a device's menu, a smaller one, a name being edited, the hidden devices shown, and the empty list with
-  the autostart banner), each settings tab (and the update card with a newer version), the reminder and the overlay. A
-  drag, a tooltip and an open dropdown need a real pointer and are not drawn.
+- `cargo run --example snapshot -- <folder> [ru|en|zh] [scale] [light|dark]` (Windows) - renders the windows with sample data
+  to PNG files, off screen, in the dark theme unless told otherwise (the overlay is dark in both), to check a layout without
+  running the app: the device list (with the update banner, and without it for the README; a device's menu, a smaller
+  one, a name being edited, the hidden devices shown, and the empty list with the autostart banner), each settings tab
+  (and the update card with a newer version), the reminder and the overlay. A drag, a tooltip and an open dropdown need
+  a real pointer and are not drawn.
 - `cargo run --example popup_probe` (Windows) - opens the reminder and the overlay as the app does and prints where their windows
   are every 5 ms, with their extended styles: for catching a popup that jumps, can be clicked, takes focus or doesn't
   follow its contents' size.

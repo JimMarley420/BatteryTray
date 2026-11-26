@@ -15,12 +15,13 @@ use crate::overlay::{Overlay, Rect};
 use crate::reading::DeviceReading;
 use crate::rows::{self, AlertManager, ChargeDoneWatcher, DeviceRow};
 use crate::settings::AppSettings;
+use crate::sound_player::{self, Player};
+use crate::sounds::{self, Choice};
 use crate::state::StateStore;
 use crate::tray::{self, Tray, MENU_EXIT, MENU_OPEN, MENU_REFRESH, MENU_SETTINGS};
 use crate::update_service::{Event, Status, UpdateService};
 use crate::updater::{self, ReleaseInfo, Version};
-pub use crate::view::level_color;
-use crate::{diag, gui, log, providers, view, win};
+use crate::{diag, gui, log, providers, theme, view, win};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -233,6 +234,13 @@ pub struct App {
     test_alert: Option<AlertView>,
     alert_timer: slint::Timer,
     save_timer: slint::Timer,
+    sound: Player,
+    /// Ends the sound that plays: when it is over, or at `sounds::MAX_PLAY`
+    sound_timer: slint::Timer,
+    /// The sound the settings' play button started, while it plays
+    pub sound_playing: Option<sounds::Event>,
+    /// The sound for which a file was picked that the app couldn't take; said under its row until the next choice
+    pub sound_refused: Option<sounds::Event>,
     stopping: bool,
 }
 
@@ -242,7 +250,7 @@ impl App {
             log::write(&format!("cannot start the UI: {e}"));
             return 1;
         }
-        tray::use_dark_menus();
+        tray::set_menu_mode(theme::current().taskbar_light);
         let (hwnd, activator) = match create_windows() {
             Ok(windows) => windows,
             Err(e) => {
@@ -257,6 +265,8 @@ impl App {
         settings.last_run_version = Some(version());
         settings.save();
         loc::set(loc::resolve(Some(&settings.language)));
+        // The theme picked in the settings, before any window: each one is made in the theme it shows
+        theme::choose(&settings.theme);
         // New devices are always looked for on Windows: the polls when a device connects have no switch here
         let state = Arc::new(StateStore::load());
 
@@ -274,6 +284,8 @@ impl App {
             let _ = sender.send(event);
             later(|app| app.on_update_events());
         });
+        // Light or dark: followed while the app runs, also with no window open (the tray icon's number)
+        theme::watch(|| later(|app| app.on_theme_changed()));
         let tray = Tray::new(hwnd, WM_APP_TRAY);
         let mut overlay = Overlay::new(hwnd);
         overlay.apply_settings(&settings);
@@ -302,6 +314,10 @@ impl App {
             test_alert: None,
             alert_timer: slint::Timer::default(),
             save_timer: slint::Timer::default(),
+            sound: Player::default(),
+            sound_timer: slint::Timer::default(),
+            sound_playing: None,
+            sound_refused: None,
             stopping: false,
         };
         APP.with(|cell| *cell.borrow_mut() = Some(app));
@@ -312,7 +328,7 @@ impl App {
             });
             app.update_tray();
             if updated_from.is_some() {
-                app.notice(&t("notice.updated.title"), &tf("notice.updated.text", &[&version()]));
+                app.notice(&t("notice.updated.title"), &tf("notice.updated.text", &[&version()]), false);
             }
         });
         // The logon task starts it with --background; started any other way, show the window
@@ -394,7 +410,17 @@ impl App {
     pub fn close_main(&mut self) {
         self.main = None;
         self.overlay.suspended = false;
+        // What the window was playing or saying about a sound goes with it
+        if self.sound_playing.is_some() {
+            self.stop_sound();
+        }
+        self.sound_refused = None;
         self.sync_window_open();
+    }
+
+    /// The main window's handle while it is open: the owner of a dialog opened from it.
+    pub fn main_hwnd(&self) -> Option<HWND> {
+        self.main.as_ref().and_then(|view| gui::hwnd(view.ui.window()))
     }
 
     pub fn refresh_main(&mut self) {
@@ -416,9 +442,10 @@ impl App {
         }
     }
 
-    fn notice(&self, title: &str, text: &str) {
+    /// A Windows notification; `silent`: without Windows' own sound.
+    fn notice(&self, title: &str, text: &str, silent: bool) {
         if let Some(tray) = &self.tray {
-            tray.show_notice(title, text);
+            tray.show_notice(title, text, silent);
         }
     }
 
@@ -513,6 +540,16 @@ impl App {
         self.refresh_now(); // the devices' details come from the providers
     }
 
+    /// A theme picked in the settings ("auto" follows Windows): the windows switch right away. The tray icon's number
+    /// and menu keep the taskbar's mode.
+    pub fn set_theme(&mut self, setting: &str) {
+        self.settings.theme = setting.to_string();
+        if theme::choose(setting) {
+            self.windows_follow_theme();
+        }
+        self.settings_changed();
+    }
+
     pub fn set_autostart(&mut self, on: bool) {
         autostart::set(on);
         let registered = autostart::is_registered();
@@ -591,9 +628,13 @@ impl App {
         self.state.save_if_dirty();
     }
 
-    /// A plain Windows notification: unlike a low battery, nothing needs doing right away.
+    /// A plain Windows notification: unlike a low battery, nothing needs doing right away. With the system's sound
+    /// chosen for it, the sound is the notification's own, as it always was; any other sound is the app's to play,
+    /// and Windows shows the notification silently.
     fn announce_charged(&mut self) {
         let rows = self.rows();
+        let choice = self.settings.sound_for(sounds::Event::Charged);
+        let mut announced = false;
         for row in self.charge_done.finished(&rows) {
             let level = row.current.as_ref().and_then(|c| c.level).unwrap_or(100);
             log::write(&format!("charged: {} {level}%", row.name));
@@ -601,7 +642,13 @@ impl App {
             if !self.settings.notify_charged || ds.hidden || !ds.alerts {
                 continue;
             }
-            self.notice(&t("notice.charged.title"), &tf("notice.charged.text", &[&row.name, &level]));
+            let text = tf("notice.charged.text", &[&row.name, &level]);
+            self.notice(&t("notice.charged.title"), &text, choice != Choice::System);
+            announced = true;
+        }
+        // Only with a notice Windows shows: it holds them back during a full-screen game or a presentation
+        if announced && !matches!(choice, Choice::System | Choice::None) && sound_player::notices_are_shown() {
+            self.play(sounds::Event::Charged);
         }
     }
 
@@ -658,13 +705,15 @@ impl App {
         self.overlay_place();
         if fresh {
             log::write(&format!("alert: {names}"));
-            self.play_sound(critical);
+            self.play(if critical { sounds::Event::Critical } else { sounds::Event::Low });
         }
     }
 
     fn close_alert(&mut self) {
         if let Some(alert) = self.alert.take() {
             alert.close();
+            // The reminder's sound doesn't outlast the reminder
+            self.stop_sound();
         }
         self.sync_window_open();
         self.overlay_place();
@@ -701,6 +750,7 @@ impl App {
             with_app(|app| {
                 if let Some(a) = app.test_alert.take() {
                     a.close();
+                    app.stop_sound();
                 }
             });
         };
@@ -711,17 +761,110 @@ impl App {
                 if let Some(old) = self.test_alert.replace(view) {
                     old.close();
                 }
-                self.play_sound(critical);
+                self.play(if critical { sounds::Event::Critical } else { sounds::Event::Low });
             }
             Err(e) => log::write(&format!("cannot open the sample reminder: {e}")),
         }
     }
 
-    fn play_sound(&self, critical: bool) {
-        if self.settings.sound {
-            unsafe {
-                // The system's Critical Stop and Exclamation sounds, as the C# app's SystemSounds
-                MessageBeep(if critical { 0x10 } else { 0x30 });
+    /// Plays the sound chosen for an event, ending the one before. It is over when it has played, at
+    /// `sounds::MAX_PLAY` at the latest, and when the reminder it came with closes. False when nothing sounds.
+    fn play(&mut self, event: sounds::Event) -> bool {
+        self.stop_sound();
+        let choice = self.settings.sound_for(event);
+        let Some(length) = self.sound.play(&choice, event) else { return false };
+        // Only a sound that reaches the limit is cut: a system sound's length is a guess
+        let cut = length >= sounds::MAX_PLAY;
+        self.sound_timer.start(slint::TimerMode::SingleShot, length.min(sounds::MAX_PLAY), move || {
+            with_app(|app| {
+                if cut {
+                    app.sound.stop();
+                }
+                app.show_playing(None);
+            });
+        });
+        true
+    }
+
+    fn stop_sound(&mut self) {
+        self.sound_timer.stop();
+        self.sound.stop();
+        self.show_playing(None);
+    }
+
+    /// Which sound the settings' play button shows as playing.
+    fn show_playing(&mut self, event: Option<sounds::Event>) {
+        if self.sound_playing != event {
+            self.sound_playing = event;
+            self.show_sounds();
+        }
+    }
+
+    /// The settings' rows of sounds, after something about them changed that isn't a setting: what plays, what was
+    /// refused, what is in the Sounds folder.
+    pub fn show_sounds(&self) {
+        if let Some(view) = &self.main {
+            view.load_sounds(self);
+        }
+    }
+
+    /// The sound at a place in the settings' lists as the window shows them; None for the last line, "Custom
+    /// file…", which is no sound.
+    pub fn sound_at(&self, index: i32) -> Option<Choice> {
+        self.main.as_ref().and_then(|view| view.sound_at(index))
+    }
+
+    /// A sound picked in the settings: kept, and played once so that the choice is heard.
+    pub fn choose_sound(&mut self, event: sounds::Event, choice: Choice) {
+        // A file deleted from the folder while the window still listed it: the lists are brought up to date instead
+        if matches!(&choice, Choice::File(name) if !sounds::path_of(name).is_file()) {
+            self.show_sounds();
+            return;
+        }
+        self.sound_refused = None;
+        // Also the sound being heard for this row: the new one starts, it isn't the button's "stop"
+        self.stop_sound();
+        self.edit(|s| s.set_sound(event, &choice));
+        self.preview_sound(event);
+    }
+
+    /// The settings' play button of a sound: plays it, or ends it while it plays.
+    pub fn preview_sound(&mut self, event: sounds::Event) {
+        if self.sound_playing == Some(event) {
+            self.stop_sound();
+        } else if self.play(event) {
+            self.show_playing(Some(event));
+        }
+    }
+
+    /// A file of the user's has been taken out of the Sounds folder (the ✕ in a list): it is in no list any more, and a
+    /// sound that had it is the system's again.
+    pub fn sound_removed(&mut self, name: &str) {
+        log::write(&format!("sound {name} removed"));
+        self.stop_sound();
+        let gone = Choice::File(name.to_string());
+        let had: Vec<sounds::Event> =
+            sounds::Event::ALL.into_iter().filter(|&event| self.settings.sound_for(event) == gone).collect();
+        if had.is_empty() {
+            self.show_sounds();
+        } else {
+            self.edit(|s| {
+                for event in had {
+                    s.set_sound(event, &Choice::System);
+                }
+            });
+        }
+    }
+
+    /// A file picked for a sound in the "Open" dialog: copied into the Sounds folder and chosen. One the app can't
+    /// take (not a WAV or an MP3, too big, unreadable) leaves the sound as it was, and the settings say so.
+    pub fn add_sound(&mut self, event: sounds::Event, file: &std::path::Path) {
+        match sounds::import(file) {
+            Ok(name) => self.choose_sound(event, Choice::File(name)),
+            Err(e) => {
+                log::write(&format!("sound file not taken: {e:?}"));
+                self.sound_refused = Some(event);
+                self.show_sounds();
             }
         }
     }
@@ -743,7 +886,26 @@ impl App {
         self.tooltip = tray.tooltip;
         let tooltip = self.tooltip.clone();
         if let Some(tray_icon) = &mut self.tray {
-            tray_icon.update(&tray.label, tray.color, &tooltip);
+            tray_icon.update(&tray.label, tray.tone.rgb(theme::current().taskbar_light), &tooltip);
+        }
+    }
+
+    /// Windows' light or dark mode changed: the tray icon's number (drawn again, whatever the levels) and menu, the
+    /// windows and the main window's title bar follow it at once.
+    fn on_theme_changed(&mut self) {
+        let Some(mode) = theme::reread() else { return };
+        tray::set_menu_mode(mode.taskbar_light);
+        self.update_tray();
+        self.windows_follow_theme();
+    }
+
+    /// The open windows, and the main window's title bar, in the app mode as it is now.
+    fn windows_follow_theme(&self) {
+        if let Some(view) = &self.main {
+            view.follow_theme();
+        }
+        for alert in [&self.alert, &self.test_alert].into_iter().flatten() {
+            alert.follow_theme();
         }
     }
 
@@ -757,7 +919,7 @@ impl App {
                 }
                 // Announced once per version when it can't install by itself
                 Event::Announce(release) => {
-                    self.notice(&tf("notice.available.title", &[&release.version]), &t("notice.available.text"))
+                    self.notice(&tf("notice.available.title", &[&release.version]), &t("notice.available.text"), false)
                 }
                 Event::Installed(release) => {
                     self.restart_into_update(&release);
@@ -937,9 +1099,4 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
     }
     LRESULT(0)
-}
-
-#[link(name = "user32", kind = "raw-dylib")]
-extern "system" {
-    fn MessageBeep(kind: u32) -> i32;
 }

@@ -15,7 +15,7 @@ export component SwitchMark inherits Rectangle {
     height: 20px;
     border-radius: 10px;
     border-width: 1px;
-    border-color: root.checked ? Palette.accent : #9A9A9A;
+    border-color: root.checked ? Palette.accent : Palette.switch-stroke;
     background: root.checked ? Palette.accent : transparent;
     animate border-color, background { duration: root.instant ? 0ms : 120ms; easing: ease-out; }
     // The middle of the knob. Animating this instead of the knob's x keeps the hover growth where it is: x depends
@@ -28,7 +28,7 @@ export component SwitchMark inherits Rectangle {
         width: root.hovered ? 14px : 12px;
         height: self.width;
         border-radius: self.width / 2;
-        background: root.checked ? #1A1A1A : #CFCFCF;
+        background: root.checked ? Palette.knob-on : Palette.knob-off;
         animate background { duration: root.instant ? 0ms : 120ms; easing: ease-out; }
     }
 }
@@ -113,7 +113,7 @@ export component TipLayer inherits Rectangle {
         border-radius: 4px;
         drop-shadow-offset-y: 6px;
         drop-shadow-blur: 16px;
-        drop-shadow-color: rgba(0, 0, 0, 0.45);
+        drop-shadow-color: Palette.tip-shadow;
         label := Text {
             x: 11px;
             y: 8px;
@@ -176,6 +176,8 @@ export component TipButton inherits Rectangle {
     in property <bool> secondary;
     // Looks open: its menu is
     in property <bool> active;
+    // The glyph in the accent colour: what the button started is going on (a sound is playing)
+    in property <bool> accent;
     callback clicked();
     border-radius: 4px;
     background: touch.pressed ? Palette.control-pressed
@@ -186,7 +188,8 @@ export component TipButton inherits Rectangle {
     Glyph {
         text: root.glyph;
         font-size: root.glyph-size;
-        color: root.secondary && !touch.has-hover && !root.active ? Palette.secondary : Palette.text;
+        color: root.accent ? Palette.accent
+            : root.secondary && !touch.has-hover && !root.active ? Palette.secondary : Palette.text;
         horizontal-alignment: center;
     }
     touch := TipArea {
@@ -372,7 +375,7 @@ export component NumberField inherits Rectangle {
             vertical-alignment: center;
             input-type: number;
             selection-background-color: Palette.accent;
-            selection-foreground-color: #000000;
+            selection-foreground-color: Palette.on-accent;
             // The field around it is the spin box a screen reader sees
             accessible-role: none;
             accepted => {
@@ -408,14 +411,31 @@ export global DropdownList {
     // The option the button shows, and the one the keys are on
     in-out property <int> current;
     in-out property <int> highlight;
+    // A line between the parts of the list, before these options; 0 for none. The first one first
+    in-out property <int> break-a;
+    in-out property <int> break-b;
+    // The options that can be taken out of the list, each with a ✕: from the first of these places up to the second;
+    // none when the two are the same. What a screen reader calls the ✕
+    in-out property <int> remove-from;
+    in-out property <int> remove-to;
+    in-out property <string> remove-label;
     // What was chosen, for the button that opened the list; -1 when it closed without a choice
     in-out property <int> picked: -1;
+    // The option whose ✕ was pressed, for the same button; -1 when none was
+    in-out property <int> removed: -1;
 
-    public function show(options: [string], current: int, x: length, y: length, width: length, height: length) -> int {
+    public function show(options: [string], current: int, break-a: int, break-b: int, remove-from: int,
+        remove-to: int, remove-label: string, x: length, y: length, width: length, height: length) -> int {
         self.options = options;
         self.current = current;
         self.highlight = current;
+        self.break-a = break-a;
+        self.break-b = break-b;
+        self.remove-from = remove-from;
+        self.remove-to = remove-to;
+        self.remove-label = remove-label;
         self.picked = -1;
+        self.removed = -1;
         self.x = x;
         self.y = y;
         self.width = width;
@@ -427,6 +447,13 @@ export global DropdownList {
     public function pick(index: int) {
         self.picked = index;
         self.open = false;
+    }
+    // The ✕ of an option, or Delete on it. The list stays open: its button says which option is to go, and gives the
+    // list its options again once that one is out of them
+    public function remove(index: int) {
+        if (index >= self.remove-from && index < self.remove-to) {
+            self.removed = index;
+        }
     }
     // Closes without a choice: a press outside, Escape, the window losing the focus or changing its size
     public function close() {
@@ -443,8 +470,16 @@ export component Dropdown inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
     in property <string> label;
+    // A list in parts: a line before the options at these places (0: none)
+    in property <int> break-a;
+    in property <int> break-b;
+    // Options the user can take out of the list (see DropdownList): a ✕ on each, and Delete on the one the keys are on
+    in property <int> remove-from;
+    in property <int> remove-to;
+    in property <string> remove-label;
     out property <bool> has-focus: scope.has-focus;
     callback selected(int);
+    callback removed(int);
     // As wide as its value (at least what the use site sets as `min-width`), never stretched
     horizontal-stretch: 0;
     height: 32px;
@@ -472,6 +507,35 @@ export component Dropdown inherits Rectangle {
             }
         }
     }
+    // An option of this button's open list is to go (its ✕): said once, and the list stays open
+    property <int> list-removed: DropdownList.removed;
+    changed list-removed => {
+        if (self.list-removed >= 0 && root.mine) {
+            // Said first, forgotten after: `list-removed` is the list's own value, gone once that is reset
+            root.removed(self.list-removed);
+            DropdownList.removed = -1;
+        }
+    }
+    // What the open list shows follows the button: the options when one of them is gone, the one chosen, and how
+    // many of them can be removed. The keys stay on an option there is
+    changed options => {
+        if (root.mine) {
+            DropdownList.options = root.options;
+            DropdownList.highlight = min(DropdownList.highlight, root.options.length - 1);
+        }
+    }
+    changed current => {
+        if (root.mine) {
+            // The chosen option was the one removed, or it moved up a place: the keys go with it
+            DropdownList.current = root.current;
+            DropdownList.highlight = root.current;
+        }
+    }
+    changed remove-to => {
+        if (root.mine) {
+            DropdownList.remove-to = root.remove-to;
+        }
+    }
     // The list follows its button: taking the focus can scroll the page to bring the button into view, and a
     // scroll started by the wheel may still be running
     property <Point> place: self.mine ? self.absolute-position : { x: 0px, y: 0px };
@@ -486,7 +550,8 @@ export component Dropdown inherits Rectangle {
         if (root.mine) {
             DropdownList.close();
         } else {
-            root.ticket = DropdownList.show(root.options, root.current, root.absolute-position.x,
+            root.ticket = DropdownList.show(root.options, root.current, root.break-a, root.break-b,
+                root.remove-from, root.remove-to, root.remove-label, root.absolute-position.x,
                 root.absolute-position.y, root.width, root.height);
         }
     }
@@ -504,6 +569,10 @@ export component Dropdown inherits Rectangle {
                 }
                 if (e.text == Key.Return || e.text == " ") {
                     DropdownList.pick(DropdownList.highlight);
+                    return accept;
+                }
+                if (e.text == Key.Delete) {
+                    DropdownList.remove(DropdownList.highlight);
                     return accept;
                 }
             } else if (e.text == Key.Return || e.text == " " || e.text == Key.UpArrow || e.text == Key.DownArrow) {
@@ -550,8 +619,9 @@ export component Dropdown inherits Rectangle {
     }
 }
 
-// The window's layer for the open dropdown list: under its button (above when there is no room below), as wide as
-// the button. A press outside closes it and goes no further; the wheel does nothing while it is open.
+// The window's layer for the open dropdown list: under its button (above when there is no room below, and as low as
+// it fits when there is room for neither), as wide as the button. A press outside closes it and goes no further; the
+// wheel does nothing while it is open.
 export component DropdownLayer inherits Rectangle {
     visible: DropdownList.open;
 
@@ -567,27 +637,48 @@ export component DropdownLayer inherits Rectangle {
     }
     Rectangle {
         property <length> gap: 4px;
-        property <bool> above: DropdownList.y + DropdownList.height + self.gap + self.height > root.height
+        // A line between two parts of the list takes this much of its height
+        property <length> line: 9px;
+        property <length> shift-a: DropdownList.break-a > 0 ? self.line : 0px;
+        property <length> shift-b: DropdownList.break-b > 0 ? self.line : 0px;
+        property <length> below: DropdownList.y + DropdownList.height + self.gap;
+        property <bool> above: self.below + self.height > root.height
             && DropdownList.y - self.gap - self.height >= 0;
         x: max(0px, min(root.width - self.width, DropdownList.x));
-        y: self.above ? DropdownList.y - self.gap - self.height : DropdownList.y + DropdownList.height + self.gap;
+        y: self.above ? DropdownList.y - self.gap - self.height
+            : max(0px, min(self.below, root.height - self.height));
         width: DropdownList.width;
-        height: DropdownList.options.length * 32px + 10px;
+        height: DropdownList.options.length * 32px + 10px + self.shift-a + self.shift-b;
         background: Palette.popup;
         border-width: 1px;
         border-color: Palette.popup-stroke;
         border-radius: 8px;
         drop-shadow-offset-y: 8px;
         drop-shadow-blur: 24px;
-        drop-shadow-color: rgba(0, 0, 0, 0.5);
+        drop-shadow-color: Palette.shadow;
         accessible-role: list;
         accessible-label: DropdownList.options[DropdownList.current];
 
         // Presses between the options stay in the list
         TouchArea { }
+        if DropdownList.break-a > 0: Rectangle {
+            x: 5px;
+            y: 5px + DropdownList.break-a * 32px + 4px;
+            width: parent.width - 10px;
+            height: 1px;
+            background: Palette.popup-stroke;
+        }
+        if DropdownList.break-b > 0: Rectangle {
+            x: 5px;
+            y: 5px + DropdownList.break-b * 32px + parent.shift-a + 4px;
+            width: parent.width - 10px;
+            height: 1px;
+            background: Palette.popup-stroke;
+        }
         for option[i] in DropdownList.options: Rectangle {
             x: 5px;
-            y: 5px + i * 32px;
+            y: 5px + i * 32px + (DropdownList.break-a > 0 && i >= DropdownList.break-a ? parent.shift-a : 0px)
+                + (DropdownList.break-b > 0 && i >= DropdownList.break-b ? parent.shift-b : 0px);
             width: parent.width - 10px;
             height: 32px;
             border-radius: 4px;
@@ -608,7 +699,8 @@ export component DropdownLayer inherits Rectangle {
             }
             Text {
                 x: 10px;
-                width: parent.width - 20px;
+                // Room for the ✕ of an option that can be removed
+                width: parent.width - 20px - (i >= DropdownList.remove-from && i < DropdownList.remove-to ? 24px : 0px);
                 text: option;
                 color: Palette.text;
                 vertical-alignment: center;
@@ -618,6 +710,30 @@ export component DropdownLayer inherits Rectangle {
             option-touch := TouchArea {
                 mouse-cursor: pointer;
                 clicked => { DropdownList.pick(i); }
+            }
+            // Takes the option out of the list (a file of the user's): over the option's own area, so a click on it
+            // doesn't choose the option
+            if i >= DropdownList.remove-from && i < DropdownList.remove-to: Rectangle {
+                x: parent.width - 28px;
+                y: 4px;
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: remove-touch.pressed ? Palette.control-pressed
+                    : remove-touch.has-hover ? Palette.control : transparent;
+                accessible-role: button;
+                accessible-label: DropdownList.remove-label;
+                accessible-action-default => { DropdownList.remove(i); }
+                Glyph {
+                    text: "\u{E711}";
+                    font-size: 10px;
+                    color: remove-touch.has-hover ? Palette.text : Palette.secondary;
+                    horizontal-alignment: center;
+                }
+                remove-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { DropdownList.remove(i); }
+                }
             }
         }
     }

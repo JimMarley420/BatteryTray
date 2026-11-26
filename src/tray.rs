@@ -1,5 +1,6 @@
 //! The notification-area icon: the level of the device that most needs charging as a colored
-//! number, a tooltip with every device, balloon notices and a small dark menu.
+//! number, a tooltip with every device, balloon notices and a small menu. The number and the menu are in the
+//! taskbar's mode, light or dark, as they sit on the taskbar.
 
 use crate::loc::t;
 use windows::core::{w, PCSTR};
@@ -12,8 +13,8 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE,
+    NIM_MODIFY, NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, DestroyIcon, DestroyMenu, GetCursorPos, GetSystemMetrics,
@@ -90,11 +91,12 @@ impl Tray {
         }
     }
 
-    /// A Windows notification (a toast on Windows 10 and 11).
-    pub fn show_notice(&self, title: &str, text: &str) {
+    /// A Windows notification (a toast on Windows 10 and 11). `silent`: without Windows' own sound, when the app plays
+    /// the one chosen for the notice or none was asked for.
+    pub fn show_notice(&self, title: &str, text: &str, silent: bool) {
         let mut d = self.data();
         d.uFlags = NIF_INFO;
-        d.dwInfoFlags = NIIF_INFO;
+        d.dwInfoFlags = if silent { NIIF_INFO | NIIF_NOSOUND } else { NIIF_INFO };
         d.Anonymous.uTimeout = 8000;
         copy(&mut d.szInfoTitle, title);
         copy(&mut d.szInfo, text);
@@ -140,15 +142,15 @@ impl Drop for Tray {
     }
 }
 
-/// Dark popup menus, as the rest of the app (uxtheme's SetPreferredAppMode, what Windows' own apps use; nothing
-/// happens on a Windows without it).
-pub fn use_dark_menus() {
+/// Light or dark popup menus, as the taskbar the tray menu opens from (uxtheme's SetPreferredAppMode, what Windows'
+/// own apps use; nothing happens on a Windows without it). Again after every change of the mode.
+pub fn set_menu_mode(light: bool) {
     unsafe {
         let Ok(uxtheme) = LoadLibraryW(w!("uxtheme.dll")) else { return };
-        // Ordinals 135 SetPreferredAppMode(ForceDark = 2) and 136 FlushMenuThemes
+        // Ordinals 135 SetPreferredAppMode(ForceDark = 2, ForceLight = 3) and 136 FlushMenuThemes
         if let Some(set_mode) = GetProcAddress(uxtheme, PCSTR(135usize as *const u8)) {
             let set_mode: unsafe extern "system" fn(i32) -> i32 = std::mem::transmute(set_mode);
-            set_mode(2);
+            set_mode(if light { 3 } else { 2 });
         }
         if let Some(flush) = GetProcAddress(uxtheme, PCSTR(136usize as *const u8)) {
             let flush: unsafe extern "system" fn() = std::mem::transmute(flush);

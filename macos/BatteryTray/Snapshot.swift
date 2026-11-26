@@ -1,10 +1,9 @@
 import AppKit
 
-/// `--snapshot <folder> [ru|en|zh]`: the app with the demo's devices draws each of its windows to a PNG file and quits
-/// - the device list, a device's menu, a name being edited, the menu bar item's menu, each settings tab, the reminder
-/// and the overlay - for the
-/// README's pictures and for checking a layout. An app may always take pictures of its own windows, so no Screen
-/// Recording permission is needed.
+/// `--snapshot <folder> [ru|en|zh] [light|dark]`: the app with the demo's devices draws each of its windows to a PNG
+/// file and quits - the device list, a device's menu, a name being edited, the menu bar item and its menu, each settings
+/// tab, the reminder and the overlay - in that appearance (the system's without it), for the README's pictures and for
+/// checking a layout. An app may always take pictures of its own windows, so no Screen Recording permission is needed.
 @MainActor
 final class Snapshots {
     private let folder: URL
@@ -33,6 +32,7 @@ final class Snapshots {
             { model.renamingID = model.snapshot?.devices.connected.first?.id },
             { self.take(self.window(titled: model.t("app.title")), "rename") },
             { model.renamingID = nil },
+            { self.drawMenuBarItem(model.snapshot?.tray.bar ?? [], "menu-bar-item") },
             { self.app?.statusItem?.snapshotMenu { self.take($0, "menu-bar", wait: 0) } },
             { self.app?.openSettings() },
             { self.take(self.settings(0), "settings-general") },
@@ -104,6 +104,31 @@ final class Snapshots {
         } else {
             draw(number, name)
         }
+    }
+
+    /// The menu bar item as it draws itself, on a plain menu bar of the pictures' appearance: its own window belongs to
+    /// the system and can't be taken.
+    func drawMenuBarItem(_ bar: [BarSlot], _ name: String, appearance: NSAppearance? = nil) {
+        let appearance = appearance ?? NSApp.effectiveAppearance
+        let image = MenuBarLabel.image(bar)
+        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let size = NSSize(width: (image.size.width + 20).rounded(.up), height: 24)
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2), bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .calibratedRGB, bytesPerRow: 0,
+            bitsPerPixel: 0)
+        else { return }
+        bitmap.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        appearance.performAsCurrentDrawingAppearance {
+            NSColor(white: dark ? 0.16 : 0.9, alpha: 1).setFill()
+            NSRect(origin: .zero, size: size).fill()
+            image.draw(in: NSRect(x: 10, y: ((size.height - image.size.height) / 2).rounded(),
+                                  width: image.size.width, height: image.size.height))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        try? bitmap.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("\(name).png"))
     }
 
     private func draw(_ number: Int, _ name: String) {

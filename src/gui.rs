@@ -24,7 +24,7 @@ slint::include_modules!();
 /// What kind of window the next component created is: winit is told before the window exists.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// The main window: dark title bar, app icon, a taskbar button.
+    /// The main window: a title bar in the app mode, the app icon, a taskbar button.
     Normal,
     /// The low battery reminder: shown without taking focus, no taskbar button, no frame.
     Reminder,
@@ -69,11 +69,12 @@ pub fn init() -> Result<(), slint::PlatformError> {
             };
             match NEXT.with(|n| n.get()) {
                 Kind::Normal => attributes
-                    .with_theme(Some(winit::window::Theme::Dark))
+                    .with_theme(Some(title_bar(crate::theme::current().apps_light)))
                     .with_window_icon(icon.clone())
                     .with_taskbar_icon(icon),
                 Kind::Reminder => popup(attributes, REMINDER_CLASS),
-                Kind::Overlay => popup(attributes, OVERLAY_CLASS),
+                // Dark in any mode, as its contents: also the frame Windows 11 draws around a rounded window
+                Kind::Overlay => popup(attributes, OVERLAY_CLASS).with_theme(Some(winit::window::Theme::Dark)),
             }
         })
         .select()
@@ -118,6 +119,47 @@ pub fn setup_texts(t: &T<'_>) {
     t.set_icon_font(icon_font().into());
 }
 
+/// Gives a window the light or the dark colours: the app's palette, and the std widgets' (its scroll bars). Without
+/// this a window stays dark, as the overlay does.
+pub fn set_theme<C>(ui: &C, light: bool)
+where
+    C: ComponentHandle,
+    for<'a> Palette<'a>: slint::Global<'a, C>,
+    for<'a> WidgetPalette<'a>: slint::Global<'a, C>,
+{
+    use slint::language::ColorScheme;
+    ui.global::<Palette>().set_light(light);
+    ui.global::<WidgetPalette>().set_color_scheme(if light { ColorScheme::Light } else { ColorScheme::Dark });
+}
+
+fn title_bar(light: bool) -> winit::window::Theme {
+    if light {
+        winit::window::Theme::Light
+    } else {
+        winit::window::Theme::Dark
+    }
+}
+
+/// Switches an open window's title bar to the light or the dark mode. Its frame is drawn again right away: the new
+/// colours could otherwise wait for the window's next activation. Windows 10 repaints the caption's colours only on
+/// an activation change, so the caption is drawn inactive and back (as Tauri's tao does), without the window's own
+/// handler seeing it.
+pub fn set_title_bar(window: &slint::Window, light: bool) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{DefWindowProcW, SWP_FRAMECHANGED, SWP_NOZORDER, WM_NCACTIVATE};
+    window.with_winit_window(|w| w.set_theme(Some(title_bar(light))));
+    if let Some(hwnd) = hwnd(window) {
+        unsafe {
+            let flags = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+            let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, flags);
+            let active = GetActiveWindow() == hwnd;
+            let _ = DefWindowProcW(hwnd, WM_NCACTIVATE, WPARAM(usize::from(!active)), LPARAM(0));
+            let _ = DefWindowProcW(hwnd, WM_NCACTIVATE, WPARAM(usize::from(active)), LPARAM(0));
+        }
+    }
+}
+
 /// Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on Windows 10.
 fn icon_font() -> &'static str {
     let fonts = std::env::var_os("SystemRoot").map(std::path::PathBuf::from).unwrap_or_default().join("Fonts");
@@ -135,6 +177,51 @@ pub fn hwnd(window: &slint::Window) -> Option<HWND> {
         RawWindowHandle::Win32(h) => Some(HWND(h.hwnd.get() as *mut _)),
         _ => None,
     })?
+}
+
+/// Windows' own "Open" dialog for a sound file, listing WAV and MP3; None when it is cancelled. It runs a loop of its
+/// own until it closes, so the app's state has to be free while it is open (as for the tray's menu).
+pub fn pick_sound_file(owner: Option<HWND>) -> Option<std::path::PathBuf> {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
+    use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows::Win32::UI::Shell::{
+        FileOpenDialog, IFileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, SIGDN_FILESYSPATH,
+    };
+    let name = crate::win::wide(&crate::loc::t("sounds.files"));
+    // COM is set up on the UI thread already: winit does it for drag and drop
+    unsafe {
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        dialog
+            .SetFileTypes(&[COMDLG_FILTERSPEC { pszName: PCWSTR(name.as_ptr()), pszSpec: w!("*.wav;*.mp3") }])
+            .ok()?;
+        let options = dialog.GetOptions().ok()?;
+        dialog.SetOptions(options | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM).ok()?;
+        dialog.Show(owner).ok()?;
+        let path = dialog.GetResult().ok()?.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let text = path.to_string().ok();
+        CoTaskMemFree(Some(path.0 as *const _));
+        text.map(std::path::PathBuf::from)
+    }
+}
+
+/// Puts a file into the Recycle Bin, without asking and without a window; false when Windows couldn't (a drive
+/// without a bin, a file that is gone).
+pub fn recycle(path: &std::path::Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW,
+    };
+    // The function takes a list of paths, each ended by a NUL and the list by one more
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        ..Default::default()
+    };
+    unsafe { SHFileOperationW(&mut operation) == 0 && !operation.fAnyOperationsAborted.as_bool() }
 }
 
 /// Colors a popup's border (the reminder's, in its accent).

@@ -34,8 +34,13 @@ pub mod providers;
 pub mod reading;
 pub mod rows;
 pub mod settings;
+#[cfg(windows)]
+pub mod sound_player;
+pub mod sounds;
 pub mod state;
 pub mod sys;
+#[cfg(windows)]
+pub mod theme;
 #[cfg(windows)]
 pub mod tray;
 pub mod update_service;

@@ -39,6 +39,7 @@ export component MainWindow inherits Window {
 
     // Settings / General
     in property <string> language;
+    in property <string> theme;
     in property <string> update-status;
     in property <string> update-checked-text;
     in property <string> update-notes;
@@ -50,7 +51,18 @@ export component MainWindow inherits Window {
     in property <int> low;
     in property <int> critical;
     in property <int> repeat;
-    in property <bool> sound;
+    // The sounds: the list each is chosen from (with the places of its two lines and of "No sound"), what each of the
+    // three rows has chosen, the row that is playing, the row whose file was refused, the note under each row
+    in property <[string]> sound-options;
+    in property <int> sound-break-a;
+    in property <int> sound-break-b;
+    in property <int> sound-none;
+    in property <int> sound-low;
+    in property <int> sound-critical;
+    in property <int> sound-charged;
+    in property <int> sound-playing: -1;
+    in property <int> sound-refused: -1;
+    in property <[string]> sound-notes;
     in property <bool> notify-charged;
     in property <bool> auto-close;
     in property <int> auto-close-seconds;
@@ -80,6 +92,7 @@ export component MainWindow inherits Window {
     callback install-update();
     callback check-updates();
     callback language-chosen(language: string);
+    callback theme-chosen(theme: string);
     callback test-alert();
     callback open-folder();
     callback suggest-improvement();
@@ -91,7 +104,11 @@ export component MainWindow inherits Window {
     callback low-changed(value: int);
     callback critical-changed(value: int);
     callback repeat-changed(value: int);
-    callback sound-changed(on: bool);
+    // A row of the sounds (0 low, 1 critical, 2 charged) and the line chosen in its list; a row's play button
+    callback sound-chosen(event: int, index: int);
+    callback sound-preview(event: int);
+    // The ✕ of one of the user's files in a list of sounds: its place in the list
+    callback sound-removed(index: int);
     callback notify-charged-changed(on: bool);
     callback auto-close-changed(on: bool);
     callback auto-close-seconds-changed(value: int);
@@ -358,6 +375,7 @@ export component MainWindow inherits Window {
                     visible: root.settings-tab == 0;
                     autostart: root.autostart;
                     language: root.language;
+                    theme: root.theme;
                     update-status: root.update-status;
                     update-checked-text: root.update-checked-text;
                     update-notes: root.update-notes;
@@ -367,6 +385,7 @@ export component MainWindow inherits Window {
                     auto-update: root.auto-update;
                     autostart-changed(on) => { root.autostart-changed(on); }
                     language-chosen(language) => { root.language-chosen(language); }
+                    theme-chosen(theme) => { root.theme-chosen(theme); }
                     install-update => { root.install-update(); }
                     check-updates => { root.check-updates(); }
                     auto-update-changed(on) => { root.auto-update-changed(on); }
@@ -378,14 +397,25 @@ export component MainWindow inherits Window {
                     low: root.low;
                     critical: root.critical;
                     repeat: root.repeat;
-                    sound: root.sound;
+                    sound-options: root.sound-options;
+                    sound-break-a: root.sound-break-a;
+                    sound-break-b: root.sound-break-b;
+                    sound-none: root.sound-none;
+                    sound-low: root.sound-low;
+                    sound-critical: root.sound-critical;
+                    sound-charged: root.sound-charged;
+                    sound-playing: root.sound-playing;
+                    sound-refused: root.sound-refused;
+                    sound-notes: root.sound-notes;
                     notify-charged: root.notify-charged;
                     auto-close: root.auto-close;
                     auto-close-seconds: root.auto-close-seconds;
                     low-changed(v) => { root.low-changed(v); }
                     critical-changed(v) => { root.critical-changed(v); }
                     repeat-changed(v) => { root.repeat-changed(v); }
-                    sound-changed(on) => { root.sound-changed(on); }
+                    sound-chosen(event, index) => { root.sound-chosen(event, index); }
+                    sound-removed(index) => { root.sound-removed(index); }
+                    sound-preview(event) => { root.sound-preview(event); }
                     notify-charged-changed(on) => { root.notify-charged-changed(on); }
                     auto-close-changed(on) => { root.auto-close-changed(on); }
                     auto-close-seconds-changed(v) => { root.auto-close-seconds-changed(v); }
@@ -426,7 +456,7 @@ export component MainWindow inherits Window {
                 lifted: true;
                 drop-shadow-offset-y: 12px;
                 drop-shadow-blur: 28px;
-                drop-shadow-color: rgba(0, 0, 0, 0.55);
+                drop-shadow-color: Palette.lift-shadow;
             }
             menu := DeviceMenu {
                 general-low: root.low;
@@ -482,7 +512,7 @@ export component MainWindow inherits Window {
             DropdownLayer { }
             // Over everything, the rest of the window out of reach until it is answered
             if root.admin-dialog: Rectangle {
-                background: #000000A0;
+                background: Palette.dialog-scrim;
                 TouchArea { }
                 Card {
                     x: 20px;
@@ -493,7 +523,7 @@ export component MainWindow inherits Window {
                     border-color: Palette.popup-stroke;
                     drop-shadow-offset-y: 8px;
                     drop-shadow-blur: 24px;
-                    drop-shadow-color: rgba(0, 0, 0, 0.5);
+                    drop-shadow-color: Palette.shadow;
                     dialog := VerticalLayout {
                         padding: 20px;
                         spacing: 12px;

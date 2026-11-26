@@ -13,10 +13,11 @@ use batterytray::providers::{self, Provider};
 use batterytray::reading::{DeviceKind, DeviceReading};
 use batterytray::rows::{self, AlertItem, AlertManager, ChargeDoneWatcher, DeviceRow};
 use batterytray::settings::{hotkey_valid, AppSettings, DEFAULT_HOTKEY};
+use batterytray::sounds::{self, Choice};
 use batterytray::state::StateStore;
 use batterytray::update_service::{Event, Stage, Status, UpdateService};
 use batterytray::updater::{ReleaseInfo, Version};
-use batterytray::view::{self, DeviceView, Rgb};
+use batterytray::view::{self, DeviceView};
 use batterytray::{feedback, sys};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -147,7 +148,7 @@ impl MacApp {
         };
         let mut effects = Vec::new();
         if updated_from.is_some() {
-            effects.push(notice(&t("notice.updated.title"), &tf("notice.updated.text", &[&version])));
+            effects.push(notice(&t("notice.updated.title"), &tf("notice.updated.text", &[&version]), false));
         }
         (app, effects)
     }
@@ -199,8 +200,11 @@ impl MacApp {
             match event {
                 Event::Changed => {}
                 // Announced once per version when it can't install by itself
-                Event::Announce(release) => effects
-                    .push(notice(&tf("notice.available.title", &[&release.version]), &t("notice.available.text"))),
+                Event::Announce(release) => effects.push(notice(
+                    &tf("notice.available.title", &[&release.version]),
+                    &t("notice.available.text"),
+                    false,
+                )),
                 Event::Installed(release) => {
                     effects.push(self.restart_into_update(&release));
                     break;
@@ -226,10 +230,13 @@ impl MacApp {
         effects
     }
 
-    /// A plain notification: unlike a low battery, nothing needs doing right away.
+    /// A plain notification: unlike a low battery, nothing needs doing right away. With the system's sound chosen for
+    /// it, the sound is the notification's own, for macOS to play; any other sound is the app's to play.
     fn announce_charged(&mut self) -> Effects {
         let rows = self.rows();
+        let choice = self.settings.sound_for(sounds::Event::Charged);
         let mut effects = Vec::new();
+        let mut announced = false;
         for row in self.charge_done.finished(&rows) {
             let level = row.current.as_ref().and_then(|c| c.level).unwrap_or(100);
             log::write(&format!("charged: {} {level}%", row.name));
@@ -237,9 +244,73 @@ impl MacApp {
             if !self.settings.notify_charged || ds.hidden || !ds.alerts {
                 continue;
             }
-            effects.push(notice(&t("notice.charged.title"), &tf("notice.charged.text", &[&row.name, &level])));
+            let text = tf("notice.charged.text", &[&row.name, &level]);
+            effects.push(notice(&t("notice.charged.title"), &text, choice == Choice::System));
+            announced = true;
+        }
+        if announced && choice != Choice::System {
+            effects.extend(self.sound_effect(sounds::Event::Charged));
         }
         effects
+    }
+
+    /// The sound chosen for an event, for the app to play: the system's own for the event ("system"), or a file with
+    /// the seconds it sounds - one of macOS' sounds by name, or one of the user's. None for no sound. A file that is
+    /// gone is the system's sound.
+    fn sound_effect(&self, event: sounds::Event) -> Option<Value> {
+        let system = || json!({ "type": "sound", "event": event.name(), "system": true });
+        let file = |path: PathBuf, length: Duration| {
+            json!({
+                "type": "sound", "event": event.name(), "path": path.display().to_string(),
+                "seconds": length.as_secs_f64(),
+            })
+        };
+        Some(match self.settings.sound_for(event) {
+            Choice::None => return None,
+            Choice::System => system(),
+            Choice::Named(id) => match sounds::named_path(id).filter(|path| path.is_file()) {
+                Some(path) => {
+                    let length = sounds::plays_for(&path);
+                    file(path, length)
+                }
+                None => {
+                    log::write(&format!("macOS' sound {id} is gone: the system's sound instead"));
+                    system()
+                }
+            },
+            Choice::File(name) => {
+                let path = sounds::path_of(&name);
+                if path.is_file() {
+                    let length = sounds::plays_for(&path);
+                    file(path, length)
+                } else {
+                    log::write(&format!("sound {name} is gone: the system's sound instead"));
+                    system()
+                }
+            }
+        })
+    }
+
+    /// A sound chosen in the settings: kept, and played once so that the choice is heard.
+    pub fn set_sound(&mut self, event: sounds::Event, setting: &str) -> Effects {
+        let choice = Choice::parse(setting);
+        let mut effects = self.edit(|s| s.set_sound(event, &choice));
+        effects.extend(self.sound_effect(event));
+        effects
+    }
+
+    /// A file picked for a sound in the open panel: copied into the Sounds folder and chosen. One the app can't take
+    /// (not a WAV or an MP3, too big, unreadable) leaves the sound as it was, and the app says so.
+    pub fn add_sound(&mut self, event: sounds::Event, file: &str) -> Effects {
+        match sounds::import(std::path::Path::new(file)) {
+            Ok(name) => self.set_sound(event, &Choice::File(name).setting()),
+            Err(e) => {
+                log::write(&format!("sound file not taken: {e:?}"));
+                vec![json!({
+                    "type": "sound_refused", "title": t("sounds.error.title"), "text": t("sounds.error.text"),
+                })]
+            }
+        }
     }
 
     /// The reminder: opened, changed or closed as the devices and the user's answers have it; a sound when something
@@ -259,9 +330,8 @@ impl MacApp {
         if fresh {
             let names = due.iter().map(|d| format!("{} {}%", d.name, d.level)).collect::<Vec<_>>().join(", ");
             log::write(&format!("alert: {names}"));
-            if self.settings.sound {
-                effects.push(json!({ "type": "sound", "critical": due.iter().any(|d| d.critical) }));
-            }
+            let critical = due.iter().any(|d| d.critical);
+            effects.extend(self.sound_effect(if critical { sounds::Event::Critical } else { sounds::Event::Low }));
         }
         self.alert = Some(due);
         self.sync_window_open();
@@ -322,9 +392,8 @@ impl MacApp {
             });
         }
         let mut effects = vec![alert(&sample, &self.settings, true)];
-        if self.settings.sound {
-            effects.push(json!({ "type": "sound", "critical": sample.iter().any(|s| s.critical) }));
-        }
+        let critical = sample.iter().any(|s| s.critical);
+        effects.extend(self.sound_effect(if critical { sounds::Event::Critical } else { sounds::Event::Low }));
         effects
     }
 
@@ -353,6 +422,13 @@ impl MacApp {
         if let Some(m) = &self.monitor {
             m.devices_changed();
         }
+    }
+
+    /// A theme picked in the settings: "light", "dark", or "auto" to follow the system. The app sets its appearance
+    /// from the settings it is sent.
+    pub fn set_theme(&mut self, setting: &str) -> Effects {
+        self.settings.theme = setting.to_string();
+        self.settings_changed()
     }
 
     pub fn set_language(&mut self, setting: &str) -> Effects {
@@ -487,7 +563,7 @@ impl MacApp {
                     "name": r.name,
                     "kind": kind(r.kind()),
                     "level": level,
-                    "color": rgb(view::level_color(c.level, c.charging, true, &r.id, s)),
+                    "tone": view::level_tone(c.level, c.charging, true, &r.id, s).name(),
                     "charging": c.charging,
                 }))
             })
@@ -498,13 +574,42 @@ impl MacApp {
             .map(|e| {
                 json!({
                     "kind": kind(e.kind), "name": e.name, "show_name": e.show_name, "level": e.level,
-                    "color": rgb(e.color), "power": e.power,
+                    "tone": e.tone.name(), "power": e.power,
                 })
             })
+            .collect();
+        let bar: Vec<Value> = tray
+            .bar
+            .iter()
+            .map(|b| json!({ "kind": kind(b.kind), "level": b.level, "tone": b.tone.name(), "power": b.power }))
             .collect();
         let needs = t("d.needsAdmin");
         let needs_permission = !hid::input_monitoring_allowed()
             && rows.iter().any(|r| r.current.as_ref().and_then(|c| c.detail.as_deref()) == Some(needs.as_str()));
+        // The sounds a menu offers, in its three parts: the system's and silence, macOS' sounds by name, the user's files
+        let sound_list = sounds::choices(&sounds::files());
+        let sound_menu: Vec<Value> = sound_list
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let group = sounds::BREAKS.iter().filter(|&&b| i >= b).count();
+                json!({ "id": c.setting(), "name": c.label(), "group": group })
+            })
+            .collect();
+        // A file that is gone from the folder isn't in the menu: its row shows the system's sound, which it plays
+        let chosen = |event: sounds::Event| {
+            let choice = s.sound_for(event);
+            let shown = if sound_list.contains(&choice) { choice } else { Choice::System };
+            shown.setting()
+        };
+        // Under a row, when only the beginning of its file will sound
+        let sound_notes: Vec<String> = sounds::Event::ALL
+            .iter()
+            .map(|&event| match s.sound_for(event) {
+                Choice::File(name) if sounds::is_cut(&sounds::path_of(&name)) => t("sounds.long"),
+                _ => String::new(),
+            })
+            .collect();
         json!({
             "lang": loc::current(),
             "version": Version::current().to_string(),
@@ -513,14 +618,19 @@ impl MacApp {
                 "hidden": lists.hidden, "none_online": lists.none_online,
             },
             "updated_text": view::updated_text(&rows),
-            "tray": { "label": tray.label, "color": rgb(tray.color), "tooltip": tray.tooltip, "items": menu },
+            "tray": {
+                "label": tray.label, "tone": tray.tone.name(), "tooltip": tray.tooltip, "items": menu, "bar": bar,
+            },
             "settings": {
-                "low": s.low_percent, "critical": s.critical_percent, "repeat": s.repeat_minutes, "sound": s.sound,
+                "low": s.low_percent, "critical": s.critical_percent, "repeat": s.repeat_minutes,
+                "sound_low": chosen(sounds::Event::Low), "sound_critical": chosen(sounds::Event::Critical),
+                "sound_charged": chosen(sounds::Event::Charged), "sound_notes": sound_notes,
                 "notify_charged": s.notify_charged, "auto_close": s.auto_close,
                 "auto_close_seconds": s.auto_close_seconds, "auto_update": s.auto_update,
                 "overlay_enabled": s.overlay_enabled, "overlay_mode": s.overlay_mode,
                 "overlay_corner": s.overlay_corner, "overlay_names": s.overlay_show_names,
-                "language": s.language, "autostart_banner_dismissed": s.autostart_banner_dismissed,
+                "menu_bar_devices": s.menu_bar_devices,
+                "language": s.language, "theme": s.theme, "autostart_banner_dismissed": s.autostart_banner_dismissed,
             },
             "autostart": autostart::is_registered(),
             "update": {
@@ -530,6 +640,7 @@ impl MacApp {
                 "banner_button_visible": update.banner_button_visible,
             },
             "overlay": { "entries": overlay, "shortcut": shortcut(s.overlay_hotkey_key, s.overlay_hotkey_modifiers) },
+            "sounds": sound_menu,
             "needs_permission": needs_permission,
         })
     }
@@ -563,8 +674,10 @@ impl MacApp {
     }
 }
 
-fn notice(title: &str, text: &str) -> Value {
-    json!({ "type": "notice", "title": title, "text": text })
+/// A notification; `system_sound`: with the sound macOS gives its notifications (the others are silent, as the app's
+/// notices always were).
+fn notice(title: &str, text: &str, system_sound: bool) -> Value {
+    json!({ "type": "notice", "title": title, "text": text, "system_sound": system_sound })
 }
 
 /// The reminder with these devices; `test`: the sample, which a click only closes. "auto_close": the seconds after
@@ -593,7 +706,7 @@ fn alert(due: &[AlertItem], settings: &AppSettings, test: bool) -> Value {
 fn device(d: &DeviceView) -> Value {
     json!({
         "id": d.id, "name": d.name, "kind": kind(d.kind), "subtitle": d.subtitle, "connected": d.connected,
-        "pinned": d.pinned, "level_text": d.level_text, "color": rgb(d.color), "charging": d.charging,
+        "pinned": d.pinned, "level_text": d.level_text, "tone": d.tone.name(), "charging": d.charging,
         "indeterminate": d.indeterminate, "fill": d.fill, "custom_name": d.custom_name, "own_name": d.own_name,
         "source": d.source, "alerts": d.alerts, "low": d.low, "critical": d.critical, "own_levels": d.own_levels,
     })
@@ -620,8 +733,4 @@ pub fn kind(kind: DeviceKind) -> &'static str {
         DeviceKind::Phone => "phone",
         DeviceKind::Tablet => "tablet",
     }
-}
-
-fn rgb((r, g, b): Rgb) -> Value {
-    json!([r, g, b])
 }

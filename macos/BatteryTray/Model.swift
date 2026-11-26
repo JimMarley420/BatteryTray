@@ -12,7 +12,18 @@ struct Snapshot: Decodable, Equatable {
     var autostart: Bool
     var update: Update
     var overlay: Overlay
+    /// The sounds every sound's menu offers
+    var sounds: [SoundOption]
     var needsPermission: Bool
+}
+
+/// A sound of the menus. `id` is what the settings keep: "system", "none", one of macOS' sounds by name ("glass") or a
+/// file of the user's ("file:name.mp3"). `group` is its part of the menu, a line between the parts: 0 the system's
+/// sound and silence, 1 macOS' sounds by name, 2 the user's files.
+struct SoundOption: Decodable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var group: Int
 }
 
 struct Devices: Decodable, Equatable {
@@ -32,7 +43,8 @@ struct Device: Decodable, Equatable, Identifiable {
     var connected: Bool
     var pinned: Bool
     var levelText: String
-    var color: [Int]
+    /// What the level says, which picks its color (`Tone`): "good", "warn", "bad", "charge" or "offline"
+    var tone: String
     var charging: Bool
     var indeterminate: Bool
     var fill: Double
@@ -47,16 +59,28 @@ struct Device: Decodable, Equatable, Identifiable {
 
 struct Tray: Decodable, Equatable {
     var label: String
-    var color: [Int]
+    var tone: String
     var tooltip: String
     var items: [TrayItem]
+    /// The devices the menu bar item shows, in their order
+    var bar: [BarSlot]
+}
+
+/// One device in the menu bar item (view.rs: BarSlot): its kind's symbol, then its level without "%".
+struct BarSlot: Decodable, Equatable {
+    var kind: String
+    /// "37", "≈15", or empty when the device only says it is charging
+    var level: String
+    var tone: String
+    /// Charging or full on its charger: a lightning follows the level
+    var power: Bool
 }
 
 struct TrayItem: Decodable, Equatable {
     var name: String
     var kind: String
     var level: String
-    var color: [Int]
+    var tone: String
     var charging: Bool
 }
 
@@ -64,7 +88,13 @@ struct Settings: Decodable, Equatable {
     var low: Int
     var critical: Int
     var repeatMinutes: Int
-    var sound: Bool
+    /// What sounds when the reminder comes at the reminder level, at the critical level, and with the "charged" notice:
+    /// a `SoundOption.id`
+    var soundLow: String
+    var soundCritical: String
+    var soundCharged: String
+    /// What is said under each of those three rows, "" for nothing
+    var soundNotes: [String]
     var notifyCharged: Bool
     var autoClose: Bool
     var autoCloseSeconds: Int
@@ -73,12 +103,17 @@ struct Settings: Decodable, Equatable {
     var overlayMode: Int
     var overlayCorner: Int
     var overlayNames: Bool
+    /// How many devices the menu bar item shows at most, 1-5
+    var menuBarDevices: Int
     var language: String
+    /// "light", "dark", or "auto" to follow the system's appearance
+    var theme: String
     var autostartBannerDismissed: Bool
 
     enum CodingKeys: String, CodingKey {
-        case low, critical, sound, notifyCharged, autoClose, autoCloseSeconds, autoUpdate, overlayEnabled, overlayMode,
-             overlayCorner, overlayNames, language, autostartBannerDismissed
+        case low, critical, soundLow, soundCritical, soundCharged, soundNotes, notifyCharged, autoClose, autoCloseSeconds,
+             autoUpdate, overlayEnabled, overlayMode, overlayCorner, overlayNames, menuBarDevices, language, theme,
+             autostartBannerDismissed
         case repeatMinutes = "repeat"
     }
 }
@@ -105,7 +140,7 @@ struct OverlayEntry: Decodable, Equatable, Hashable {
     var name: String
     var showName: Bool
     var level: String
-    var color: [Int]
+    var tone: String
     var power: Bool
 }
 
@@ -204,15 +239,41 @@ final class AppModel: ObservableObject {
     }
 }
 
-extension Array where Element == Int {
-    var color: Color {
-        count == 3 ? Color(red: Double(self[0]) / 255, green: Double(self[1]) / 255, blue: Double(self[2]) / 255) : .gray
+/// A level's color by its tone (view.rs: Tone): in the dark appearance the bright colors the app always had, the same
+/// as the Windows app's; in the light one Apple's own system colors in their increased contrast variant (Human Interface
+/// Guidelines, Color), the ones meant for text: they read on the see-through reminder and menus too.
+enum Tone {
+    /// The tone's color in the light and in the dark appearance, as 0xRRGGBB in sRGB
+    private static func shades(_ tone: String) -> (light: Int, dark: Int)? {
+        switch tone {
+        case "good": return (light: 0x008932, dark: 0x6CCB5F)
+        case "warn": return (light: 0xC55300, dark: 0xF7C04A)
+        case "bad": return (light: 0xE9152D, dark: 0xFF6B6B)
+        case "charge": return (light: 0x1E6EF4, dark: 0x60CDFF)
+        case "offline": return (light: 0x8A8A8A, dark: 0x7A7A7A)
+        default: return nil
+        }
     }
 
-    var nsColor: NSColor {
-        count == 3
-            ? NSColor(srgbRed: CGFloat(self[0]) / 255, green: CGFloat(self[1]) / 255, blue: CGFloat(self[2]) / 255, alpha: 1)
-            : .secondaryLabelColor
+    private static func srgb(_ hex: Int) -> NSColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    }
+
+    /// The tone's color in the appearance it is drawn in, picked each time it is drawn: a window's, or for the menu bar
+    /// item's number the menu bar's own, which isn't always the windows' one. An unknown tone is grey.
+    static func nsColor(_ tone: String) -> NSColor {
+        guard let rgb = shades(tone) else { return .secondaryLabelColor }
+        return NSColor(name: nil) { appearance in
+            Self.srgb(appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb.dark : rgb.light)
+        }
+    }
+
+    /// The same for SwiftUI. `alwaysDark`: the dark appearance's color whatever the window's, for the overlay, which is
+    /// dark over anything.
+    static func color(_ tone: String, alwaysDark: Bool = false) -> Color {
+        guard alwaysDark, let rgb = shades(tone) else { return Color(nsColor: nsColor(tone)) }
+        return Color(nsColor: srgb(rgb.dark))
     }
 }
 

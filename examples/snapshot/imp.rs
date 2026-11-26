@@ -1,5 +1,6 @@
 //! Renders the windows with sample data to PNG files, off screen, with the same software renderer the app uses:
-//! `cargo run --example snapshot -- <folder> [ru|en|zh] [scale]`. For checking the layout without running the app.
+//! `cargo run --example snapshot -- <folder> [ru|en|zh] [scale] [light|dark]` (dark unless told; the overlay is dark
+//! either way, as in the app). For checking the layout without running the app.
 //! Each picture of the main window is a window of its own, so nothing opened or typed for one shows in the next. Its
 //! devices go through the app's own code, in the language asked for.
 
@@ -10,10 +11,12 @@ use batterytray::main_view;
 use batterytray::reading::{DeviceKind, DeviceReading};
 use batterytray::rows::{self, DeviceRow};
 use batterytray::settings::{AppSettings, DEFAULT_HOTKEY};
+use batterytray::sounds;
 use batterytray::updater::Version;
+use batterytray::view::Tone;
 use chrono::{DateTime, Local, TimeDelta};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType};
-use slint::platform::{Platform, WindowAdapter, WindowEvent};
+use slint::platform::{Platform, PointerEventButton, WindowAdapter, WindowEvent};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -80,7 +83,9 @@ fn render(window: &MinimalSoftwareWindow, scale: f32, logical: (f32, f32), path:
     println!("{}", path.display());
 }
 
-fn rgb(r: u8, g: u8, b: u8) -> slint::Color {
+/// A level's colour in the overlay, which is always dark
+fn overlay_color(tone: Tone) -> slint::Color {
+    let (r, g, b) = tone.rgb(false);
     slint::Color::from_rgb_u8(r, g, b)
 }
 
@@ -128,6 +133,8 @@ fn sample_rows(settings: &AppSettings, now: DateTime<Local>) -> Vec<DeviceRow> {
 
 pub fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let light = args.iter().any(|a| a == "light");
+    let args: Vec<String> = args.into_iter().filter(|a| a != "light" && a != "dark").collect();
     let folder = std::path::PathBuf::from(args.first().cloned().unwrap_or_else(|| ".".into()));
     let language = args.get(1).map(String::as_str).unwrap_or("ru");
     loc::set(language);
@@ -157,6 +164,7 @@ pub fn main() {
         let main = MainWindow::new().unwrap();
         let window = last();
         gui::setup_texts(&main.global::<gui::T>());
+        gui::set_theme(&main, light);
         let lists = main_view::device_lists(rows, &settings, now);
         main.set_pinned_devices(ModelRc::from(lists.pinned.as_slice()));
         main.set_connected_devices(ModelRc::from(lists.connected.as_slice()));
@@ -178,6 +186,7 @@ pub fn main() {
         main.set_autostart(true);
 
         main.set_language(language.into());
+        main.set_theme(settings.theme.clone().into());
         main.set_update_status(tf("upd.uptodate", &[&version]).into());
         main.set_update_checked_text(tf("upd.checked", &[&now.format("%H:%M")]).into());
         main.set_install_text(tf("upd.install", &[&latest]).into());
@@ -185,7 +194,14 @@ pub fn main() {
         main.set_low(settings.low_percent);
         main.set_critical(settings.critical_percent);
         main.set_repeat(settings.repeat_minutes);
-        main.set_sound(settings.sound);
+        // The sounds as on a first run: the system's for each, and no files of the user's in the list
+        let sound_list = sounds::choices(&[]);
+        let sound_labels: Vec<SharedString> =
+            sound_list.iter().map(|c| c.label()).chain([t("sounds.file")]).map(SharedString::from).collect();
+        main.set_sound_options(ModelRc::new(VecModel::from(sound_labels)));
+        main.set_sound_break_a(sounds::BREAKS[0] as i32);
+        main.set_sound_break_b(sounds::BREAKS[1] as i32);
+        main.set_sound_none(sound_list.iter().position(|c| *c == sounds::Choice::None).unwrap_or(0) as i32);
         main.set_notify_charged(settings.notify_charged);
         main.set_overlay_enabled(true);
         let keys: Vec<SharedString> = hotkey::parts(shortcut).into_iter().map(SharedString::from).collect();
@@ -230,7 +246,9 @@ pub fn main() {
     main.invoke_start_rename(BARRACUDA.into());
     render(&window, scale, size, &folder.join("main-devices-rename.png"));
 
+    // No update banner: with it the hidden devices are below the window's edge
     let (main, window) = open(&rows);
+    main.set_banner_visible(false);
     main.set_hidden_open(true);
     render(&window, scale, size, &folder.join("main-devices-hidden.png"));
 
@@ -270,6 +288,59 @@ pub fn main() {
     main.set_auto_close_seconds(10);
     render(&window, scale, size, &folder.join("main-settings-reminders-autoclose.png"));
 
+    // The sounds, in a window tall enough for the whole page: a file of the user's that is longer than a sound may be,
+    // a sound being played, and silence
+    let tall = (size.0, 940.0);
+    let with_file = sounds::choices(&["low-battery-voice-line.mp3".into()]);
+    let file_labels: Vec<SharedString> =
+        with_file.iter().map(|c| c.label()).chain([t("sounds.file")]).map(SharedString::from).collect();
+    let sounds_page = |main: &MainWindow| {
+        main.set_screen(1);
+        main.set_settings_tab(1);
+        main.set_sound_options(ModelRc::new(VecModel::from(file_labels.clone())));
+        main.set_sound_low(with_file.len() as i32 - 1);
+        main.set_sound_critical(sounds::BREAKS[0] as i32 + 3);
+        main.set_sound_charged(1);
+    };
+    let (main, window) = open(&rows);
+    sounds_page(&main);
+    main.set_sound_playing(1);
+    main.set_sound_notes(ModelRc::new(VecModel::from(vec![t("sounds.long").into(), "".into(), "".into()])));
+    render(&window, scale, tall, &folder.join("main-settings-sounds.png"));
+
+    // A file the app couldn't take, said under its row; the "charged" notice off, and its sound's row with it
+    let (main, window) = open(&rows);
+    sounds_page(&main);
+    main.set_notify_charged(false);
+    main.set_sound_refused(0);
+    main.set_sound_notes(ModelRc::new(VecModel::from(vec![t("sounds.error").into(), "".into(), "".into()])));
+    render(&window, scale, tall, &folder.join("main-settings-sounds-refused.png"));
+
+    // The list a sound is chosen from, opened by a click on the first row's button
+    let (main, window) = open(&rows);
+    sounds_page(&main);
+    lay_out(&window, scale, tall);
+    let button = slint::LogicalPosition::new(283.0, 510.0);
+    window.dispatch_event(WindowEvent::PointerPressed { position: button, button: PointerEventButton::Left });
+    window.dispatch_event(WindowEvent::PointerReleased { position: button, button: PointerEventButton::Left });
+    render(&window, scale, tall, &folder.join("main-settings-sounds-list.png"));
+
+    // The ✕ of the user's file in that list (its last option, 32 a row down from the first), and what the app does
+    // then: the file is out of the options and the row has the system's sound. The list stays open
+    let asked = Rc::new(Cell::new(-1));
+    let heard = asked.clone();
+    main.on_sound_removed(move |index| heard.set(index));
+    let remove = slint::LogicalPosition::new(346.0, 569.0 + 32.0 * (with_file.len() - 1) as f32);
+    window.dispatch_event(WindowEvent::PointerPressed { position: remove, button: PointerEventButton::Left });
+    window.dispatch_event(WindowEvent::PointerReleased { position: remove, button: PointerEventButton::Left });
+    lay_out(&window, scale, tall);
+    assert_eq!(asked.get(), with_file.len() as i32 - 1, "the ✕ asks for the file's place in the list, once");
+    let without_file: Vec<SharedString> =
+        sounds::choices(&[]).iter().map(|c| c.label()).chain([t("sounds.file")]).map(SharedString::from).collect();
+    main.set_sound_options(ModelRc::new(VecModel::from(without_file)));
+    main.set_sound_low(0);
+    render(&window, scale, tall, &folder.join("main-settings-sounds-removed.png"));
+
     let (main, window) = open(&rows);
     main.set_screen(1);
     main.set_settings_tab(2);
@@ -279,6 +350,7 @@ pub fn main() {
     let alert = AlertWindow::new().unwrap();
     let window = last();
     gui::setup_texts(&alert.global::<gui::T>());
+    gui::set_theme(&alert, light);
     alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![
         AlertRow {
             glyph: "\u{E7F6}".into(),
@@ -307,6 +379,7 @@ pub fn main() {
     let alert = AlertWindow::new().unwrap();
     let window = last();
     gui::setup_texts(&alert.global::<gui::T>());
+    gui::set_theme(&alert, light);
     alert.set_items(ModelRc::from(Rc::new(VecModel::from(vec![AlertRow {
         glyph: "\u{E7F6}".into(),
         name: "Razer Barracuda X".into(),
@@ -331,7 +404,7 @@ pub fn main() {
             name: "Razer Barracuda X".into(),
             show_name: false,
             level: "37%".into(),
-            color: rgb(0x6C, 0xCB, 0x5F),
+            color: overlay_color(Tone::Good),
             power: false,
         },
         OverlayEntry {
@@ -339,7 +412,7 @@ pub fn main() {
             name: "Attack Shark R3".into(),
             show_name: true,
             level: "".into(),
-            color: rgb(0x60, 0xCD, 0xFF),
+            color: overlay_color(Tone::Charge),
             power: true,
         },
         OverlayEntry {
@@ -347,7 +420,7 @@ pub fn main() {
             name: "VXE R1".into(),
             show_name: true,
             level: "82%".into(),
-            color: rgb(0x6C, 0xCB, 0x5F),
+            color: overlay_color(Tone::Good),
             power: false,
         },
     ];

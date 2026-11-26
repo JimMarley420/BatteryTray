@@ -3,7 +3,7 @@
 //! The Windows windows (Slint) and the macOS app (SwiftUI, through macos/core) both draw from these.
 
 use crate::loc::{self, t, tf};
-use crate::reading::DeviceKind;
+use crate::reading::{DeviceKind, DeviceReading};
 use crate::rows::{self, Block, DeviceRow};
 use crate::settings::AppSettings;
 use crate::update_service::{Stage, Status};
@@ -12,20 +12,60 @@ use chrono::{DateTime, Local};
 
 pub type Rgb = (u8, u8, u8);
 
-/// The level color a device shows at: its own thresholds when set, the global ones otherwise.
-pub fn level_color(level: Option<i32>, charging: bool, online: bool, id: &str, s: &AppSettings) -> Rgb {
-    const GOOD: Rgb = (0x6C, 0xCB, 0x5F);
-    const WARN: Rgb = (0xF7, 0xC0, 0x4A);
-    const BAD: Rgb = (0xFF, 0x6B, 0x6B);
-    const CHARGE: Rgb = (0x60, 0xCD, 0xFF);
-    const OFFLINE: Rgb = (0x7A, 0x7A, 0x7A);
+/// What a level says, which picks its color: each app draws a tone in the color its theme (light or dark) has for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Tone {
+    Good,
+    Warn,
+    Bad,
+    Charge,
+    Offline,
+}
+
+impl Tone {
+    /// The Windows app's color for the tone: Windows 11's own, the dark theme's bright ones, the light theme's dark
+    /// enough to read as text on a light background (4.5:1 on its cards).
+    pub fn rgb(self, light: bool) -> Rgb {
+        match (self, light) {
+            (Tone::Good, false) => (0x6C, 0xCB, 0x5F),
+            (Tone::Warn, false) => (0xF7, 0xC0, 0x4A),
+            (Tone::Bad, false) => (0xFF, 0x6B, 0x6B),
+            (Tone::Charge, false) => (0x60, 0xCD, 0xFF),
+            (Tone::Offline, false) => (0x7A, 0x7A, 0x7A),
+            (Tone::Good, true) => (0x0F, 0x7B, 0x0F),
+            (Tone::Warn, true) => (0x9D, 0x5D, 0x00),
+            (Tone::Bad, true) => (0xC4, 0x2B, 0x1C),
+            (Tone::Charge, true) => (0x00, 0x5F, 0xB8),
+            (Tone::Offline, true) => (0x8A, 0x8A, 0x8A),
+        }
+    }
+
+    /// Its name for the macOS app
+    pub fn name(self) -> &'static str {
+        match self {
+            Tone::Good => "good",
+            Tone::Warn => "warn",
+            Tone::Bad => "bad",
+            Tone::Charge => "charge",
+            Tone::Offline => "offline",
+        }
+    }
+
+    /// Its number for the Windows windows (Slint has no Rust enums): the order of the variants
+    pub fn index(self) -> i32 {
+        self as i32
+    }
+}
+
+/// The tone a device's level shows in: its own thresholds when set, the global ones otherwise.
+pub fn level_tone(level: Option<i32>, charging: bool, online: bool, id: &str, s: &AppSettings) -> Tone {
     match level {
-        _ if !online => OFFLINE,
-        _ if charging => CHARGE,
-        None => OFFLINE,
-        Some(l) if l <= s.critical_for(id) => BAD,
-        Some(l) if l <= s.low_for(id) => WARN,
-        Some(_) => GOOD,
+        _ if !online => Tone::Offline,
+        _ if charging => Tone::Charge,
+        None => Tone::Offline,
+        Some(l) if l <= s.critical_for(id) => Tone::Bad,
+        Some(l) if l <= s.low_for(id) => Tone::Warn,
+        Some(_) => Tone::Good,
     }
 }
 
@@ -40,7 +80,7 @@ pub struct DeviceView {
     pub connected: bool,
     pub pinned: bool,
     pub level_text: String,
-    pub color: Rgb,
+    pub tone: Tone,
     pub charging: bool,
     /// Charging with no readable level: the bar is drawn full and faint, the lightning alone says it all
     pub indeterminate: bool,
@@ -108,7 +148,7 @@ pub fn device_lists(rows: &[DeviceRow], s: &AppSettings, now: DateTime<Local>) -
 pub fn device_view(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> DeviceView {
     let mut parts = Vec::new();
     let (mut level, mut estimate, mut unknown, mut charging) = (None, false, false, false);
-    let mut color = (0x7A, 0x7A, 0x7A);
+    let mut tone = Tone::Offline;
     if row.online() {
         let cur = row.current.as_ref().expect("online rows have a reading");
         level = cur.level;
@@ -124,7 +164,7 @@ pub fn device_view(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> De
             parts.push(detail.clone());
         }
         charging = cur.charging;
-        color = level_color(level, cur.charging, true, &row.id, s);
+        tone = level_tone(level, cur.charging, true, &row.id, s);
     } else {
         // The reason, when the provider knows it ("asleep or off"), reads better than a bare "Not connected"
         let why = row.current.as_ref().and_then(|c| c.detail.clone()).filter(|d| !d.is_empty());
@@ -156,7 +196,7 @@ pub fn device_view(row: &DeviceRow, s: &AppSettings, now: DateTime<Local>) -> De
             None if unknown => String::new(),
             None => "—".into(),
         },
-        color,
+        tone,
         charging,
         indeterminate: unknown,
         fill: (level.unwrap_or(0) as f32 / 100.0).clamp(0.0, 1.0),
@@ -249,15 +289,28 @@ pub fn update_view(u: &Status) -> UpdateView {
     }
 }
 
-/// The tray icon (the menu bar item on macOS): a number in a color, and a line per device.
+/// The tray icon: a number in a color, and a line per device. The menu bar item on macOS shows `bar` instead.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayView {
     pub label: String,
-    pub color: Rgb,
+    pub tone: Tone,
     /// One line per device on the air, in the list's order; empty when no level is known
     pub lines: Vec<String>,
     /// The lines joined, or "no data"
     pub tooltip: String,
+    /// macOS: the devices in the menu bar item, as many as the settings say at most
+    pub bar: Vec<BarSlot>,
+}
+
+/// One device in the menu bar item on macOS: its kind's symbol, then its level without "%".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BarSlot {
+    pub kind: DeviceKind,
+    /// "37", "≈15" for an estimate, empty when the device only says it is charging
+    pub level: String,
+    pub tone: Tone,
+    /// Charging or full on its charger: a lightning follows the level
+    pub power: bool,
 }
 
 pub fn tray_view(rows: &[DeviceRow], s: &AppSettings) -> TrayView {
@@ -301,11 +354,44 @@ pub fn tray_view(rows: &[DeviceRow], s: &AppSettings) -> TrayView {
         .filter(|(_, charging, _)| !charging)
         .min_by_key(|(r, _, l)| (std::cmp::Reverse(urgency(&r.id, *l)), *l))
         .or_else(|| live.iter().min_by_key(|(_, _, l)| *l));
-    let (label, color) = match pick {
-        None => ("--".to_string(), (0x80, 0x80, 0x80)),
-        Some((r, charging, l)) => (l.to_string(), level_color(Some(*l), *charging, true, &r.id, s)),
+    let (label, tone) = match pick {
+        None => ("--".to_string(), Tone::Offline),
+        Some((r, charging, l)) => (l.to_string(), level_tone(Some(*l), *charging, true, &r.id, s)),
     };
-    TrayView { label, color, lines, tooltip }
+    let bar = bar_slots(&shown, s);
+    TrayView { label, tone, lines, tooltip, bar }
+}
+
+/// The devices in the menu bar item: the first ones of the list that have a level or are charging, at most as many as
+/// the settings say. One below its own reminder level that didn't get a place takes the last place of one that isn't
+/// low, the least charged first, so a device about to run out is never left out.
+fn bar_slots(shown: &[&DeviceRow], s: &AppSettings) -> Vec<BarSlot> {
+    let readable: Vec<(&DeviceRow, &DeviceReading)> = shown
+        .iter()
+        .filter_map(|r| r.current.as_ref().filter(|c| c.level.is_some() || c.charging).map(|c| (*r, c)))
+        .collect();
+    let low = |(r, c): &(&DeviceRow, &DeviceReading)| !c.charging && c.level.is_some_and(|l| l <= s.low_for(&r.id));
+    let places = s.menu_bar_devices.clamp(1, 5) as usize;
+    let mut picked: Vec<_> = readable.iter().take(places).copied().collect();
+    let mut left_out: Vec<_> = readable.iter().skip(places).copied().filter(low).collect();
+    left_out.sort_by_key(|(_, c)| c.level);
+    for device in left_out {
+        let Some(place) = picked.iter().rposition(|p| !low(p)) else { break };
+        picked.remove(place);
+        picked.push(device);
+    }
+    picked
+        .into_iter()
+        .map(|(r, c)| {
+            let power = c.charging || c.full_on_charger;
+            BarSlot {
+                kind: r.kind(),
+                level: c.level.map(|l| format!("{}{l}", if c.estimate { "≈" } else { "" })).unwrap_or_default(),
+                tone: level_tone(c.level, power, true, &r.id, s),
+                power,
+            }
+        })
+        .collect()
 }
 
 /// A name as the tooltip has room for it.
@@ -336,7 +422,7 @@ pub struct OverlayEntryView {
     pub name: String,
     pub show_name: bool,
     pub level: String,
-    pub color: Rgb,
+    pub tone: Tone,
     /// Charging or full on its charger: the lightning follows the level
     pub power: bool,
 }
@@ -356,7 +442,7 @@ pub fn overlay_entries(rows: &[DeviceRow], s: &AppSettings) -> Vec<OverlayEntryV
                     None if power => String::new(),
                     None => "—".into(),
                 },
-                color: level_color(c.level, power, true, &row.id, s),
+                tone: level_tone(c.level, power, true, &row.id, s),
                 power,
             }
         })
@@ -403,7 +489,7 @@ mod tests {
         assert_eq!((pad.connected, pad.pinned, pad.level_text.as_str()), (false, true, "—"));
         assert!(pad.subtitle.starts_with("Not connected · last: 50%"), "{}", pad.subtitle);
         let keyboard = &lists.connected[0];
-        assert_eq!((keyboard.level_text.as_str(), keyboard.fill, keyboard.color), ("50%", 0.5, (0x6C, 0xCB, 0x5F)));
+        assert_eq!((keyboard.level_text.as_str(), keyboard.fill, keyboard.tone), ("50%", 0.5, Tone::Good));
     }
 
     #[test]
@@ -433,7 +519,7 @@ mod tests {
         assert_eq!(tray_view(&[], &s).tooltip, "Device Battery: no data");
         let rows = [at("a", 60, false), at("b", 15, false), at("c", 5, true)];
         let tray = tray_view(&rows, &s);
-        assert_eq!((tray.label.as_str(), tray.color), ("15", (0xF7, 0xC0, 0x4A)));
+        assert_eq!((tray.label.as_str(), tray.tone), ("15", Tone::Warn));
         assert_eq!(tray.lines, ["a: 60%", "b: 15%", "c: 5% ⚡"]);
         // Its own reminder level makes the fuller one the more urgent
         s.device_mut("a").low_percent = Some(70);
@@ -441,6 +527,64 @@ mod tests {
         assert_eq!(tray_view(&rows, &s).label, "60");
         // Only charging ones left: the least charged of them
         assert_eq!(tray_view(&[at("c", 5, true), at("d", 40, true)], &s).label, "5");
+    }
+
+    #[test]
+    fn the_menu_bar_shows_the_first_devices_and_one_running_out() {
+        let mut s = AppSettings::default();
+        let at = |id: &str, kind: DeviceKind, level: Option<i32>, charging: bool| {
+            let mut r = row(id, kind, true);
+            let c = r.current.as_mut().unwrap();
+            c.level = level;
+            c.charging = charging;
+            r
+        };
+        let levels = |rows: &[DeviceRow], s: &AppSettings| -> Vec<String> {
+            tray_view(rows, s).bar.into_iter().map(|b| b.level).collect()
+        };
+        assert!(tray_view(&[], &s).bar.is_empty());
+
+        // Three places; fewer devices on the air, fewer shown
+        let headset = at("a", DeviceKind::Headset, Some(37), false);
+        assert_eq!(levels(std::slice::from_ref(&headset), &s), ["37"]);
+
+        // In the list's order, the lightning after the level, no "%"; the phone, fifth, is below its reminder level
+        // and takes the last place
+        let rows = [
+            headset.clone(),
+            at("b", DeviceKind::Mouse, Some(62), true),
+            at("c", DeviceKind::Keyboard, Some(80), false),
+            at("d", DeviceKind::Gamepad, Some(54), false),
+            at("e", DeviceKind::Phone, Some(15), false),
+        ];
+        s.device_order = ["a", "b", "c", "d", "e"].map(String::from).to_vec();
+        let bar = tray_view(&rows, &s).bar;
+        assert_eq!(bar.iter().map(|b| b.level.as_str()).collect::<Vec<_>>(), ["37", "62", "15"]);
+        assert_eq!((bar[1].power, bar[1].tone, bar[2].tone), (true, Tone::Charge, Tone::Warn));
+        assert_eq!(bar[2].kind, DeviceKind::Phone);
+
+        // All five fit; one place shows the one running out
+        s.menu_bar_devices = 5;
+        assert_eq!(levels(&rows, &s), ["37", "62", "80", "54", "15"]);
+        s.menu_bar_devices = 1;
+        assert_eq!(levels(&rows, &s), ["15"]);
+
+        // Charging isn't running out, even when low; an estimate keeps its "≈"; a device without a level isn't shown
+        // unless it is charging
+        let mut estimate = at("f", DeviceKind::Mouse, Some(9), false);
+        estimate.current.as_mut().unwrap().estimate = true;
+        let rows = [
+            at("a", DeviceKind::Headset, Some(37), false),
+            at("b", DeviceKind::Keyboard, None, false),
+            at("c", DeviceKind::Mouse, None, true),
+            at("d", DeviceKind::Gamepad, Some(5), true),
+            estimate,
+        ];
+        s.device_order = ["a", "b", "c", "d", "f"].map(String::from).to_vec();
+        s.menu_bar_devices = 3;
+        let bar = tray_view(&rows, &s).bar;
+        assert_eq!(bar.iter().map(|b| b.level.as_str()).collect::<Vec<_>>(), ["37", "", "≈9"]);
+        assert_eq!(bar[2].tone, Tone::Bad);
     }
 
     #[test]

@@ -43,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let started = Core.call(["cmd": "start", "demo": demo])
         model.loadTexts()
         model.refresh()
+        // Before anything is shown, the offer to move into Applications too
+        if let theme = model.snapshot?.settings.theme {
+            applyTheme(theme)
+        }
         MainMenu.install(model)
         statusItem = StatusItemController(model: model)
         overlay.reminderFrame = { [weak self] in self?.reminder.frame }
@@ -129,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func snapshotChanged(_ snapshot: Snapshot?) {
         guard let snapshot else { return }
+        applyTheme(snapshot.settings.theme)
         statusItem?.update(snapshot.tray)
         overlay.apply(snapshot)
         if snapshot.lang != language {
@@ -136,6 +141,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainMenu.install(model)
             mainWindow?.languageChanged()
             settingsWindow?.languageChanged()
+        }
+    }
+
+    /// The appearance picked in the settings - "light", "dark", or "auto" for the system's - for the windows, the
+    /// menus and the alerts, changed at once in the open ones. The menu bar item's number keeps the menu bar's own
+    /// appearance: the system gives the menu bar's window its own, which the app's doesn't reach. The overlay stays dark
+    /// whatever this is. Not while drawing the snapshots: they are in the appearance they were asked for (main.swift).
+    private func applyTheme(_ theme: String) {
+        guard snapshot == nil else { return }
+        let name: NSAppearance.Name?
+        switch theme {
+        case "light": name = .aqua
+        case "dark": name = .darkAqua
+        default: name = nil
+        }
+        if NSApp.appearance?.name != name {
+            NSApp.appearance = name.flatMap { NSAppearance(named: $0) }
         }
     }
 
@@ -148,9 +170,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for effect in effects {
             switch effect["type"] as? String {
             case "notice":
-                Notifier.shared.post(title: effect["title"] as? String ?? "", text: effect["text"] as? String ?? "")
+                Notifier.shared.post(title: effect["title"] as? String ?? "", text: effect["text"] as? String ?? "",
+                                     systemSound: effect["system_sound"] as? Bool ?? false)
             case "sound":
-                Sounds.play(critical: effect["critical"] as? Bool ?? false)
+                Sounds.play(effect)
+            case "sound_refused":
+                // A file picked for a sound that the app can't take: an alert over the window it was picked in, with a
+                // short title and what to do under it. The app's icon and one "OK", as macOS gives an alert that
+                // only informs
+                let alert = NSAlert()
+                alert.messageText = effect["title"] as? String ?? ""
+                alert.informativeText = effect["text"] as? String ?? ""
+                if let window = NSApp.keyWindow {
+                    alert.beginSheetModal(for: window)
+                } else {
+                    alert.runModal()
+                }
             case "alert":
                 if effect["test"] as? Bool == true {
                     showTestReminder(effect)
@@ -161,6 +196,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "alert_close":
                 reminder.close()
                 overlay.place()
+                // The reminder's sound doesn't outlast the reminder
+                Sounds.stop()
             case "save_later":
                 saveTimer?.invalidate()
                 saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in

@@ -1,9 +1,9 @@
 name: macOS
 
 # The macOS app: the core's lints and tests on a Mac, the app built for Apple Silicon and Intel, and its windows drawn
-# with the demo's devices in each language. The zip a release carries (BatteryTray-macOS.zip) and the disk image people
-# download (BatteryTray-macOS.dmg) are handed out, for trying a build before it is released and for attaching to the
-# release.
+# with the demo's devices in each language, light and dark. The zip a release carries (BatteryTray-macOS.zip) and the
+# disk image people download (BatteryTray-macOS.dmg) are handed out, for trying a build before it is released and for
+# attaching to the release.
 #
 # The signing key: the project's own certificate, which the users' permissions are tied to. Only the step that puts it
 # into a keychain of this run gets the secrets, after everything that runs code from the crates (their build scripts)
@@ -82,9 +82,12 @@ jobs:
             security delete-keychain "$RUNNER_TEMP/signing.keychain-db"
           fi
       - name: Draw the windows
+        # <lang> in the light appearance, <lang>-dark in the dark one
         run: |
+          app=target/macos/BatteryTray.app/Contents/MacOS/BatteryTray
           for lang in ru en zh; do
-            target/macos/BatteryTray.app/Contents/MacOS/BatteryTray --snapshot "$RUNNER_TEMP/windows/$lang" "$lang"
+            "$app" --snapshot "$RUNNER_TEMP/windows/$lang" "$lang" light
+            "$app" --snapshot "$RUNNER_TEMP/windows/$lang-dark" "$lang" dark
           done
           ls -R "$RUNNER_TEMP/windows"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
