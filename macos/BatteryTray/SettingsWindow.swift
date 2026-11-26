@@ -423,7 +423,10 @@ struct ReminderSettings: View {
                         SoundSetting(event: "charged", title: model.t("sounds.charged"), chosen: s.soundCharged)
                     }
                 } header: {
-                    Text(model.t("sounds.header"))
+                    HStack(spacing: 8) {
+                        Text(model.t("sounds.header"))
+                        NewBadge()
+                    }
                 } footer: {
                     // What there is to say about a chosen file: that only its beginning will sound
                     let shown = s.notifyCharged ? s.soundNotes : Array(s.soundNotes.prefix(2))
