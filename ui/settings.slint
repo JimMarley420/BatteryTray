@@ -2,7 +2,7 @@
 // Rust; changes go back through the callbacks.
 
 import { ScrollView } from "std-widgets.slint";
-import { Palette, T, Glyph, Card, SectionHeader, Hint, Btn, StepSlider } from "theme.slint";
+import { Palette, T, Glyph, Card, SectionHeader, NewBadge, Hint, Btn, StepSlider } from "theme.slint";
 import { SwitchRow, TipButton, InfoTip, NumberField, Dropdown, WideButton, ShortcutField, Divider, OverlayTabGlyph, Collapsible } from "controls.slint";
 
 // One of the three tabs: a glyph and a label, centred, and a bar along the bottom, in the accent colour under the
@@ -632,11 +632,19 @@ export component RemindersPage inherits Page {
             }
         }
     }
-    VerticalLayout {
+    // The sounds are new in 2.4.0: the badge goes in the next version
+    HorizontalLayout {
         padding-top: 14px;
         padding-left: 2px;
+        spacing: 8px;
+        alignment: start;
         SectionHeader {
             text: T.t("sounds.header");
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            NewBadge { }
         }
     }
     Card {
