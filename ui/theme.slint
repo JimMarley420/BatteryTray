@@ -104,6 +104,24 @@ export component SectionHeader inherits Text {
     color: Palette.secondary;
 }
 
+// "New" in a small outlined capsule after the header of a section that is new in this version; taken away in the
+// next one. The Mac app has the same (NewBadge in SettingsWindow.swift).
+export component NewBadge inherits Rectangle {
+    width: label.preferred-width + 12px;
+    height: 16px;
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: Palette.accent;
+    label := Text {
+        text: T.t("settings.new");
+        font-size: 11px;
+        font-weight: 600;
+        color: Palette.accent;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
 export component Hint inherits Text {
     font-size: 12px;
     color: Palette.secondary;
