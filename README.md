@@ -33,9 +33,11 @@ See how much battery your wireless headset, mouse, keyboard and controller have 
 
 - **A level for every device** — the headset that drains fastest can remind you at 40% while the mouse waits for 15%: each device can have its own reminder and critical levels (in its **⋯** menu), and follows the global ones until you set them.
 - **Battery overlay** — a shortcut (**Ctrl+Alt+V** on Windows, **⌃⌥V** on a Mac, set it in **Settings → Overlay**) shows the connected devices for five seconds on the screen you work on, over games and full-screen apps, without taking focus. Press again to restart the timer, or choose toggle mode; pick a corner and preview it before enabling.
+- **A sound for each reminder** — the low battery reminder, the critical one and "Charging complete" each have a sound of their own (Settings → Reminders → Sounds): the system's, another of the system's sounds, your own WAV or MP3 file, or none.
 - **Charging complete notification** — when a device that can tell finishes charging with the cable still in.
 - **No made-up percentages** — when a device can't report its level while charging, you see a charging sign instead of a stale number; estimates are marked with "≈".
 - **English, Russian and Chinese** — follows the system's language, switch any time in Settings → General.
+- **Light and dark** — follows the system's theme, or pick one in Settings → General; the overlay stays dark over games.
 - **Updates itself** from GitHub releases (SHA-256 checked), quietly, while its windows are closed.
 - **Light** — one ~10 MB exe or an ~11 MB Mac app, about 8 MB of memory; nothing else to install, never changes anything on your devices.
 
