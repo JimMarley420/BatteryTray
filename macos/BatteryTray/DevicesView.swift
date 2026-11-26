@@ -322,7 +322,7 @@ struct LevelBar: View {
     }
 }
 
-/// A hidden device: its name and state, and a button that puts it back.
+/// A hidden device: its name and state, and an open eye that puts it back (the word is its help tag).
 struct HiddenRow: View {
     @EnvironmentObject var model: AppModel
     let device: Device
@@ -335,15 +335,20 @@ struct HiddenRow: View {
                 Text(device.subtitle).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button(model.t("device.show")) {
+            // An image button without a border; its frame is what takes the click, about 10 points around the eye
+            Button {
                 model.send(["cmd": "hide", "id": device.id, "hidden": false])
+            } label: {
+                Image(systemName: "eye").frame(width: 36, height: 30).contentShape(Rectangle())
             }
-            .controlSize(.small)
+            .buttonStyle(.borderless)
+            .help(model.t("device.show"))
             .accessibilityLabel("\(model.t("device.show")): \(device.name)")
         }
         .padding(.vertical, 3)
-        // As the rows without a card
-        .padding(.horizontal, 12)
+        // As the rows without a card; on the right 6 points less, so the eye stands under their "⋯" (24 points wide)
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
     }
 }
 

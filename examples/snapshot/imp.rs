@@ -246,7 +246,9 @@ pub fn main() {
     main.invoke_start_rename(BARRACUDA.into());
     render(&window, scale, size, &folder.join("main-devices-rename.png"));
 
+    // No update banner: with it the hidden devices are below the window's edge
     let (main, window) = open(&rows);
+    main.set_banner_visible(false);
     main.set_hidden_open(true);
     render(&window, scale, size, &folder.join("main-devices-hidden.png"));
 
